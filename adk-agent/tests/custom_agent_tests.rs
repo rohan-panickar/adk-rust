@@ -1,7 +1,7 @@
 use adk_agent::CustomAgent;
 use adk_core::{
     Agent, CallbackContext, Content, Event, InvocationContext, Memory, Part, ReadonlyContext,
-    Result, RunConfig, Session,
+    RunConfig, Session,
 };
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -28,6 +28,7 @@ impl Session for MockSession {
 }
 
 struct MockContext {
+    #[allow(dead_code)]
     content: Content,
     session: MockSession,
     user_content: Content,

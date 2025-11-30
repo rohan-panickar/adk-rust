@@ -1,7 +1,5 @@
 use adk_agent::LlmAgentBuilder;
-use adk_core::{
-    Agent, Content, InvocationContext, Part, ReadonlyContext, RunConfig, Tool, ToolContext,
-};
+use adk_core::{Agent, Content, InvocationContext, Part, ReadonlyContext, RunConfig, ToolContext};
 use adk_tool::FunctionTool;
 use async_trait::async_trait;
 use serde_json::Value;

@@ -1,15 +1,12 @@
 use adk_agent::LlmAgentBuilder;
-use adk_core::{
-    Agent, Content, FinishReason, InvocationContext, Llm, LlmRequest, LlmResponse,
-    LlmResponseStream, Part, Result, RunConfig, Session, State, Tool, ToolContext,
-};
+use adk_core::{Agent, Content, InvocationContext, Part, RunConfig, Session, State};
 use adk_model::GeminiModel;
 use async_trait::async_trait;
 use futures::StreamExt;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 // --- Mocks ---
 

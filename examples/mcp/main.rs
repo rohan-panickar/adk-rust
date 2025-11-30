@@ -16,7 +16,6 @@ use adk_core::{
     Agent, Content, InvocationContext, Part, ReadonlyContext, RunConfig, Session, State,
 };
 use adk_model::GeminiModel;
-use adk_tool::McpToolset;
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::Value;

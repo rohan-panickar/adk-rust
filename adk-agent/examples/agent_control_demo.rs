@@ -1,7 +1,6 @@
 use adk_agent::LlmAgentBuilder;
-use adk_core::{Agent, IncludeContents};
+use adk_core::IncludeContents;
 use adk_model::gemini::GeminiModel;
-use futures::StreamExt;
 use std::sync::Arc;
 
 /// Demonstrates how IncludeContents::None makes the agent stateless
@@ -15,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example 1: Default behavior (full conversation history)
     println!("1. Testing IncludeContents::Default (normal agent with memory)");
-    let agent_with_memory = LlmAgentBuilder::new("memory_agent")
+    let _agent_with_memory = LlmAgentBuilder::new("memory_agent")
         .description("Agent that remembers conversation history")
         .model(Arc::new(GeminiModel::new(&api_key, "gemini-2.0-flash-exp")?))
         .instruction("You are a helpful assistant. Remember what the user tells you.")
@@ -26,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example 2: Stateless agent (no history)
     println!("2. Testing IncludeContents::None (stateless agent)");
-    let stateless_agent = LlmAgentBuilder::new("stateless_agent")
+    let _stateless_agent = LlmAgentBuilder::new("stateless_agent")
         .description("Agent that only sees current message")
         .model(Arc::new(GeminiModel::new(&api_key, "gemini-2.0-flash-exp")?))
         .instruction("You are a helpful assistant. Answer only based on the current question.")
@@ -38,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example 3: DisallowTransfer flags
     println!("3. Testing DisallowTransfer flags");
-    let restricted_agent = LlmAgentBuilder::new("restricted_agent")
+    let _restricted_agent = LlmAgentBuilder::new("restricted_agent")
         .description("Agent that cannot delegate to others")
         .model(Arc::new(GeminiModel::new(&api_key, "gemini-2.0-flash-exp")?))
         .instruction("You must handle all requests yourself.")
@@ -60,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "required": ["sentiment", "confidence"]
     });
 
-    let structured_agent = LlmAgentBuilder::new("sentiment_analyzer")
+    let _structured_agent = LlmAgentBuilder::new("sentiment_analyzer")
         .description("Analyzes sentiment and returns structured JSON")
         .model(Arc::new(GeminiModel::new(&api_key, "gemini-2.0-flash-exp")?))
         .instruction(
