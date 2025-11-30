@@ -24,13 +24,7 @@ use tower_http::{
 /// Build CORS layer based on security configuration
 fn build_cors_layer(config: &ServerConfig) -> CorsLayer {
     let cors = CorsLayer::new()
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
     if config.security.allowed_origins.is_empty() {
@@ -38,12 +32,8 @@ fn build_cors_layer(config: &ServerConfig) -> CorsLayer {
         cors.allow_origin(AllowOrigin::any())
     } else {
         // Production mode: only allow specified origins
-        let origins: Vec<HeaderValue> = config
-            .security
-            .allowed_origins
-            .iter()
-            .filter_map(|o| o.parse().ok())
-            .collect();
+        let origins: Vec<HeaderValue> =
+            config.security.allowed_origins.iter().filter_map(|o| o.parse().ok()).collect();
         cors.allow_origin(origins)
     }
 }
