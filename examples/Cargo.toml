@@ -152,9 +152,20 @@ name = "openai_research_paper"
 path = "openai_research_paper/main.rs"
 required-features = ["openai"]
 
+[[example]]
+name = "anthropic_basic"
+path = "anthropic_basic/main.rs"
+required-features = ["anthropic"]
+
+[[example]]
+name = "anthropic_tools"
+path = "anthropic_tools/main.rs"
+required-features = ["anthropic"]
+
 [features]
 default = []
 openai = ["adk-model/openai"]
+anthropic = ["adk-model/anthropic"]
 
 [dependencies]
 adk-core = { path = "../adk-core" }

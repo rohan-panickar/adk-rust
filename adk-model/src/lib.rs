@@ -1,6 +1,6 @@
 //! # adk-model
 //!
-//! LLM model integrations for ADK (Gemini, OpenAI, Azure, etc.).
+//! LLM model integrations for ADK (Gemini, OpenAI, Anthropic, etc.).
 //!
 //! ## Overview
 //!
@@ -9,6 +9,7 @@
 //! - [`GeminiModel`] - Google's Gemini models (2.0 Flash, Pro, etc.)
 //! - [`OpenAIClient`] - OpenAI models (GPT-4o, GPT-4o-mini, etc.)
 //! - [`AzureOpenAIClient`] - Azure OpenAI Service
+//! - [`AnthropicClient`] - Anthropic Claude models (Claude 4, Claude 3.5, etc.)
 //! - [`MockLlm`] - Mock LLM for testing
 //!
 //! ## Quick Start
@@ -34,6 +35,17 @@
 //! )).unwrap();
 //! ```
 //!
+//! ### Anthropic
+//!
+//! ```rust,ignore
+//! use adk_model::anthropic::{AnthropicClient, AnthropicConfig};
+//!
+//! let model = AnthropicClient::new(AnthropicConfig::new(
+//!     std::env::var("ANTHROPIC_API_KEY").unwrap(),
+//!     "claude-sonnet-4-20250514",
+//! )).unwrap();
+//! ```
+//!
 //! ## Supported Models
 //!
 //! ### Gemini
@@ -50,6 +62,13 @@
 //! | `gpt-4o-mini` | Fast, cost-effective |
 //! | `gpt-4-turbo` | Previous generation flagship |
 //!
+//! ### Anthropic
+//! | Model | Description |
+//! |-------|-------------|
+//! | `claude-sonnet-4-20250514` | Latest Claude 4 Sonnet |
+//! | `claude-3-5-sonnet-20241022` | Claude 3.5 Sonnet |
+//! | `claude-3-opus-20240229` | Most capable Claude 3 |
+//!
 //! ## Features
 //!
 //! - Async streaming with backpressure
@@ -58,12 +77,16 @@
 //! - Generation configuration (temperature, top_p, etc.)
 //! - OpenAI-compatible APIs (Ollama, vLLM, etc.)
 
+#[cfg(feature = "anthropic")]
+pub mod anthropic;
 #[cfg(feature = "gemini")]
 pub mod gemini;
 pub mod mock;
 #[cfg(feature = "openai")]
 pub mod openai;
 
+#[cfg(feature = "anthropic")]
+pub use anthropic::AnthropicClient;
 #[cfg(feature = "gemini")]
 pub use gemini::GeminiModel;
 pub use mock::MockLlm;
