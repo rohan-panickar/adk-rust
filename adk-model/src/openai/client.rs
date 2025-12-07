@@ -97,12 +97,124 @@ impl Llm for OpenAIClient {
                 .await
                 .map_err(|e| AdkError::Model(format!("OpenAI API error: {}", e)))?;
 
+            // For tool calls, we need to accumulate arguments across chunks
+            // OpenAI streams tool call arguments incrementally
+            // Key is index (u32), value is (call_id, name, args_string)
+            let mut tool_call_accumulators: std::collections::HashMap<u32, (String, String, String)> = std::collections::HashMap::new();
+
             // Process stream chunks
             while let Some(result) = stream.next().await {
                 match result {
                     Ok(chunk) => {
-                        let response = convert::from_openai_chunk(&chunk);
-                        yield response;
+                        // Handle tool call accumulation
+                        if let Some(choice) = chunk.choices.first() {
+                            if let Some(tool_calls) = &choice.delta.tool_calls {
+                                for tc in tool_calls {
+                                    let index = tc.index;
+
+                                    // Get or create entry for this tool call index
+                                    let entry = tool_call_accumulators.entry(index).or_insert_with(|| {
+                                        let call_id = tc.id.clone().unwrap_or_else(|| format!("call_{}", index));
+                                        (call_id, String::new(), String::new())
+                                    });
+
+                                    // Update call_id if present (first chunk has it)
+                                    if let Some(id) = &tc.id {
+                                        entry.0 = id.clone();
+                                    }
+
+                                    if let Some(func) = &tc.function {
+                                        // Update name if present (first chunk has it)
+                                        if let Some(name) = &func.name {
+                                            entry.1 = name.clone();
+                                        }
+
+                                        // Accumulate arguments
+                                        if let Some(args_chunk) = &func.arguments {
+                                            entry.2.push_str(args_chunk);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Check if this is the final chunk (has finish_reason)
+                            if choice.finish_reason.is_some() {
+                                // Emit accumulated tool calls
+                                if !tool_call_accumulators.is_empty() {
+                                    let mut parts = Vec::new();
+
+                                    // Add text content if any
+                                    if let Some(text) = &choice.delta.content {
+                                        if !text.is_empty() {
+                                            parts.push(adk_core::Part::Text { text: text.clone() });
+                                        }
+                                    }
+
+                                    // Add completed tool calls (sorted by index for consistent ordering)
+                                    let mut sorted_calls: Vec<_> = tool_call_accumulators.iter().collect();
+                                    sorted_calls.sort_by_key(|(idx, _)| *idx);
+
+                                    for (_idx, (call_id, name, args_str)) in sorted_calls {
+                                        let args: serde_json::Value = serde_json::from_str(args_str)
+                                            .unwrap_or(serde_json::json!({}));
+                                        parts.push(adk_core::Part::FunctionCall {
+                                            name: name.clone(),
+                                            args,
+                                            id: Some(call_id.clone()),
+                                        });
+                                    }
+
+                                    let finish_reason = choice.finish_reason.map(|fr| match fr {
+                                        async_openai::types::FinishReason::Stop => adk_core::FinishReason::Stop,
+                                        async_openai::types::FinishReason::Length => adk_core::FinishReason::MaxTokens,
+                                        async_openai::types::FinishReason::ToolCalls => adk_core::FinishReason::Stop,
+                                        async_openai::types::FinishReason::ContentFilter => adk_core::FinishReason::Safety,
+                                        async_openai::types::FinishReason::FunctionCall => adk_core::FinishReason::Stop,
+                                    });
+
+                                    yield adk_core::LlmResponse {
+                                        content: Some(adk_core::Content {
+                                            role: "model".to_string(),
+                                            parts,
+                                        }),
+                                        usage_metadata: None,
+                                        finish_reason,
+                                        partial: false,
+                                        turn_complete: true,
+                                        interrupted: false,
+                                        error_code: None,
+                                        error_message: None,
+                                    };
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // For non-tool-call chunks, emit normally
+                        // Skip if we're accumulating tool calls (don't emit partial tool calls)
+                        if tool_call_accumulators.is_empty() {
+                            let response = convert::from_openai_chunk(&chunk);
+                            yield response;
+                        } else if let Some(choice) = chunk.choices.first() {
+                            // While accumulating tool calls, still emit text content
+                            if let Some(text) = &choice.delta.content {
+                                if !text.is_empty() {
+                                    yield adk_core::LlmResponse {
+                                        content: Some(adk_core::Content {
+                                            role: "model".to_string(),
+                                            parts: vec![adk_core::Part::Text { text: text.clone() }],
+                                        }),
+                                        usage_metadata: None,
+                                        finish_reason: None,
+                                        partial: true,
+                                        turn_complete: false,
+                                        interrupted: false,
+                                        error_code: None,
+                                        error_message: None,
+                                    };
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
                         yield Err(AdkError::Model(format!("Stream error: {}", e)))?;
