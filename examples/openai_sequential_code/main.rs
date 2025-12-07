@@ -30,10 +30,7 @@ async fn main() -> Result<()> {
              - Error handling strategy\n\
              Be thorough but concise.",
         )
-        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(
-            api_key.clone(),
-            "gpt-4o-mini",
-        ))?))
+        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(api_key.clone(), "gpt-4o-mini"))?))
         .build()?;
 
     let implementer = LlmAgentBuilder::new("implementer")
@@ -46,10 +43,7 @@ async fn main() -> Result<()> {
              - Comments for complex logic\n\
              Output the complete implementation.",
         )
-        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(
-            api_key.clone(),
-            "gpt-4o-mini",
-        ))?))
+        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(api_key.clone(), "gpt-4o-mini"))?))
         .build()?;
 
     let reviewer = LlmAgentBuilder::new("reviewer")
@@ -62,10 +56,7 @@ async fn main() -> Result<()> {
              - Security concerns\n\
              Provide the final polished code with any necessary fixes.",
         )
-        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(
-            api_key,
-            "gpt-4o-mini",
-        ))?))
+        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(api_key, "gpt-4o-mini"))?))
         .build()?;
 
     let workflow = SequentialAgent::new(

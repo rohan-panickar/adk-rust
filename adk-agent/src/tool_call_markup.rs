@@ -270,6 +270,8 @@ test_tool
 
         normalize_content(&mut content);
         assert_eq!(content.parts.len(), 1);
-        assert!(matches!(&content.parts[0], Part::FunctionCall { name, .. } if name == "test_tool"));
+        assert!(
+            matches!(&content.parts[0], Part::FunctionCall { name, .. } if name == "test_tool")
+        );
     }
 }

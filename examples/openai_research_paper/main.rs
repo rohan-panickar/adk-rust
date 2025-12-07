@@ -188,7 +188,10 @@ Always maintain a professional, academic tone."#
     println!("Try asking: 'Write a research paper on machine learning in healthcare'\n");
 
     // Run with Launcher (supports both console and server modes)
-    Launcher::new(Arc::new(research_agent)).app_name("openai_research_paper_generator").run().await?;
+    Launcher::new(Arc::new(research_agent))
+        .app_name("openai_research_paper_generator")
+        .run()
+        .await?;
 
     Ok(())
 }

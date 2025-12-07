@@ -93,12 +93,9 @@ async fn main() -> Result<()> {
     .with_parameters_schema::<CalculatorArgs>();
 
     // Create weather tool with schema
-    let weather_tool = FunctionTool::new(
-        "get_weather",
-        "Gets the current weather for a city",
-        get_weather,
-    )
-    .with_parameters_schema::<WeatherArgs>();
+    let weather_tool =
+        FunctionTool::new("get_weather", "Gets the current weather for a city", get_weather)
+            .with_parameters_schema::<WeatherArgs>();
 
     let agent = LlmAgentBuilder::new("tools_agent")
         .description("Agent that can perform calculations and get weather")

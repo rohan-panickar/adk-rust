@@ -124,12 +124,12 @@ impl Llm for AnthropicClient {
                             // Check if this is a tool_use block
                             let index = start_event.index;
                             if let ContentBlock::ToolUse(tool_use) = start_event.content_block {
-                                current_tool_index = Some(index as usize);
+                                current_tool_index = Some(index);
                                 // Ensure vector is large enough
-                                while current_tool_calls.len() <= index as usize {
+                                while current_tool_calls.len() <= index {
                                     current_tool_calls.push((String::new(), String::new(), String::new()));
                                 }
-                                current_tool_calls[index as usize] = (
+                                current_tool_calls[index] = (
                                     tool_use.id.clone(),
                                     tool_use.name.clone(),
                                     String::new(),
@@ -149,8 +149,8 @@ impl Llm for AnthropicClient {
                                         if idx < current_tool_calls.len() {
                                             current_tool_calls[idx].2.push_str(&json_delta.partial_json);
                                         }
-                                    } else if (index as usize) < current_tool_calls.len() {
-                                        current_tool_calls[index as usize].2.push_str(&json_delta.partial_json);
+                                    } else if index < current_tool_calls.len() {
+                                        current_tool_calls[index].2.push_str(&json_delta.partial_json);
                                     }
                                 }
                                 _ => {}
@@ -193,8 +193,8 @@ impl Llm for AnthropicClient {
                                     content: None,
                                     usage_metadata: Some(adk_core::UsageMetadata {
                                         prompt_token_count: 0,
-                                        candidates_token_count: delta_event.usage.output_tokens as i32,
-                                        total_token_count: delta_event.usage.output_tokens as i32,
+                                        candidates_token_count: delta_event.usage.output_tokens,
+                                        total_token_count: delta_event.usage.output_tokens,
                                     }),
                                     finish_reason,
                                     partial: false,

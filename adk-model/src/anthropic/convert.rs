@@ -65,10 +65,7 @@ pub fn convert_tools(tools: &HashMap<String, Value>) -> Vec<ToolUnionParam> {
     tools
         .iter()
         .map(|(name, decl)| {
-            let description = decl
-                .get("description")
-                .and_then(|d| d.as_str())
-                .map(String::from);
+            let description = decl.get("description").and_then(|d| d.as_str()).map(String::from);
 
             let input_schema = decl.get("parameters").cloned().unwrap_or(serde_json::json!({
                 "type": "object",
@@ -111,9 +108,9 @@ pub fn from_anthropic_message(message: &Message) -> LlmResponse {
         if parts.is_empty() { None } else { Some(Content { role: "model".to_string(), parts }) };
 
     let usage_metadata = Some(UsageMetadata {
-        prompt_token_count: message.usage.input_tokens as i32,
-        candidates_token_count: message.usage.output_tokens as i32,
-        total_token_count: (message.usage.input_tokens + message.usage.output_tokens) as i32,
+        prompt_token_count: message.usage.input_tokens,
+        candidates_token_count: message.usage.output_tokens,
+        total_token_count: (message.usage.input_tokens + message.usage.output_tokens),
     });
 
     let finish_reason = message.stop_reason.as_ref().map(|sr| match sr {
@@ -176,6 +173,7 @@ pub fn create_tool_call_response(
 }
 
 /// Build MessageCreateParams from LlmRequest.
+#[allow(clippy::too_many_arguments)]
 pub fn build_message_params(
     model: &str,
     max_tokens: u32,
@@ -186,7 +184,8 @@ pub fn build_message_params(
     top_p: Option<f32>,
     top_k: Option<i32>,
 ) -> MessageCreateParams {
-    let mut params = MessageCreateParams::new(max_tokens, messages, Model::Custom(model.to_string()));
+    let mut params =
+        MessageCreateParams::new(max_tokens, messages, Model::Custom(model.to_string()));
 
     if !tools.is_empty() {
         params.tools = Some(tools);

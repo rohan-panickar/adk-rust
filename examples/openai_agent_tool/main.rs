@@ -49,10 +49,7 @@ async fn calculator(_ctx: Arc<dyn ToolContext>, args: Value) -> Result<Value, ad
         "sqrt" => args.a.sqrt(),
         "percent" => args.a * (args.b / 100.0),
         _ => {
-            return Err(adk_core::AdkError::Tool(format!(
-                "Unknown operation: {}",
-                args.operation
-            )))
+            return Err(adk_core::AdkError::Tool(format!("Unknown operation: {}", args.operation)))
         }
     };
 
@@ -68,10 +65,7 @@ async fn calculator(_ctx: Arc<dyn ToolContext>, args: Value) -> Result<Value, ad
 async fn main() -> Result<()> {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
 
-    let model = Arc::new(OpenAIClient::new(OpenAIConfig::new(
-        api_key.clone(),
-        "gpt-4o-mini",
-    ))?);
+    let model = Arc::new(OpenAIClient::new(OpenAIConfig::new(api_key.clone(), "gpt-4o-mini"))?);
 
     // Create the calculator tool with schema
     let calc_tool = FunctionTool::new(
@@ -83,9 +77,7 @@ async fn main() -> Result<()> {
 
     // Create the Math Expert agent with calculator tool
     let math_agent = LlmAgentBuilder::new("math_expert")
-        .description(
-            "A math expert that can perform calculations and solve mathematical problems.",
-        )
+        .description("A math expert that can perform calculations and solve mathematical problems.")
         .instruction(
             "You are a math expert. When asked to perform calculations, use the calculator tool. \
              Be precise with numbers and show your work.",
@@ -101,10 +93,7 @@ async fn main() -> Result<()> {
             "You are a trivia expert. Answer questions accurately and concisely. \
              If you're unsure, say so.",
         )
-        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(
-            api_key.clone(),
-            "gpt-4o-mini",
-        ))?))
+        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(api_key.clone(), "gpt-4o-mini"))?))
         .build()?;
 
     // Wrap agents as tools
@@ -120,10 +109,7 @@ async fn main() -> Result<()> {
              - For trivia/facts -> use trivia_expert\n\n\
              Summarize the specialist's response for the user.",
         )
-        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(
-            api_key,
-            "gpt-4o-mini",
-        ))?))
+        .model(Arc::new(OpenAIClient::new(OpenAIConfig::new(api_key, "gpt-4o-mini"))?))
         .tool(Arc::new(math_tool))
         .tool(Arc::new(trivia_tool))
         .build()?;

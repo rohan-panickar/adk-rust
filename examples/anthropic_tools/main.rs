@@ -84,7 +84,9 @@ async fn calculator(_ctx: Arc<dyn ToolContext>, args: Value) -> Result<Value, ad
             }
             args.a / args.b
         }
-        _ => return Err(adk_core::AdkError::Tool(format!("Unknown operation: {}", args.operation))),
+        _ => {
+            return Err(adk_core::AdkError::Tool(format!("Unknown operation: {}", args.operation)))
+        }
     };
 
     Ok(json!({
@@ -102,12 +104,9 @@ async fn main() -> Result<()> {
     let model = AnthropicClient::new(AnthropicConfig::new(api_key, "claude-sonnet-4-20250514"))?;
 
     // Create weather tool with schema
-    let weather_tool = FunctionTool::new(
-        "get_weather",
-        "Get current weather information for a city",
-        get_weather,
-    )
-    .with_parameters_schema::<WeatherArgs>();
+    let weather_tool =
+        FunctionTool::new("get_weather", "Get current weather information for a city", get_weather)
+            .with_parameters_schema::<WeatherArgs>();
 
     // Create calculator tool with schema
     let calc_tool = FunctionTool::new(
