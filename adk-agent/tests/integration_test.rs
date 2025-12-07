@@ -115,7 +115,7 @@ impl InvocationContext for MockContext {
 #[ignore] // Requires GEMINI_API_KEY - run with: cargo test --ignored
 async fn test_real_gemini_interaction() {
     // Load API key from env
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
     let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
 
     println!("Using Gemini API Key: {}...", &api_key[..10]);

@@ -21,7 +21,7 @@ dependencies = [
  "adk-tool",
  "async-stream",
  "async-trait",
- "dotenv",
+ "dotenvy",
  "futures",
  "serde",
  "serde_json",
@@ -94,7 +94,7 @@ dependencies = [
  "async-trait",
  "axum 0.7.9",
  "chrono",
- "dotenv",
+ "dotenvy",
  "futures",
  "schemars 0.8.22",
  "serde",
@@ -1016,12 +1016,6 @@ dependencies = [
  "quote",
  "syn 2.0.111",
 ]
-
-[[package]]
-name = "dotenv"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
 
 [[package]]
 name = "dotenvy"
