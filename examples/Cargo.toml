@@ -117,6 +117,41 @@ name = "debug_openai_error"
 path = "debug_openai_error/main.rs"
 required-features = ["openai"]
 
+[[example]]
+name = "openai_artifacts"
+path = "openai_artifacts/main.rs"
+required-features = ["openai"]
+
+[[example]]
+name = "openai_mcp"
+path = "openai_mcp/main.rs"
+required-features = ["openai"]
+
+[[example]]
+name = "openai_a2a"
+path = "openai_a2a/main.rs"
+required-features = ["openai"]
+
+[[example]]
+name = "openai_server"
+path = "openai_server/main.rs"
+required-features = ["openai"]
+
+[[example]]
+name = "openai_web"
+path = "openai_web/main.rs"
+required-features = ["openai"]
+
+[[example]]
+name = "openai_sequential_code"
+path = "openai_sequential_code/main.rs"
+required-features = ["openai"]
+
+[[example]]
+name = "openai_research_paper"
+path = "openai_research_paper/main.rs"
+required-features = ["openai"]
+
 [features]
 default = []
 openai = ["adk-model/openai"]
