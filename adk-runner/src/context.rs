@@ -120,7 +120,6 @@ impl adk_core::State for MutableSession {
     }
 }
 
-
 pub struct InvocationContext {
     invocation_id: String,
     agent: Arc<dyn Agent>,

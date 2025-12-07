@@ -1,7 +1,7 @@
-use adk_core::Agent;
 use adk_agent::LlmAgentBuilder;
-use adk_model::GeminiModel;
 use adk_cli::Launcher;
+use adk_core::Agent;
+use adk_model::GeminiModel;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -38,7 +38,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("Structured Output Agent created: {}", agent.name());
     println!("This agent will always respond with JSON data.");
     println!("Try asking: 'What is the weather in Tokyo?'");
-    
+
     // Run with the default launcher
     Launcher::new(Arc::new(agent)).run().await?;
 

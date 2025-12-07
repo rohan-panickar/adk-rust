@@ -44,16 +44,12 @@ struct MockSessionWithState {
 impl MockSessionWithState {
     fn new() -> Self {
         let state_arc = std::sync::Arc::new(std::sync::RwLock::new(HashMap::new()));
-        Self {
-            state_view: MockSessionStateView(state_arc),
-        }
+        Self { state_view: MockSessionStateView(state_arc) }
     }
 
     fn with_state(state: HashMap<String, serde_json::Value>) -> Self {
         let state_arc = std::sync::Arc::new(std::sync::RwLock::new(state));
-        Self {
-            state_view: MockSessionStateView(state_arc),
-        }
+        Self { state_view: MockSessionStateView(state_arc) }
     }
 }
 
@@ -247,10 +243,7 @@ fn test_mutable_session_state_delta_propagation() {
     let mutable = MutableSession::new(session);
 
     // Verify initial state is accessible
-    assert_eq!(
-        mutable.state().get("initial_key"),
-        Some(serde_json::json!("initial_value"))
-    );
+    assert_eq!(mutable.state().get("initial_key"), Some(serde_json::json!("initial_value")));
 
     // Apply state delta (simulating what happens when an agent with output_key yields an event)
     let mut delta = HashMap::new();
@@ -263,16 +256,10 @@ fn test_mutable_session_state_delta_propagation() {
         mutable.state().get("research_findings"),
         Some(serde_json::json!("AI research results"))
     );
-    assert_eq!(
-        mutable.state().get("another_key"),
-        Some(serde_json::json!(42))
-    );
+    assert_eq!(mutable.state().get("another_key"), Some(serde_json::json!(42)));
 
     // Original state should still be there
-    assert_eq!(
-        mutable.state().get("initial_key"),
-        Some(serde_json::json!("initial_value"))
-    );
+    assert_eq!(mutable.state().get("initial_key"), Some(serde_json::json!("initial_value")));
 }
 
 #[test]
@@ -289,10 +276,7 @@ fn test_mutable_session_temp_keys_not_persisted() {
     // temp: keys should NOT be stored
     assert_eq!(mutable.state().get("temp:scratch"), None);
     // Regular keys should be stored
-    assert_eq!(
-        mutable.state().get("permanent"),
-        Some(serde_json::json!("persisted"))
-    );
+    assert_eq!(mutable.state().get("permanent"), Some(serde_json::json!("persisted")));
 }
 
 #[test]

@@ -1,5 +1,5 @@
-use adk_core::{Agent, Content};
 use adk_agent::LlmAgentBuilder;
+use adk_core::{Agent, Content};
 use adk_model::GeminiModel;
 use std::sync::Arc;
 
@@ -9,11 +9,12 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
 
     // Ensure API key is set
-    let api_key = std::env::var("GOOGLE_API_KEY").expect("GOOGLE_API_KEY must be set in .env or environment");
+    let api_key =
+        std::env::var("GOOGLE_API_KEY").expect("GOOGLE_API_KEY must be set in .env or environment");
     let model = GeminiModel::new(&api_key, "gemini-2.0-flash-exp")?;
 
     // Define the agent with dynamic instructions
-    // The placeholders {user:name}, {user:language}, etc. will be replaced 
+    // The placeholders {user:name}, {user:language}, etc. will be replaced
     // by the values from the session state at runtime.
     let agent = LlmAgentBuilder::new("multilingual_assistant")
         .description("An assistant that adapts to user language")
@@ -21,19 +22,19 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             "You are assisting {user:name} in {user:language}. \
              Respond in {user:language}. \
              User expertise level: {user:expertise}. \
-             Adjust your explanations accordingly."
+             Adjust your explanations accordingly.",
         )
         .model(Arc::new(model))
         .build()?;
-    
+
     println!("Multilingual agent created: {}", agent.name());
 
     // --- Custom Runner Loop to support pre-seeded state ---
-    use adk_session::{CreateRequest, SessionService, InMemorySessionService};
     use adk_runner::{Runner, RunnerConfig};
+    use adk_session::{CreateRequest, InMemorySessionService, SessionService};
     use futures::StreamExt;
     use std::collections::HashMap;
-    use std::io::{self, Write, BufRead};
+    use std::io::{self, BufRead, Write};
 
     let app_name = "tutorial_app";
     let user_id = "user_123";
@@ -47,12 +48,14 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     state.insert("user:expertise".to_string(), "intermediate".into());
 
     // Create session with initial state
-    let session = session_service.create(CreateRequest {
-        app_name: app_name.to_string(),
-        user_id: user_id.to_string(),
-        session_id: None,
-        state,
-    }).await?;
+    let session = session_service
+        .create(CreateRequest {
+            app_name: app_name.to_string(),
+            user_id: user_id.to_string(),
+            session_id: None,
+            state,
+        })
+        .await?;
 
     let session_id = session.id().to_string();
 
@@ -77,11 +80,17 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut input = String::new();
         let bytes_read = stdin.lock().read_line(&mut input)?;
 
-        if bytes_read == 0 { break; }
+        if bytes_read == 0 {
+            break;
+        }
 
         let input = input.trim();
-        if input == "exit" || input == "quit" { break; }
-        if input.is_empty() { continue; }
+        if input == "exit" || input == "quit" {
+            break;
+        }
+        if input.is_empty() {
+            continue;
+        }
 
         let content = Content::new("user").with_text(input);
         let mut events = runner.run(user_id.to_string(), session_id.clone(), content).await?;
@@ -106,6 +115,6 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
         println!("\n");
     }
-    
+
     Ok(())
 }
