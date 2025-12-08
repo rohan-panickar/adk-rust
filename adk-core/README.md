@@ -1,6 +1,6 @@
 # adk-core
 
-Core traits and types for ADK agents, tools, sessions, and events.
+Core traits and types for Rust Agent Development Kit (ADK-Rust) agents, tools, sessions, and events.
 
 [![Crates.io](https://img.shields.io/crates/v/adk-core.svg)](https://crates.io/crates/adk-core)
 [![Documentation](https://docs.rs/adk-core/badge.svg)](https://docs.rs/adk-core)

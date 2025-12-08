@@ -1,6 +1,6 @@
 # adk-telemetry
 
-OpenTelemetry integration for ADK agent observability.
+OpenTelemetry integration for Rust Agent Development Kit (ADK-Rust) agent observability.
 
 [![Crates.io](https://img.shields.io/crates/v/adk-telemetry.svg)](https://crates.io/crates/adk-telemetry)
 [![Documentation](https://docs.rs/adk-telemetry/badge.svg)](https://docs.rs/adk-telemetry)

@@ -1,12 +1,12 @@
 # ADK-Rust
 
-**Agent Development Kit for Rust** - Build AI agents with simplicity and power.
+**Rust Agent Development Kit (ADK-Rust)** - Build AI agents in Rust with modular components for models, tools, memory, realtime voice, and more.
 
 [![Crates.io](https://img.shields.io/crates/v/adk-rust.svg)](https://crates.io/crates/adk-rust)
 [![Documentation](https://docs.rs/adk-rust/badge.svg)](https://docs.rs/adk-rust)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A flexible framework for developing AI agents. Model-agnostic, deployment-agnostic, optimized for Gemini.
+A flexible framework for developing AI agents with simplicity and power. Model-agnostic, deployment-agnostic, optimized for frontier AI models. Includes support for realtime voice agents with OpenAI Realtime API and Gemini Live API.
 
 ## Quick Start
 
@@ -93,6 +93,32 @@ let coordinator = LlmAgentBuilder::new("coordinator")
     .sub_agent(test_agent)
     .build()?;
 ```
+
+## Realtime Voice Agents
+
+Build voice-enabled AI assistants with bidirectional audio streaming:
+
+```rust
+use adk_realtime::{RealtimeAgent, openai::OpenAIRealtimeModel, RealtimeModel};
+
+let model: Arc<dyn RealtimeModel> = Arc::new(
+    OpenAIRealtimeModel::new(&api_key, "gpt-4o-realtime-preview")
+);
+
+let agent = RealtimeAgent::builder("voice_assistant")
+    .model(model)
+    .instruction("You are a helpful voice assistant.")
+    .voice("alloy")
+    .server_vad()  // Voice activity detection
+    .build()?;
+```
+
+Features:
+- OpenAI Realtime API & Gemini Live API
+- Bidirectional audio (PCM16, G711)
+- Server-side VAD
+- Real-time tool calling
+- Multi-agent handoffs
 
 ## Deployment
 

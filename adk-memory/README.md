@@ -1,6 +1,6 @@
 # adk-memory
 
-Semantic memory and search for ADK agents.
+Semantic memory and search for Rust Agent Development Kit (ADK-Rust) agents.
 
 [![Crates.io](https://img.shields.io/crates/v/adk-memory.svg)](https://crates.io/crates/adk-memory)
 [![Documentation](https://docs.rs/adk-memory/badge.svg)](https://docs.rs/adk-memory)

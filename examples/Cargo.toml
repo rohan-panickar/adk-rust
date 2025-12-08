@@ -162,10 +162,32 @@ name = "anthropic_tools"
 path = "anthropic_tools/main.rs"
 required-features = ["anthropic"]
 
+[[example]]
+name = "realtime_basic"
+path = "realtime_basic/main.rs"
+required-features = ["realtime-openai"]
+
+[[example]]
+name = "realtime_vad"
+path = "realtime_vad/main.rs"
+required-features = ["realtime-openai"]
+
+[[example]]
+name = "realtime_tools"
+path = "realtime_tools/main.rs"
+required-features = ["realtime-openai"]
+
+[[example]]
+name = "realtime_handoff"
+path = "realtime_handoff/main.rs"
+required-features = ["realtime-openai"]
+
 [features]
 default = []
 openai = ["adk-model/openai"]
 anthropic = ["adk-model/anthropic"]
+realtime-openai = ["adk-realtime/openai"]
+realtime-gemini = ["adk-realtime/gemini"]
 
 [dependencies]
 adk-core = { path = "../adk-core" }
@@ -178,7 +200,9 @@ adk-runner = { path = "../adk-runner" }
 adk-session = { path = "../adk-session" }
 adk-server = { path = "../adk-server" }
 adk-memory = { path = "../adk-memory" }
+adk-realtime = { path = "../adk-realtime" }
 tokio = { version = "1.40", features = ["full"] }
+base64 = "0.22"
 anyhow = "1.0"
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }

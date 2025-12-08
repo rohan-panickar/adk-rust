@@ -14,9 +14,10 @@ ADK-Rust provides a comprehensive framework for building AI agents in Rust, feat
 
 - **Type-safe agent abstractions** with async execution and event streaming
 - **Multiple agent types**: LLM agents, workflow agents (sequential, parallel, loop), and custom agents
+- **Realtime voice agents**: Bidirectional audio streaming with OpenAI Realtime API and Gemini Live API
 - **Tool ecosystem**: Function tools, Google Search, MCP (Model Context Protocol) integration
 - **Production features**: Session management, artifact storage, memory systems, REST/A2A APIs
-- **Developer experience**: Interactive CLI, 8+ working examples, comprehensive documentation
+- **Developer experience**: Interactive CLI, 15+ working examples, comprehensive documentation
 
 **Status**: Production-ready, actively maintained
 
@@ -154,6 +155,7 @@ ADK-Rust follows a clean layered architecture from application interface down to
 | `adk-runner` | Agent execution runtime | Context management, event streaming, session lifecycle, callbacks |
 | `adk-server` | Production API servers | REST API, A2A protocol, middleware, health checks |
 | `adk-cli` | Command-line interface | Interactive REPL, session management, MCP server integration |
+| `adk-realtime` | Real-time voice agents | OpenAI Realtime API, Gemini Live API, bidirectional audio, VAD |
 
 ## Key Features
 
@@ -167,6 +169,47 @@ ADK-Rust follows a clean layered architecture from application interface down to
 - `LoopAgent`: Iterative execution with exit conditions
 
 **Custom Agents**: Implement the `Agent` trait for specialized behavior.
+
+**Realtime Voice Agents**: Build voice-enabled AI assistants with bidirectional audio streaming.
+
+### Realtime Voice Agents
+
+Build voice-enabled AI assistants using the `adk-realtime` crate:
+
+```rust
+use adk_realtime::{RealtimeAgent, openai::OpenAIRealtimeModel, RealtimeModel};
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let model: Arc<dyn RealtimeModel> = Arc::new(
+        OpenAIRealtimeModel::new(&api_key, "gpt-4o-realtime-preview")
+    );
+
+    let agent = RealtimeAgent::builder("voice_assistant")
+        .model(model)
+        .instruction("You are a helpful voice assistant.")
+        .voice("alloy")
+        .server_vad()  // Enable voice activity detection
+        .build()?;
+
+    Ok(())
+}
+```
+
+**Features**:
+- OpenAI Realtime API and Gemini Live API support
+- Bidirectional audio streaming (PCM16, G711)
+- Server-side Voice Activity Detection (VAD)
+- Real-time tool calling during voice conversations
+- Multi-agent handoffs for complex workflows
+
+**Run realtime examples**:
+```bash
+cargo run --example realtime_basic --features realtime-openai
+cargo run --example realtime_tools --features realtime-openai
+cargo run --example realtime_handoff --features realtime-openai
+```
 
 ### Tool System
 
@@ -306,6 +349,12 @@ See [examples/](examples/) directory for complete, runnable examples:
 - `loop_workflow/` - Iterative refinement patterns
 - `sequential_code/` - Code generation pipeline
 
+**Realtime Voice Agents** (requires `--features realtime-openai`)
+- `realtime_basic/` - Basic text-only realtime session
+- `realtime_vad/` - Voice assistant with VAD
+- `realtime_tools/` - Tool calling in realtime sessions
+- `realtime_handoff/` - Multi-agent handoffs
+
 **Production Features**
 - `load_artifacts/` - Working with images and PDFs
 - `mcp/` - Model Context Protocol integration
@@ -348,6 +397,7 @@ Contributions welcome! Please open an issue or pull request on GitHub.
 - Memory system
 - REST and A2A servers
 - CLI with interactive mode
+- Realtime voice agents (OpenAI Realtime API, Gemini Live API)
 
 **Planned** (see [docs/roadmap/](docs/roadmap/)):
 - [VertexAI Sessions](docs/roadmap/vertex-ai-session.md) - Cloud-based session persistence

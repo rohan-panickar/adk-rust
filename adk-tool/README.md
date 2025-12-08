@@ -1,6 +1,6 @@
 # adk-tool
 
-Tool system for ADK agents (FunctionTool, MCP, Google Search).
+Tool system for Rust Agent Development Kit (ADK-Rust) agents (FunctionTool, MCP, Google Search).
 
 [![Crates.io](https://img.shields.io/crates/v/adk-tool.svg)](https://crates.io/crates/adk-tool)
 [![Documentation](https://docs.rs/adk-tool/badge.svg)](https://docs.rs/adk-tool)

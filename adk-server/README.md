@@ -1,6 +1,6 @@
 # adk-server
 
-HTTP server and A2A protocol for ADK agents.
+HTTP server and A2A protocol for Rust Agent Development Kit (ADK-Rust) agents.
 
 [![Crates.io](https://img.shields.io/crates/v/adk-server.svg)](https://crates.io/crates/adk-server)
 [![Documentation](https://docs.rs/adk-server/badge.svg)](https://docs.rs/adk-server)

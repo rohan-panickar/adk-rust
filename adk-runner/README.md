@@ -1,6 +1,6 @@
 # adk-runner
 
-Agent execution runtime for ADK.
+Agent execution runtime for Rust Agent Development Kit (ADK-Rust) agents.
 
 [![Crates.io](https://img.shields.io/crates/v/adk-runner.svg)](https://crates.io/crates/adk-runner)
 [![Documentation](https://docs.rs/adk-runner/badge.svg)](https://docs.rs/adk-runner)

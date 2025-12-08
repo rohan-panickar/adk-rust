@@ -1,6 +1,6 @@
 # adk-session
 
-Session management and state persistence for ADK agents.
+Session management and state persistence for Rust Agent Development Kit (ADK-Rust) agents.
 
 [![Crates.io](https://img.shields.io/crates/v/adk-session.svg)](https://crates.io/crates/adk-session)
 [![Documentation](https://docs.rs/adk-session/badge.svg)](https://docs.rs/adk-session)

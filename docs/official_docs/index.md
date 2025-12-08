@@ -12,6 +12,7 @@ Welcome to the official documentation for ADK-Rust (Agent Development Kit for Ru
 ### Agents
 
 - [LlmAgent](agents/llm-agent.md) - The core agent type using Large Language Models for reasoning
+- [Realtime Agents](agents/realtime-agents.md) - Voice-enabled agents with OpenAI Realtime API and Gemini Live API
 - [Workflow Agents](agents/workflow-agents.md) - Deterministic agents: Sequential, Parallel, and Loop
 - [Multi-Agent Systems](agents/multi-agent.md) - Building agent hierarchies with sub-agents
 
@@ -60,6 +61,7 @@ Features planned but not yet implemented in ADK-Rust:
 - [Evaluation Framework](../roadmap/evaluation.md) - Testing and evaluating agent performance
 
 Recently implemented:
+- [Realtime Agents](agents/realtime-agents.md) - ✅ Voice agents with OpenAI Realtime API and Gemini Live API
 - [Long Running Tools](../roadmap/long-running-tools.md) - ✅ Async tool execution with progress tracking
 - [MCP Tools](../roadmap/mcp-tools.md) - ✅ Model Context Protocol integration
 

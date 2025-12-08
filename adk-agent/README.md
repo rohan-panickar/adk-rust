@@ -1,6 +1,6 @@
 # adk-agent
 
-Agent implementations for ADK (LLM, Custom, Workflow agents).
+Agent implementations for Rust Agent Development Kit (ADK-Rust, LLM, Custom, Workflow agents).
 
 [![Crates.io](https://img.shields.io/crates/v/adk-agent.svg)](https://crates.io/crates/adk-agent)
 [![Documentation](https://docs.rs/adk-agent/badge.svg)](https://docs.rs/adk-agent)
