@@ -165,9 +165,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("This demo shows how DeepSeek caches the document context.");
     println!("The first request processes all tokens (cache miss).");
     println!("Subsequent requests reuse the cached prefix (cache hit = 10x cheaper!).\n");
-    println!("Document length: ~{} words, ~{} tokens (estimated)\n",
-             DOCUMENT.split_whitespace().count(),
-             DOCUMENT.split_whitespace().count() * 4 / 3);
+    println!(
+        "Document length: ~{} words, ~{} tokens (estimated)\n",
+        DOCUMENT.split_whitespace().count(),
+        DOCUMENT.split_whitespace().count() * 4 / 3
+    );
 
     // Question 1 - First request (cache miss expected)
     println!("=== Question 1 (First request - cache population) ===\n");
@@ -175,9 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("User: {}\n", q1);
 
     let content = Content::new("user").with_text(q1);
-    let mut stream = runner
-        .run("user_1".to_string(), session_id.clone(), content)
-        .await?;
+    let mut stream = runner.run("user_1".to_string(), session_id.clone(), content).await?;
 
     print!("Assistant: ");
     while let Some(event) = stream.next().await {
@@ -199,9 +199,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("User: {}\n", q2);
 
     let content = Content::new("user").with_text(q2);
-    let mut stream = runner
-        .run("user_1".to_string(), session_id.clone(), content)
-        .await?;
+    let mut stream = runner.run("user_1".to_string(), session_id.clone(), content).await?;
 
     print!("Assistant: ");
     while let Some(event) = stream.next().await {
@@ -223,9 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("User: {}\n", q3);
 
     let content = Content::new("user").with_text(q3);
-    let mut stream = runner
-        .run("user_1".to_string(), session_id.clone(), content)
-        .await?;
+    let mut stream = runner.run("user_1".to_string(), session_id.clone(), content).await?;
 
     print!("Assistant: ");
     while let Some(event) = stream.next().await {

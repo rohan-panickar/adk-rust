@@ -146,11 +146,7 @@ async fn financial_calculate(
     let result = match args.operation {
         FinancialOperation::PortfolioValue => {
             // Sum of (price * quantity) for each position
-            args.values
-                .iter()
-                .zip(args.quantities.iter())
-                .map(|(p, q)| p * q)
-                .sum::<f64>()
+            args.values.iter().zip(args.quantities.iter()).map(|(p, q)| p * q).sum::<f64>()
         }
         FinancialOperation::GainLoss => {
             // Percentage change from first to last value

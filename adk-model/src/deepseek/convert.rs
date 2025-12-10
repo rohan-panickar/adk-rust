@@ -268,7 +268,9 @@ pub fn from_response(response: &ChatCompletionResponse) -> LlmResponse {
             // Add reasoning content if present (thinking mode)
             if let Some(reasoning) = &msg.reasoning_content {
                 if !reasoning.is_empty() {
-                    parts.push(Part::Text { text: format!("<thinking>\n{}\n</thinking>\n\n", reasoning) });
+                    parts.push(Part::Text {
+                        text: format!("<thinking>\n{}\n</thinking>\n\n", reasoning),
+                    });
                 }
             }
 
@@ -282,8 +284,8 @@ pub fn from_response(response: &ChatCompletionResponse) -> LlmResponse {
             // Add tool calls
             if let Some(tool_calls) = &msg.tool_calls {
                 for tc in tool_calls {
-                    let args: Value =
-                        serde_json::from_str(&tc.function.arguments).unwrap_or(serde_json::json!({}));
+                    let args: Value = serde_json::from_str(&tc.function.arguments)
+                        .unwrap_or(serde_json::json!({}));
                     parts.push(Part::FunctionCall {
                         name: tc.function.name.clone(),
                         args,

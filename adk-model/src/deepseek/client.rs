@@ -78,11 +78,8 @@ impl DeepSeekClient {
             .or(self.config.max_tokens);
 
         // Enable thinking mode if configured
-        let thinking = if self.config.thinking_enabled {
-            Some(ThinkingConfig::enabled())
-        } else {
-            None
-        };
+        let thinking =
+            if self.config.thinking_enabled { Some(ThinkingConfig::enabled()) } else { None };
 
         ChatCompletionRequest {
             model: self.config.model.clone(),
