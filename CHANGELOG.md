@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2025-12-10
+
+### Added
+- **DeepSeek provider support**: Native integration with DeepSeek's LLM models
+  - `DeepSeekClient` and `DeepSeekConfig` for easy configuration
+  - Support for `deepseek-chat` (standard) and `deepseek-reasoner` (thinking mode)
+  - Thinking mode with chain-of-thought reasoning (`<thinking>` tags in output)
+  - Context caching for 10x cost reduction on repeated prefixes
+  - Full function calling/tool support
+  - Streaming support with proper response accumulation
+  - Feature flag: `adk-model = { features = ["deepseek"] }`
+- 8 new DeepSeek examples:
+  - `deepseek_basic` - Basic chat completion
+  - `deepseek_reasoner` - Thinking mode with chain-of-thought
+  - `deepseek_tools` - Function calling with weather/calculator tools
+  - `deepseek_thinking_tools` - Combined reasoning and tool use
+  - `deepseek_caching` - Context caching demonstration
+  - `deepseek_sequential` - Multi-agent pipeline (Researcher → Analyst → Writer)
+  - `deepseek_supervisor` - Supervisor pattern with specialist agents
+  - `deepseek_structured` - Structured JSON output
+- DeepSeek documentation in official docs and all READMEs
+
+### Fixed
+- CI linker OOM crashes: Now using `mold` linker with reduced debug info
+- Function response role mapping for DeepSeek API (uses "tool" not "function")
+- Placeholder GitHub URLs updated to `zavora-ai/adk-rust`
+
 ## [0.1.4] - 2025-12-09
 
 ### Added
