@@ -26,6 +26,7 @@ Welcome to the official documentation for ADK-Rust (Agent Development Kit for Ru
 - [Function Tools](tools/function-tools.md) - Create custom tools with async Rust functions
 - [Built-in Tools](tools/built-in-tools.md) - Pre-built tools like GoogleSearchTool
 - [Browser Tools](tools/browser-tools.md) - 46 WebDriver tools for web automation
+- [UI Tools](tools/ui-tools.md) - Dynamic UI generation with forms, cards, charts, and more
 - [MCP Tools](tools/mcp-tools.md) - Model Context Protocol integration
 
 ### Sessions & State
@@ -73,6 +74,7 @@ Features planned but not yet implemented in ADK-Rust:
 - [GCS Artifacts](../roadmap/gcs-artifacts.md) - Google Cloud Storage for artifacts
 
 Recently implemented:
+- [UI Tools](tools/ui-tools.md) - ✅ Dynamic UI generation with 8 render tools and React client
 - [Agent Evaluation](evaluation/evaluation.md) - ✅ Testing and validating agent behavior
 - [Graph Agents](agents/graph-agents.md) - ✅ LangGraph-style workflow orchestration
 - [Browser Tools](tools/browser-tools.md) - ✅ 46 WebDriver tools for web automation
