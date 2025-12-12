@@ -1,27 +1,32 @@
 # ADK-UI: Dynamic UI Generation
 
+*Status: ✅ IMPLEMENTED (v0.1.6)*
+
 ## Overview
 
 `adk-ui` enables agents to dynamically generate rich user interfaces via tool calls. Agents can render forms, cards, alerts, tables, charts, and more - all through a type-safe Rust API that serializes to JSON for frontend consumption.
 
-## Current State (v0.1.5)
+## Current State (v0.1.6) ✅
 
-### What Works
+### Core Features
 
-- **28 Component Types**: Full schema with optional IDs for streaming updates
-- **10 Render Tools**: `render_form`, `render_card`, `render_alert`, `render_confirm`, `render_table`, `render_chart`, `render_layout`, `render_progress`, `render_modal`, `render_toast`
-- **Recharts Integration**: Real charts (bar, line, area, pie) via Recharts library
-- **Bidirectional Data Flow**: Forms submit data back to agent via `UiEvent`
-- **Streaming Protocol**: `UiUpdate` type for incremental component updates by ID
-- **TypeScript Client**: React renderer in `examples/ui_react_client`
-- **Unit Tests**: 13 tests covering schema serialization, variants, updates, and toolset
+| Feature | Status | Description |
+|---------|--------|-------------|
+| 28 Component Types | ✅ | Full UI component library |
+| 10 Render Tools | ✅ | `render_form`, `render_card`, `render_table`, etc. |
+| 10 Templates | ✅ | Registration, Login, Dashboard, Settings, etc. |
+| React npm Package | ✅ | `@zavora-ai/adk-ui-react@0.1.6` |
+| System Prompts | ✅ | Tested `UI_AGENT_PROMPT` with few-shot examples |
+| Server Validation | ✅ | `validate_ui_response()` in validation.rs |
+| Streaming Updates | ✅ | `UiUpdate` for real-time progress bars |
+| Theme Support | ✅ | Light, dark, system themes |
 
 ### Architecture
 
 ```
 Agent ──[render_* tool]──> UiResponse ──[SSE]──> React Client
                ↑                                      │
-               └────────── UiEvent ◄──────────────────┘
+               └────────── UiEvent <──────────────────┘
 
 Streaming Updates:
 Agent ──[UiUpdate]──> Client ──[patch by ID]──> DOM
@@ -30,137 +35,119 @@ Agent ──[UiUpdate]──> Client ──[patch by ID]──> DOM
 ### Components
 
 **Atoms**: Text, Button, Icon, Image, Badge
+
 **Inputs**: TextInput, NumberInput, Select, MultiSelect, Switch, DateInput, Slider, Textarea
+
 **Layouts**: Stack, Grid, Card, Container, Divider, Tabs
-**Data**: Table, List, KeyValue, CodeBlock
-**Visualization**: Chart (bar, line, area, pie via Recharts)
+
+**Data**: Table (sortable, paginated), List, KeyValue, CodeBlock
+
+**Visualization**: Chart (bar, line, area, pie with colors, legends, axis labels)
+
 **Feedback**: Alert, Progress, Toast, Modal, Spinner, Skeleton
 
-### Usage
+### New in v0.1.6
+
+| Module | Description |
+|--------|-------------|
+| `prompts.rs` | Tested system prompts with few-shot examples |
+| `templates.rs` | 10 pre-built UI templates |
+| `validation.rs` | Server-side `validate_ui_response()` |
+
+## Usage
 
 ```rust
-use adk_rust::prelude::*;
-use adk_rust::ui::UiToolset;
+use adk_ui::{UiToolset, UI_AGENT_PROMPT};
+use adk_agent::LlmAgentBuilder;
 
 let agent = LlmAgentBuilder::new("ui_agent")
-    .model(model)
-    .tools(UiToolset::all_tools())
+    .instruction(UI_AGENT_PROMPT)  // Tested prompt
+    .tools(UiToolset::all_tools()) // 10 render tools
     .build()?;
 ```
 
-## Known Limitations
+### React Client
 
-1. **React-only client** - No Vue/Svelte/vanilla JS renderers
-2. **Manual integration** - React client must be copied from examples
-3. **No accessibility** - Missing ARIA attributes
-4. **No server-side rendering** - Client-side only
-5. **No component validation** - Schema validation is client-side only
+```bash
+npm install @zavora-ai/adk-ui-react
+```
 
-## Future Work
+```tsx
+import { Renderer } from '@zavora-ai/adk-ui-react';
+import type { UiResponse, UiEvent } from '@zavora-ai/adk-ui-react';
 
-### Phase 2: Enhanced Forms
-- [x] Form validation rules (min/max length) - `TextInput.min_length`, `TextInput.max_length`
+<Renderer 
+  component={component} 
+  onAction={handleUiAction} 
+  theme="dark" 
+/>
+```
+
+## Examples
+
+| Example | Description | Command |
+|---------|-------------|---------|
+| `ui_agent` | Console demo | `cargo run --example ui_agent` |
+| `ui_server` | HTTP server with SSE | `cargo run --example ui_server` |
+| `streaming_demo` | Real-time progress updates | `cargo run --example streaming_demo` |
+| `ui_react_client` | React frontend | `cd examples/ui_react_client && npm run dev` |
+
+## Files
+
+- `adk-ui/src/schema.rs` - 28 component types and UiUpdate
+- `adk-ui/src/toolset.rs` - UiToolset configuration
+- `adk-ui/src/tools/` - 10 render tools
+- `adk-ui/src/prompts.rs` - Tested system prompts
+- `adk-ui/src/templates.rs` - 10 pre-built templates
+- `adk-ui/src/validation.rs` - Server-side validation
+
+## Future Enhancements
+
+### Additional Components (Backlog)
 - [ ] Autocomplete/combobox input
 - [ ] Date range picker
 - [ ] Color picker
 - [ ] File upload with preview
-
-### Phase 3: Data Display
-- [x] Table pagination - `Table.page_size`
-- [x] Sortable table columns - `Table.sortable`, `TableColumn.sortable`
 - [ ] Timeline component
 - [ ] Avatar component
-
-### Phase 4: Navigation & Layout
 - [ ] Accordion (collapsible sections)
 - [ ] Stepper (multi-step wizard)
 - [ ] Carousel (image/content slider)
 - [ ] Tooltip
-
-### Phase 5: Advanced
-- [ ] Rating component (star ratings)
-- [ ] Drag & drop reorderable lists
+- [ ] Rating component
+- [ ] Drag & drop lists
 - [ ] Rich text editor
 
-### Infrastructure
-- [ ] Publish React client as npm package (`@adk/ui-react`)
+### Infrastructure (Backlog)
 - [ ] ARIA accessibility attributes
 - [ ] Server-side rendering support
 - [ ] Multi-framework clients (Vue, Svelte)
-- [ ] Component validation in Rust
-- [ ] Theming API expansion
+- [ ] Additional theming options
 
-## Files
+---
 
-- `adk-ui/src/schema.rs` - Component types and UiUpdate
-- `adk-ui/src/toolset.rs` - UiToolset configuration
-- `adk-ui/src/tools/` - Individual render tools
+## Changelog
 
-## Examples
-
-### `examples/ui_agent/`
-Console-based demo agent with UI tools. Runs in terminal via `adk_cli::console`.
-
-```bash
-GOOGLE_API_KEY=... cargo run --example ui_agent
-```
-
-### `examples/ui_server/`
-HTTP server exposing UI agent via SSE. Uses `adk_cli::serve` for REST API.
-
-```bash
-GOOGLE_API_KEY=... cargo run --example ui_server
-# Server runs on http://localhost:8080
-```
-
-### `examples/ui_react_client/`
-React frontend that connects to ui_server and renders UI components.
-
-```bash
-cd examples/ui_react_client
-npm install && npm run dev
-# Client runs on http://localhost:5173
-```
-
-**Full stack demo**: Run ui_server in one terminal, ui_react_client in another, then interact via browser.
-
-### v0.1.6 (2025-12-12)
+### v0.1.6 (2025-12-12) ✅ CURRENT
+- **New Modules**: `prompts.rs`, `templates.rs`, `validation.rs`
+- **npm Package**: Published `@zavora-ai/adk-ui-react@0.1.6`
+- **Templates**: 10 pre-built UI templates
+- **Prompts**: Tested `UI_AGENT_PROMPT` with few-shot examples
+- **Validation**: Server-side `validate_ui_response()`
+- **Streaming Demo**: New example showing `UiUpdate`
 - **Schema Enhancements**: 
-  - Added `icon` field to `Button` component
-  - Added `id` field to `Divider` component (consistency)
-  - Added `min_length`, `max_length` to `TextInput`
-  - Added `default_value` to `NumberInput`
-  - Added `sortable`, `striped`, `page_size` to `Table`
-  - Added `sortable` to `TableColumn`
-  - Added `x_label`, `y_label`, `show_legend`, `colors` to `Chart`
-- **render_layout enhancements**:
-  - Added `key_value` section type
-  - Added `list` section type
-  - Added `code_block` section type
-- **Error handling**: Replaced `unwrap()` with proper error handling in all 10 tools
-- **Documentation**: Added rustdoc examples to 6 tools with JSON parameter examples
-- TypeScript types updated for all new schema fields
+  - Button: `icon` field
+  - TextInput: `min_length`, `max_length`
+  - Table: `sortable`, `striped`, `page_size`
+  - Chart: `x_label`, `y_label`, `show_legend`, `colors`
+- **Error Handling**: Proper error handling in all 10 tools
 
 ### v0.1.5 (2025-12-12)
-- **Phase 1 Complete**: Critical UX features implemented
 - Added 5 new components: Toast, Modal, Spinner, Skeleton, Textarea
-- Added 3 new enums: ModalSize, SpinnerSize, SkeletonVariant
 - Added 2 new tools: `render_modal`, `render_toast`
-- Integrated Recharts for real charts (bar, line, area, pie)
-- Updated `render_form` to support textarea field type
-- Now 28 component types and 10 render tools
-- Added component IDs (`id: Option<String>`) to all components
-- Added `UiUpdate` type for streaming incremental updates
-- Added `UiOperation` enum: Replace, Patch, Append, Remove
-- Fixed `BadgeVariant` to include: default, info, success, warning, error, secondary, outline
-- Fixed `KeyValue` to use `pairs` field (renamed from `items`)
-- Renamed `KeyValueItem` to `KeyValuePair` for consistency
-- Added 13 unit tests (8 schema, 5 toolset)
-- Integrated into umbrella crate with `ui` feature flag
-- Added to prelude: `UiToolset`
-- TypeScript types updated to match Rust schema
-- React client uses Recharts instead of CSS-only charts
-- Added markdown rendering for text components
+- Integrated Recharts for real charts
+- Added `UiUpdate` for streaming incremental updates
+- 28 component types and 10 render tools
 
 ### v0.1.0 (2025-12-11)
 - Initial implementation with 8 tools and 23 component types
