@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::{Arc, OnceLock};
 
-fn session_service() -> &'static Arc<InMemorySessionService> {
+pub fn session_service() -> &'static Arc<InMemorySessionService> {
     static INSTANCE: OnceLock<Arc<InMemorySessionService>> = OnceLock::new();
     INSTANCE.get_or_init(|| Arc::new(InMemorySessionService::new()))
 }
@@ -120,12 +120,17 @@ pub async fn stream_handler(
             }
         };
 
+        let mut last_text = String::new();
         while let Some(result) = run_stream.next().await {
             if let Ok(event) = result {
                 if let Some(c) = event.content() {
                     for part in &c.parts {
                         if let Some(text) = part.text() {
-                            yield Ok(Event::default().event("chunk").data(text));
+                            // Skip duplicate consecutive text
+                            if text != last_text {
+                                yield Ok(Event::default().event("chunk").data(text));
+                                last_text = text.to_string();
+                            }
                         }
                     }
                 }

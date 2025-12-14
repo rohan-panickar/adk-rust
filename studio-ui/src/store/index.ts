@@ -84,7 +84,7 @@ export const useStore = create<StudioState>((set, get) => ({
       };
     }),
 
-  addAgent: (id, agent) =>
+  addAgent: (id, agent) => {
     set((s) => {
       if (!s.currentProject) return s;
       return {
@@ -93,7 +93,10 @@ export const useStore = create<StudioState>((set, get) => ({
           agents: { ...s.currentProject.agents, [id]: agent },
         },
       };
-    }),
+    });
+    // Auto-save after state update
+    setTimeout(() => get().saveProject(), 0);
+  },
 
   removeAgent: (id) =>
     set((s) => {
@@ -111,7 +114,7 @@ export const useStore = create<StudioState>((set, get) => ({
       };
     }),
 
-  addEdge: (from, to) =>
+  addEdge: (from, to) => {
     set((s) => {
       if (!s.currentProject) return s;
       return {
@@ -123,9 +126,11 @@ export const useStore = create<StudioState>((set, get) => ({
           },
         },
       };
-    }),
+    });
+    setTimeout(() => get().saveProject(), 0);
+  },
 
-  removeEdge: (from, to) =>
+  removeEdge: (from, to) => {
     set((s) => {
       if (!s.currentProject) return s;
       return {
@@ -137,5 +142,7 @@ export const useStore = create<StudioState>((set, get) => ({
           },
         },
       };
-    }),
+    });
+    setTimeout(() => get().saveProject(), 0);
+  },
 }));

@@ -7,7 +7,6 @@ import {
   Edge,
   useNodesState,
   useEdgesState,
-  addEdge,
   Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -20,9 +19,12 @@ const AGENT_TYPES = [
   { type: 'condition', label: 'Condition', enabled: false },
 ];
 
+type FlowPhase = 'idle' | 'input' | 'output';
+
 export function Canvas() {
-  const { currentProject, closeProject, saveProject, selectNode, selectedNodeId, updateAgent, addAgent, addEdge: addProjectEdge } = useStore();
+  const { currentProject, closeProject, saveProject, selectNode, selectedNodeId, updateAgent, addAgent, addEdge: addProjectEdge, removeEdge: removeProjectEdge } = useStore();
   const [showConsole, setShowConsole] = useState(true);
+  const [flowPhase, setFlowPhase] = useState<FlowPhase>('idle');
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -39,21 +41,34 @@ export function Canvas() {
       newNodes.push({
         id,
         position: { x: 200, y: 150 + i * 120 },
-        data: { label: `🤖 ${id}` },
+        data: { label: <div className="text-center"><div>🤖 {id}</div><div className="text-xs text-gray-400">LLM Agent</div></div> },
         style: { background: '#16213e', border: '2px solid #e94560', borderRadius: 8, padding: 12, color: '#fff', minWidth: 120 },
       });
     });
     setNodes(newNodes);
+  }, [currentProject, setNodes]);
 
-    const newEdges: Edge[] = currentProject.workflow.edges.map((e, i) => ({
-      id: `e${i}`,
-      source: e.from,
-      target: e.to,
-      type: 'smoothstep',
-      style: { stroke: '#e94560', strokeWidth: 2 },
-    }));
+  // Update edges based on flow phase
+  useEffect(() => {
+    if (!currentProject) return;
+    
+    const newEdges: Edge[] = currentProject.workflow.edges.map((e, i) => {
+      const isStartEdge = e.from === 'START';
+      const isEndEdge = e.to === 'END';
+      const animated = (flowPhase === 'input' && isStartEdge) || (flowPhase === 'output' && isEndEdge);
+      
+      return {
+        id: `e${i}`,
+        source: e.from,
+        target: e.to,
+        type: 'smoothstep',
+        animated,
+        style: { stroke: animated ? '#4ade80' : '#e94560', strokeWidth: 2 },
+        interactionWidth: 20,
+      };
+    });
     setEdges(newEdges);
-  }, [currentProject, setNodes, setEdges]);
+  }, [currentProject, flowPhase, setEdges]);
 
   const createAgent = useCallback(() => {
     if (!currentProject) return;
@@ -89,7 +104,21 @@ export function Canvas() {
     createAgent();
   }, [createAgent]);
 
-  const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+  const onConnect = useCallback((params: Connection) => {
+    if (params.source && params.target) {
+      addProjectEdge(params.source, params.target);
+    }
+  }, [addProjectEdge]);
+
+  const onEdgesDelete = useCallback((edgesToDelete: Edge[]) => {
+    edgesToDelete.forEach((edge) => {
+      removeProjectEdge(edge.source, edge.target);
+    });
+  }, [removeProjectEdge]);
+
+  const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    removeProjectEdge(edge.source, edge.target);
+  }, [removeProjectEdge]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     if (node.id !== 'START' && node.id !== 'END') {
@@ -142,11 +171,14 @@ export function Canvas() {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onEdgesDelete={onEdgesDelete}
+            onEdgeDoubleClick={onEdgeDoubleClick}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
             onDrop={onDrop}
             onDragOver={onDragOver}
+            deleteKeyCode={['Backspace', 'Delete']}
             fitView
             fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
             minZoom={0.1}
@@ -186,7 +218,7 @@ export function Canvas() {
       {/* Test Console */}
       {showConsole && hasAgents && (
         <div className="h-64">
-          <TestConsole />
+          <TestConsole onFlowPhase={setFlowPhase} />
         </div>
       )}
       {showConsole && !hasAgents && (

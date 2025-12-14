@@ -5,37 +5,12 @@ export function useSSE(projectId: string | null) {
   const [streamingText, setStreamingText] = useState('');
   const esRef = useRef<EventSource | null>(null);
   const textRef = useRef('');
-  const queueRef = useRef<string[]>([]);
-  const typingRef = useRef(false);
-
-  const processQueue = (setFn: (t: string) => void) => {
-    if (typingRef.current || queueRef.current.length === 0) return;
-    
-    typingRef.current = true;
-    const chunk = queueRef.current.shift()!;
-    let i = 0;
-    
-    const typeChar = () => {
-      if (i < chunk.length) {
-        textRef.current += chunk[i];
-        setFn(textRef.current);
-        i++;
-        setTimeout(typeChar, 10);
-      } else {
-        typingRef.current = false;
-        processQueue(setFn); // Process next chunk
-      }
-    };
-    typeChar();
-  };
 
   const send = useCallback(
     (input: string, onComplete: (text: string) => void, onError?: (msg: string) => void) => {
       if (!projectId) return;
 
       textRef.current = '';
-      queueRef.current = [];
-      typingRef.current = false;
       setStreamingText('');
       setIsStreaming(true);
 
@@ -45,25 +20,17 @@ export function useSSE(projectId: string | null) {
       let ended = false;
 
       es.addEventListener('chunk', (e) => {
-        queueRef.current.push(e.data);
-        processQueue(setStreamingText);
+        textRef.current += e.data;
+        setStreamingText(textRef.current);
       });
 
       es.addEventListener('end', () => {
         ended = true;
-        // Wait for typing queue to finish
-        const waitForQueue = () => {
-          if (queueRef.current.length > 0 || typingRef.current) {
-            setTimeout(waitForQueue, 50);
-          } else {
-            const finalText = textRef.current;
-            setStreamingText('');
-            setIsStreaming(false);
-            es.close();
-            onComplete(finalText);
-          }
-        };
-        waitForQueue();
+        const finalText = textRef.current;
+        setStreamingText('');
+        setIsStreaming(false);
+        es.close();
+        onComplete(finalText);
       });
 
       es.addEventListener('error', (e) => {
@@ -81,8 +48,6 @@ export function useSSE(projectId: string | null) {
 
   const cancel = useCallback(() => {
     esRef.current?.close();
-    queueRef.current = [];
-    typingRef.current = false;
     setStreamingText('');
     setIsStreaming(false);
   }, []);

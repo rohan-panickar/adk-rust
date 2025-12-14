@@ -33,6 +33,16 @@ body {
   fill: #e94560;
 }
 
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #fbbf24 !important;
+  stroke-width: 3px;
+}
+
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #fbbf24;
+}
+
+
 .react-flow__controls-button:hover {
   background: #1f2937;
 }
