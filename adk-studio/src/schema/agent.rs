@@ -15,6 +15,8 @@ pub struct AgentSchema {
     pub sub_agents: Vec<String>,
     #[serde(default)]
     pub position: Position,
+    #[serde(default)]
+    pub max_iterations: Option<u32>,
 }
 
 impl AgentSchema {
@@ -26,6 +28,7 @@ impl AgentSchema {
             tools: Vec::new(),
             sub_agents: Vec::new(),
             position: Position::default(),
+            max_iterations: None,
         }
     }
 

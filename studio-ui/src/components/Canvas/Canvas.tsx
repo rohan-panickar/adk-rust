@@ -16,6 +16,8 @@ import { TestConsole } from '../Console/TestConsole';
 const AGENT_TYPES = [
   { type: 'llm', label: 'LLM Agent', enabled: true },
   { type: 'sequential', label: 'Sequential Agent', enabled: true },
+  { type: 'loop', label: 'Loop Agent', enabled: true },
+  { type: 'parallel', label: 'Parallel Agent', enabled: true },
   { type: 'tool', label: 'Tool Agent', enabled: false },
 ];
 
@@ -46,28 +48,40 @@ export function Canvas() {
     
     topLevelAgents.forEach((id, i) => {
       const agent = currentProject.agents[id];
-      if (agent.type === 'sequential') {
-        // Render sequential as container with sub-agents listed
+      if (agent.type === 'sequential' || agent.type === 'loop' || agent.type === 'parallel') {
+        const isParallel = agent.type === 'parallel';
+        const isLoop = agent.type === 'loop';
         const subAgentLabels = (agent.sub_agents || []).map((subId, idx) => (
-          <div key={subId} className="text-xs bg-gray-700 rounded px-2 py-1 mt-1">
-            {idx + 1}. {subId}
+          <div key={subId} className={`text-xs bg-gray-700 rounded px-2 py-1 ${isParallel ? '' : 'mt-1'}`}>
+            {isParallel ? '' : `${idx + 1}. `}{subId}
           </div>
         ));
+        const config = {
+          sequential: { icon: '⛓', label: 'Sequential Agent', bg: '#1e3a5f', border: '#60a5fa' },
+          loop: { icon: '🔄', label: `Loop Agent (${agent.max_iterations || 3}x)`, bg: '#3d1e5f', border: '#a855f7' },
+          parallel: { icon: '⚡', label: 'Parallel Agent', bg: '#1e5f3d', border: '#34d399' },
+        }[agent.type]!;
         newNodes.push({
           id,
           position: { x: 200, y: 150 + i * 150 },
           data: { 
             label: (
               <div className="text-center">
-                <div className="font-semibold">⛓ {id}</div>
-                <div className="text-xs text-gray-400 mb-1">Sequential Agent</div>
-                <div className="border-t border-gray-600 pt-1 mt-1">
-                  {subAgentLabels}
+                <div className="font-semibold">{config.icon} {id}</div>
+                <div className="text-xs text-gray-400 mb-1">{config.label}</div>
+                <div className={`border-t border-gray-600 pt-1 mt-1 ${isParallel ? 'flex gap-1 justify-center' : ''} ${isLoop ? 'relative' : ''}`}>
+                  {isLoop && (
+                    <div className="absolute -left-2 top-0 bottom-0 w-1 border-l-2 border-t-2 border-b-2 border-purple-400 rounded-l" />
+                  )}
+                  <div className={isLoop ? 'ml-1' : ''}>{subAgentLabels}</div>
+                  {isLoop && (
+                    <div className="absolute -right-2 top-1/2 text-purple-400 text-xs">↩</div>
+                  )}
                 </div>
               </div>
             )
           },
-          style: { background: '#1e3a5f', border: '2px solid #60a5fa', borderRadius: 8, padding: 12, color: '#fff', minWidth: 150 },
+          style: { background: config.bg, border: `2px solid ${config.border}`, borderRadius: 8, padding: 12, color: '#fff', minWidth: isParallel ? 200 : 150 },
         });
       } else {
         newNodes.push({
@@ -106,10 +120,11 @@ export function Canvas() {
   const createAgent = useCallback((agentType: string = 'llm') => {
     if (!currentProject) return;
     const agentCount = Object.keys(currentProject.agents).length;
-    const id = agentType === 'sequential' ? `seq_${agentCount + 1}` : `agent_${agentCount + 1}`;
+    const prefix = { sequential: 'seq', loop: 'loop', parallel: 'par' }[agentType] || 'agent';
+    const id = `${prefix}_${agentCount + 1}`;
     
-    if (agentType === 'sequential') {
-      // Create sequential container with 2 default sub-agents
+    if (agentType === 'sequential' || agentType === 'loop' || agentType === 'parallel') {
+      // Create container with 2 default sub-agents
       const sub1 = `${id}_agent_1`;
       const sub2 = `${id}_agent_2`;
       addAgent(sub1, {
@@ -129,11 +144,12 @@ export function Canvas() {
         position: { x: 0, y: 0 },
       });
       addAgent(id, {
-        type: 'sequential',
+        type: agentType as 'sequential' | 'loop' | 'parallel',
         instruction: '',
         tools: [],
         sub_agents: [sub1, sub2],
         position: { x: 200, y: 150 + agentCount * 180 },
+        max_iterations: agentType === 'loop' ? 3 : undefined,
       });
     } else {
       addAgent(id, {
@@ -263,16 +279,30 @@ export function Canvas() {
               </div>
             </div>
             
-            {selectedAgent.type === 'sequential' ? (
-              /* Sequential Agent Properties */
+            {(selectedAgent.type === 'sequential' || selectedAgent.type === 'loop' || selectedAgent.type === 'parallel') ? (
+              /* Container Agent Properties */
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Sub-Agents (in order)</label>
+                {selectedAgent.type === 'loop' && (
+                  <div className="mb-4">
+                    <label className="block text-sm text-gray-400 mb-1">Max Iterations</label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="w-full px-2 py-1 bg-studio-bg border border-gray-600 rounded text-sm"
+                      value={selectedAgent.max_iterations || 3}
+                      onChange={(e) => updateAgent(selectedNodeId!, { max_iterations: parseInt(e.target.value) || 3 })}
+                    />
+                  </div>
+                )}
+                <label className="block text-sm text-gray-400 mb-2">
+                  Sub-Agents {selectedAgent.type === 'parallel' ? '(run concurrently)' : '(in order)'}
+                </label>
                 {(selectedAgent.sub_agents || []).map((subId, idx) => {
                   const subAgent = currentProject.agents[subId];
                   if (!subAgent) return null;
                   return (
                     <div key={subId} className="mb-4 p-2 bg-gray-800 rounded">
-                      <div className="text-sm font-medium mb-2">{idx + 1}. {subId}</div>
+                      <div className="text-sm font-medium mb-2">{selectedAgent.type === 'parallel' ? '∥' : `${idx + 1}.`} {subId}</div>
                       <label className="block text-xs text-gray-400 mb-1">Model</label>
                       <input
                         className="w-full px-2 py-1 bg-studio-bg border border-gray-600 rounded text-xs mb-2"

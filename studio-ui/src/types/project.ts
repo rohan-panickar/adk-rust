@@ -23,6 +23,7 @@ export interface AgentSchema {
   tools: string[];
   sub_agents: string[];
   position: Position;
+  max_iterations?: number;
 }
 
 export interface ToolSchema {
