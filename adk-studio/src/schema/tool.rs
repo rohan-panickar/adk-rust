@@ -57,6 +57,8 @@ pub struct FunctionToolConfig {
     pub description: String,
     #[serde(default)]
     pub parameters: Vec<FunctionParameter>,
+    #[serde(default)]
+    pub code: String,
 }
 
 /// Function parameter definition

@@ -15,6 +15,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface GeneratedFile {
+  path: string;
+  content: string;
+}
+
+export interface GeneratedProject {
+  files: GeneratedFile[];
+}
+
 export const api = {
   projects: {
     list: () => request<ProjectMeta[]>('/projects'),
@@ -31,5 +40,7 @@ export const api = {
       }),
     delete: (id: string) =>
       request<void>(`/projects/${id}`, { method: 'DELETE' }),
+    compile: (id: string) =>
+      request<GeneratedProject>(`/projects/${id}/compile`),
   },
 };

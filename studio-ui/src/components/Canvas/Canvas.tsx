@@ -12,6 +12,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useStore } from '../../store';
 import { TestConsole } from '../Console/TestConsole';
+import { api, GeneratedProject } from '../../api/client';
 import type { McpToolConfig, FunctionToolConfig, BrowserToolConfig, FunctionParameter } from '../../types/project';
 
 const AGENT_TYPES = [
@@ -37,9 +38,20 @@ export function Canvas() {
   const [showConsole, setShowConsole] = useState(true);
   const [flowPhase, setFlowPhase] = useState<FlowPhase>('idle');
   const [selectedSubAgent, setSelectedSubAgent] = useState<{parent: string, sub: string} | null>(null);
+  const [compiledCode, setCompiledCode] = useState<GeneratedProject | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  const handleCompile = useCallback(async () => {
+    if (!currentProject) return;
+    try {
+      const result = await api.projects.compile(currentProject.id);
+      setCompiledCode(result);
+    } catch (e) {
+      alert('Compile failed: ' + (e as Error).message);
+    }
+  }, [currentProject]);
 
   const removeSubAgent = useCallback((parentId: string, subId: string) => {
     if (!currentProject) return;
@@ -312,6 +324,9 @@ export function Canvas() {
             })}
           </div>
           <div className="space-y-2">
+            <button onClick={handleCompile} className="w-full px-3 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm">
+              ⚙ Compile
+            </button>
             <button onClick={() => setShowConsole(!showConsole)} className="w-full px-3 py-2 bg-gray-700 rounded text-sm">
               {showConsole ? 'Hide Console' : 'Show Console'}
             </button>
@@ -627,6 +642,32 @@ export function Canvas() {
       {showConsole && !hasAgents && (
         <div className="h-32 bg-studio-panel border-t border-gray-700 flex items-center justify-center text-gray-500">
           Drag "LLM Agent" onto the canvas to get started
+        </div>
+      )}
+
+      {/* Compiled Code Modal */}
+      {compiledCode && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setCompiledCode(null)}>
+          <div className="bg-studio-panel rounded-lg w-4/5 h-4/5 flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-gray-700">
+              <h2 className="text-lg font-semibold">Generated Rust Code</h2>
+              <button onClick={() => setCompiledCode(null)} className="text-gray-400 hover:text-white text-xl">×</button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {compiledCode.files.map(file => (
+                <div key={file.path} className="mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-mono text-blue-400">{file.path}</h3>
+                    <button 
+                      onClick={() => navigator.clipboard.writeText(file.content)}
+                      className="text-xs bg-gray-700 px-2 py-1 rounded hover:bg-gray-600"
+                    >Copy</button>
+                  </div>
+                  <pre className="bg-gray-900 p-4 rounded text-xs overflow-x-auto whitespace-pre">{file.content}</pre>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

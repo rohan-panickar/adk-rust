@@ -1,5 +1,6 @@
 //! ADK Studio - Visual development environment for ADK-Rust agents
 
+pub mod codegen;
 pub mod compiler;
 pub mod runtime;
 pub mod schema;

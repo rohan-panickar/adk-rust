@@ -145,3 +145,17 @@ pub async fn clear_session(Path(id): Path<Uuid>) -> Result<StatusCode, (StatusCo
     
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// Compile project to Rust code
+pub async fn compile_project(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<crate::codegen::GeneratedProject> {
+    let storage = state.storage.read().await;
+    let project = storage.get(id).await.map_err(|e| err(StatusCode::NOT_FOUND, e.to_string()))?;
+    
+    let generated = crate::codegen::generate_rust_project(&project)
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    Ok(Json(generated))
+}
