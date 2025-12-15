@@ -58,6 +58,7 @@ pub async fn stream_handler(
             
             let mut stdin = child.stdin.take().unwrap();
             let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
             
             if let Err(e) = stdin.write_all(format!("{}\nquit\n", input).as_bytes()).await {
                 yield Ok(Event::default().event("error").data(e.to_string()));
@@ -65,16 +66,48 @@ pub async fn stream_handler(
             }
             drop(stdin);
             
-            let mut reader = BufReader::new(stdout).lines();
+            // Read stdout and stderr concurrently
+            let mut stdout_reader = BufReader::new(stdout).lines();
+            let mut stderr_reader = BufReader::new(stderr).lines();
             
-            while let Ok(Some(line)) = reader.next_line().await {
-                // Parse trace events
-                if let Some(trace_json) = line.strip_prefix("TRACE:") {
-                    yield Ok(Event::default().event("trace").data(trace_json));
-                } else if let Some(response) = line.strip_prefix("RESPONSE:") {
-                    yield Ok(Event::default().event("chunk").data(response));
+            loop {
+                tokio::select! {
+                    line = stdout_reader.next_line() => {
+                        match line {
+                            Ok(Some(line)) => {
+                                let line = line.trim_start_matches("> ");
+                                if let Some(trace_json) = line.strip_prefix("TRACE:") {
+                                    yield Ok(Event::default().event("trace").data(trace_json));
+                                } else if let Some(response) = line.strip_prefix("RESPONSE:") {
+                                    yield Ok(Event::default().event("chunk").data(response));
+                                }
+                            }
+                            Ok(None) => break,
+                            Err(_) => break,
+                        }
+                    }
+                    line = stderr_reader.next_line() => {
+                        match line {
+                            Ok(Some(line)) => {
+                                // Parse JSON tracing output from stderr
+                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                                    // Extract agent name and message from tracing JSON
+                                    if let Some(target) = json.get("target").and_then(|v| v.as_str()) {
+                                        if target.starts_with("adk") {
+                                            let msg = json.get("fields").and_then(|f| f.get("message")).and_then(|m| m.as_str()).unwrap_or("");
+                                            let span = json.get("span").and_then(|s| s.get("agent.name")).and_then(|n| n.as_str());
+                                            if let Some(agent) = span {
+                                                yield Ok(Event::default().event("log").data(format!("{{\"agent\":\"{}\",\"message\":\"{}\"}}", agent, msg)));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Ok(None) => {}
+                            Err(_) => {}
+                        }
+                    }
                 }
-                // Skip other lines (prompts, etc)
             }
             
             let _ = child.wait().await;

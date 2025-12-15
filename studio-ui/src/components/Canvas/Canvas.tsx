@@ -38,6 +38,7 @@ export function Canvas() {
   const { currentProject, closeProject, saveProject, selectNode, selectedNodeId, updateAgent, addAgent, removeAgent, addEdge: addProjectEdge, removeEdge: removeProjectEdge, addToolToAgent, removeToolFromAgent, addSubAgentToContainer, selectedToolId, selectTool, updateToolConfig } = useStore();
   const [showConsole, setShowConsole] = useState(true);
   const [flowPhase, setFlowPhase] = useState<FlowPhase>('idle');
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [selectedSubAgent, setSelectedSubAgent] = useState<{parent: string, sub: string} | null>(null);
   const [compiledCode, setCompiledCode] = useState<GeneratedProject | null>(null);
   const [buildOutput, setBuildOutput] = useState<{success: boolean, output: string, path: string | null} | null>(null);
@@ -194,16 +195,17 @@ export function Canvas() {
               )}
             </div>
           )},
-          style: { background: '#5f4b1e', border: '2px solid #fbbf24', borderRadius: 8, padding: 12, color: '#fff', minWidth: 140 },
+          style: { background: '#5f4b1e', border: `2px solid ${activeAgent === id ? '#4ade80' : '#fbbf24'}`, borderRadius: 8, padding: 12, color: '#fff', minWidth: 140, boxShadow: activeAgent === id ? '0 0 20px #4ade80' : 'none' },
         });
       } else {
         const tools = agent.tools || [];
+        const isActive = activeAgent === id;
         newNodes.push({
           id,
           position: { x: 200, y: 150 + i * 150 },
           data: { label: (
             <div className="text-center">
-              <div>🤖 {id}</div>
+              <div>{isActive ? '⚡' : '🤖'} {id}</div>
               <div className="text-xs text-gray-400">LLM Agent</div>
               {tools.length > 0 && (
                 <div className="border-t border-gray-600 pt-1 mt-1">
@@ -215,21 +217,22 @@ export function Canvas() {
               )}
             </div>
           )},
-          style: { background: '#16213e', border: '2px solid #e94560', borderRadius: 8, padding: 12, color: '#fff', minWidth: 120 },
+          style: { background: isActive ? '#1a472a' : '#16213e', border: `2px solid ${isActive ? '#4ade80' : '#e94560'}`, borderRadius: 8, padding: 12, color: '#fff', minWidth: 120, boxShadow: isActive ? '0 0 20px #4ade80' : 'none', transition: 'all 0.3s ease' },
         });
       }
     });
     setNodes(newNodes);
-  }, [currentProject, setNodes, selectedSubAgent, removeSubAgent]);
+  }, [currentProject, setNodes, selectedSubAgent, removeSubAgent, activeAgent]);
 
-  // Update edges based on flow phase
+  // Update edges based on flow phase and active agent
   useEffect(() => {
     if (!currentProject) return;
     
     const newEdges: Edge[] = currentProject.workflow.edges.map((e, i) => {
       const isStartEdge = e.from === 'START';
       const isEndEdge = e.to === 'END';
-      const animated = (flowPhase === 'input' && isStartEdge) || (flowPhase === 'output' && isEndEdge);
+      const isActiveEdge = activeAgent && (e.from === activeAgent || e.to === activeAgent);
+      const animated = isActiveEdge || (flowPhase === 'input' && isStartEdge) || (flowPhase === 'output' && isEndEdge);
       
       return {
         id: `e${i}`,
@@ -237,12 +240,12 @@ export function Canvas() {
         target: e.to,
         type: 'smoothstep',
         animated,
-        style: { stroke: animated ? '#4ade80' : '#e94560', strokeWidth: 2 },
+        style: { stroke: animated ? '#4ade80' : '#e94560', strokeWidth: animated ? 3 : 2 },
         interactionWidth: 20,
       };
     });
     setEdges(newEdges);
-  }, [currentProject, flowPhase, setEdges]);
+  }, [currentProject, flowPhase, activeAgent, setEdges]);
 
   const createAgent = useCallback((agentType: string = 'llm') => {
     if (!currentProject) return;
@@ -787,7 +790,7 @@ export function Canvas() {
       {/* Test Console */}
       {showConsole && hasAgents && builtBinaryPath && (
         <div className="h-64">
-          <TestConsole onFlowPhase={setFlowPhase} binaryPath={builtBinaryPath} />
+          <TestConsole onFlowPhase={setFlowPhase} onActiveAgent={setActiveAgent} binaryPath={builtBinaryPath} />
         </div>
       )}
       {showConsole && hasAgents && !builtBinaryPath && (

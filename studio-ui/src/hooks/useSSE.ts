@@ -35,7 +35,8 @@ export function useSSE(projectId: string | null, binaryPath?: string | null) {
       setStreamingText('');
       setCurrentAgent('');
       setToolCalls([]);
-      setEvents([{ type: 'user', timestamp: Date.now(), data: input }]);
+      // Append new user event, don't clear history
+      setEvents(prev => [...prev, { type: 'user', timestamp: Date.now(), data: input }]);
       setIsStreaming(true);
 
       const params = new URLSearchParams({ input });
@@ -71,13 +72,29 @@ export function useSSE(projectId: string | null, binaryPath?: string | null) {
           } else if (trace.type === 'node_end') {
             addEvent('agent_end', `${trace.duration_ms}ms`, trace.node);
           } else if (trace.type === 'state') {
-            // State update - show what changed
             const state = trace.state || {};
             if (state.response) {
               addEvent('model', state.response.slice(0, 100) + (state.response.length > 100 ? '...' : ''), agentRef.current);
             }
           } else if (trace.type === 'done') {
+            const state = trace.state || {};
+            if (state.response) {
+              addEvent('model', state.response.slice(0, 150) + (state.response.length > 150 ? '...' : ''));
+            }
             addEvent('done', `${trace.total_steps} steps`);
+          }
+        } catch {}
+      });
+
+      es.addEventListener('log', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.agent) {
+            agentRef.current = data.agent;
+            setCurrentAgent(data.agent);
+          }
+          if (data.message) {
+            addEvent('model', data.message, data.agent);
           }
         } catch {}
       });

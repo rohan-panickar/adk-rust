@@ -14,10 +14,11 @@ type Tab = 'chat' | 'events';
 
 interface Props {
   onFlowPhase?: (phase: FlowPhase) => void;
+  onActiveAgent?: (agent: string | null) => void;
   binaryPath?: string | null;
 }
 
-export function TestConsole({ onFlowPhase, binaryPath }: Props) {
+export function TestConsole({ onFlowPhase, onActiveAgent, binaryPath }: Props) {
   const { currentProject } = useStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -29,8 +30,11 @@ export function TestConsole({ onFlowPhase, binaryPath }: Props) {
   const lastAgentRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (currentAgent) lastAgentRef.current = currentAgent;
-  }, [currentAgent]);
+    if (currentAgent) {
+      lastAgentRef.current = currentAgent;
+      onActiveAgent?.(currentAgent);
+    }
+  }, [currentAgent, onActiveAgent]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -45,8 +49,9 @@ export function TestConsole({ onFlowPhase, binaryPath }: Props) {
       onFlowPhase?.('output');
     } else if (!isStreaming) {
       onFlowPhase?.('idle');
+      onActiveAgent?.(null);
     }
-  }, [streamingText, isStreaming, onFlowPhase]);
+  }, [streamingText, isStreaming, onFlowPhase, onActiveAgent]);
 
   const sendMessage = () => {
     if (!input.trim() || !currentProject || isStreaming || sendingRef.current) return;
