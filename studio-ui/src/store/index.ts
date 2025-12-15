@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Project, ProjectMeta, AgentSchema } from '../types/project';
+import type { Project, ProjectMeta, AgentSchema, ToolConfig } from '../types/project';
 import { api } from '../api/client';
 
 interface StudioState {
@@ -10,6 +10,7 @@ interface StudioState {
   // Current project
   currentProject: Project | null;
   selectedNodeId: string | null;
+  selectedToolId: string | null;
   
   // Actions
   fetchProjects: () => Promise<void>;
@@ -29,6 +30,10 @@ interface StudioState {
   addToolToAgent: (agentId: string, toolType: string) => void;
   removeToolFromAgent: (agentId: string, toolType: string) => void;
   addSubAgentToContainer: (containerId: string) => void;
+  
+  // Tool config actions
+  selectTool: (toolId: string | null) => void;
+  updateToolConfig: (toolId: string, config: ToolConfig) => void;
 }
 
 export const useStore = create<StudioState>((set, get) => ({
@@ -36,6 +41,7 @@ export const useStore = create<StudioState>((set, get) => ({
   loadingProjects: false,
   currentProject: null,
   selectedNodeId: null,
+  selectedToolId: null,
 
   fetchProjects: async () => {
     set({ loadingProjects: true });
@@ -202,5 +208,20 @@ export const useStore = create<StudioState>((set, get) => ({
     });
     updateAgent(containerId, { sub_agents: [...container.sub_agents, newId] });
     saveProject();
+  },
+
+  selectTool: (toolId) => set({ selectedToolId: toolId }),
+
+  updateToolConfig: (toolId, config) => {
+    set((s) => {
+      if (!s.currentProject) return s;
+      return {
+        currentProject: {
+          ...s.currentProject,
+          tool_configs: { ...s.currentProject.tool_configs, [toolId]: config },
+        },
+      };
+    });
+    setTimeout(() => get().saveProject(), 0);
   },
 }));

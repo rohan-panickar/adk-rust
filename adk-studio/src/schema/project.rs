@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::{AgentSchema, ToolSchema, WorkflowSchema};
+use super::{AgentSchema, ToolSchema, WorkflowSchema, ToolConfig};
 
 /// Complete project schema
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,6 +18,8 @@ pub struct ProjectSchema {
     pub agents: HashMap<String, AgentSchema>,
     #[serde(default)]
     pub tools: HashMap<String, ToolSchema>,
+    #[serde(default)]
+    pub tool_configs: HashMap<String, ToolConfig>,
     #[serde(default)]
     pub workflow: WorkflowSchema,
     #[serde(default)]
@@ -37,6 +39,7 @@ impl ProjectSchema {
             settings: ProjectSettings::default(),
             agents: HashMap::new(),
             tools: HashMap::new(),
+            tool_configs: HashMap::new(),
             workflow: WorkflowSchema::default(),
             created_at: now,
             updated_at: now,

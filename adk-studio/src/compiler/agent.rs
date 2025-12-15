@@ -1,15 +1,16 @@
-use crate::schema::{AgentSchema, AgentType, ProjectSchema};
+use crate::schema::{AgentSchema, AgentType, ProjectSchema, ToolConfig, BrowserToolConfig, ParamType};
 use adk_agent::{Agent, LlmAgentBuilder, LoopAgent, ParallelAgent, SequentialAgent};
-use adk_core::Tool;
+use adk_core::{Tool, ToolContext};
 use adk_model::gemini::GeminiModel;
-use adk_tool::{ExitLoopTool, GoogleSearchTool, LoadArtifactsTool};
+use adk_tool::{ExitLoopTool, GoogleSearchTool, LoadArtifactsTool, FunctionTool};
 use anyhow::{anyhow, Result};
+use serde_json::{json, Value};
 use std::sync::Arc;
 
 /// Compile an AgentSchema into a runnable Agent
 pub fn compile_agent(name: &str, schema: &AgentSchema, api_key: &str, project: &ProjectSchema) -> Result<Arc<dyn Agent>> {
     match schema.agent_type {
-        AgentType::Llm => compile_llm_agent(name, schema, api_key),
+        AgentType::Llm => compile_llm_agent(name, schema, api_key, project),
         AgentType::Sequential => compile_sequential_agent(name, schema, api_key, project),
         AgentType::Loop => compile_loop_agent(name, schema, api_key, project),
         AgentType::Parallel => compile_parallel_agent(name, schema, api_key, project),
@@ -17,7 +18,7 @@ pub fn compile_agent(name: &str, schema: &AgentSchema, api_key: &str, project: &
     }
 }
 
-fn compile_llm_agent(name: &str, schema: &AgentSchema, api_key: &str) -> Result<Arc<dyn Agent>> {
+fn compile_llm_agent(name: &str, schema: &AgentSchema, api_key: &str, project: &ProjectSchema) -> Result<Arc<dyn Agent>> {
     let model_name = schema.model.as_deref().unwrap_or("gemini-2.0-flash");
     let model = Arc::new(GeminiModel::new(api_key, model_name)?);
     let mut builder = LlmAgentBuilder::new(name).model(model);
@@ -28,7 +29,9 @@ fn compile_llm_agent(name: &str, schema: &AgentSchema, api_key: &str) -> Result<
     
     // Add tools
     for tool_type in &schema.tools {
-        if let Some(tool) = compile_tool(tool_type) {
+        let tool_id = format!("{}_{}", name, tool_type);
+        let config = project.tool_configs.get(&tool_id);
+        if let Some(tool) = compile_tool(tool_type, config) {
             builder = builder.tool(tool);
         }
     }
@@ -36,15 +39,109 @@ fn compile_llm_agent(name: &str, schema: &AgentSchema, api_key: &str) -> Result<
     Ok(Arc::new(builder.build()?))
 }
 
-fn compile_tool(tool_type: &str) -> Option<Arc<dyn Tool>> {
+fn compile_tool(tool_type: &str, config: Option<&ToolConfig>) -> Option<Arc<dyn Tool>> {
     match tool_type {
         "google_search" => Some(Arc::new(GoogleSearchTool::new())),
         "exit_loop" => Some(Arc::new(ExitLoopTool::new())),
         "load_artifact" => Some(Arc::new(LoadArtifactsTool::new())),
-        // These require more setup, skip for now
-        "function" | "mcp" | "browser" => None,
+        "function" => compile_function_tool(config),
+        "browser" => compile_browser_tool(config),
+        // MCP requires async setup, skip for now (would need runtime changes)
+        "mcp" => {
+            tracing::warn!("MCP tools require async initialization - not yet supported in studio runtime");
+            None
+        }
         _ => None,
     }
+}
+
+fn compile_function_tool(config: Option<&ToolConfig>) -> Option<Arc<dyn Tool>> {
+    let config = match config {
+        Some(ToolConfig::Function(c)) => c,
+        _ => return None,
+    };
+    
+    if config.name.is_empty() {
+        return None;
+    }
+    
+    // Build parameters schema from config
+    let mut properties = serde_json::Map::new();
+    let mut required = Vec::new();
+    
+    for param in &config.parameters {
+        let param_schema = match param.param_type {
+            ParamType::String => json!({"type": "string", "description": param.description}),
+            ParamType::Number => json!({"type": "number", "description": param.description}),
+            ParamType::Boolean => json!({"type": "boolean", "description": param.description}),
+        };
+        properties.insert(param.name.clone(), param_schema);
+        if param.required {
+            required.push(param.name.clone());
+        }
+    }
+    
+    let _schema = json!({
+        "type": "object",
+        "properties": properties,
+        "required": required
+    });
+    
+    // Create a placeholder function tool that returns a message
+    let name = config.name.clone();
+    let desc = config.description.clone();
+    
+    let tool = FunctionTool::new(
+        name.clone(),
+        desc,
+        move |_ctx: Arc<dyn ToolContext>, args: Value| {
+            let name = name.clone();
+            async move {
+                // In a real implementation, this would call user-defined code
+                Ok(json!({
+                    "status": "executed",
+                    "function": name,
+                    "args": args,
+                    "note": "Custom function execution not yet implemented in studio"
+                }))
+            }
+        },
+    );
+    
+    Some(Arc::new(tool))
+}
+
+fn compile_browser_tool(config: Option<&ToolConfig>) -> Option<Arc<dyn Tool>> {
+    let config = match config {
+        Some(ToolConfig::Browser(c)) => c,
+        _ => {
+            // Use defaults if no config
+            &BrowserToolConfig { headless: true, timeout_ms: 30000 }
+        }
+    };
+    
+    let headless = config.headless;
+    let timeout = config.timeout_ms;
+    
+    // Create a placeholder browser tool
+    let tool = FunctionTool::new(
+        "browser",
+        "Browser automation tool. Actions: navigate(url), click(selector), type(selector, text), screenshot(), get_text(selector)",
+        move |_ctx: Arc<dyn ToolContext>, args: Value| {
+            async move {
+                let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
+                Ok(json!({
+                    "status": "browser_action",
+                    "action": action,
+                    "headless": headless,
+                    "timeout_ms": timeout,
+                    "note": "Browser tool requires adk-browser crate integration"
+                }))
+            }
+        },
+    );
+    
+    Some(Arc::new(tool))
 }
 
 fn compile_sequential_agent(name: &str, schema: &AgentSchema, api_key: &str, project: &ProjectSchema) -> Result<Arc<dyn Agent>> {

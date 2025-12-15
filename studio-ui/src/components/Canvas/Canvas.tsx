@@ -12,6 +12,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useStore } from '../../store';
 import { TestConsole } from '../Console/TestConsole';
+import type { McpToolConfig, FunctionToolConfig, BrowserToolConfig, FunctionParameter } from '../../types/project';
 
 const AGENT_TYPES = [
   { type: 'llm', label: 'LLM Agent', enabled: true },
@@ -21,18 +22,18 @@ const AGENT_TYPES = [
 ];
 
 const TOOL_TYPES = [
-  { type: 'function', label: 'Function Tool', icon: 'ƒ' },
-  { type: 'mcp', label: 'MCP Tool', icon: '🔌' },
-  { type: 'browser', label: 'Browser Tool', icon: '🌐' },
-  { type: 'exit_loop', label: 'Exit Loop', icon: '⏹' },
-  { type: 'google_search', label: 'Google Search', icon: '🔍' },
-  { type: 'load_artifact', label: 'Load Artifact', icon: '📦' },
+  { type: 'function', label: 'Function Tool', icon: 'ƒ', configurable: true },
+  { type: 'mcp', label: 'MCP Tool', icon: '🔌', configurable: true },
+  { type: 'browser', label: 'Browser Tool', icon: '🌐', configurable: true },
+  { type: 'exit_loop', label: 'Exit Loop', icon: '⏹', configurable: false },
+  { type: 'google_search', label: 'Google Search', icon: '🔍', configurable: false },
+  { type: 'load_artifact', label: 'Load Artifact', icon: '📦', configurable: false },
 ];
 
 type FlowPhase = 'idle' | 'input' | 'output';
 
 export function Canvas() {
-  const { currentProject, closeProject, saveProject, selectNode, selectedNodeId, updateAgent, addAgent, removeAgent, addEdge: addProjectEdge, removeEdge: removeProjectEdge, addToolToAgent, removeToolFromAgent, addSubAgentToContainer } = useStore();
+  const { currentProject, closeProject, saveProject, selectNode, selectedNodeId, updateAgent, addAgent, removeAgent, addEdge: addProjectEdge, removeEdge: removeProjectEdge, addToolToAgent, removeToolFromAgent, addSubAgentToContainer, selectedToolId, selectTool, updateToolConfig } = useStore();
   const [showConsole, setShowConsole] = useState(true);
   const [flowPhase, setFlowPhase] = useState<FlowPhase>('idle');
   const [selectedSubAgent, setSelectedSubAgent] = useState<{parent: string, sub: string} | null>(null);
@@ -420,9 +421,15 @@ export function Canvas() {
                     <div className="flex flex-wrap gap-1">
                       {selectedAgent.tools.map(t => {
                         const tool = TOOL_TYPES.find(tt => tt.type === t);
+                        const isConfigurable = tool?.configurable;
+                        const toolId = `${selectedNodeId}_${t}`;
+                        const hasConfig = currentProject?.tool_configs?.[toolId];
                         return (
-                          <span key={t} className="text-xs bg-gray-700 px-2 py-1 rounded flex items-center gap-1">
+                          <span key={t} className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${hasConfig ? 'bg-green-800' : 'bg-gray-700'}`}>
                             {tool?.icon} {tool?.label || t}
+                            {isConfigurable && (
+                              <button onClick={() => selectTool(toolId)} className="ml-1 text-blue-400 hover:text-blue-300">⚙</button>
+                            )}
                             <button onClick={() => removeToolFromAgent(selectedNodeId!, t)} className="ml-1 text-red-400 hover:text-red-300">×</button>
                           </span>
                         );
@@ -434,6 +441,180 @@ export function Canvas() {
             )}
           </div>
         )}
+
+        {/* Tool Configuration Panel */}
+        {selectedToolId && currentProject && (() => {
+          const actualToolType = selectedToolId.includes('_mcp') ? 'mcp' : selectedToolId.includes('_function') ? 'function' : selectedToolId.includes('_browser') ? 'browser' : '';
+          const config = currentProject.tool_configs?.[selectedToolId];
+          
+          const getDefaultConfig = (type: string) => {
+            if (type === 'mcp') return { type: 'mcp', server_command: '', server_args: [], tool_filter: [] } as McpToolConfig;
+            if (type === 'function') return { type: 'function', name: '', description: '', parameters: [] } as FunctionToolConfig;
+            if (type === 'browser') return { type: 'browser', headless: true, timeout_ms: 30000 } as BrowserToolConfig;
+            return null;
+          };
+          
+          const currentConfig = config || getDefaultConfig(actualToolType);
+          if (!currentConfig) return null;
+          
+          return (
+            <div className="w-80 bg-studio-panel border-l border-gray-700 p-4 overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-semibold">Configure Tool</h3>
+                <button onClick={() => selectTool(null)} className="px-2 py-1 bg-gray-600 rounded text-xs">Close</button>
+              </div>
+              
+              {actualToolType === 'mcp' && (() => {
+                const mcpConfig = currentConfig as McpToolConfig;
+                return (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Server Command</label>
+                      <input
+                        className="w-full px-2 py-1 bg-studio-bg border border-gray-600 rounded text-sm"
+                        placeholder="npx, uvx, node..."
+                        value={mcpConfig.server_command}
+                        onChange={(e) => updateToolConfig(selectedToolId, { ...mcpConfig, server_command: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Server Args (one per line)</label>
+                      <textarea
+                        className="w-full px-2 py-1 bg-studio-bg border border-gray-600 rounded text-sm h-20"
+                        placeholder="-m&#10;mcp_server_time"
+                        value={mcpConfig.server_args.join('\n')}
+                        onChange={(e) => updateToolConfig(selectedToolId, { ...mcpConfig, server_args: e.target.value.split('\n').filter(Boolean) })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Tool Filter (optional, one per line)</label>
+                      <textarea
+                        className="w-full px-2 py-1 bg-studio-bg border border-gray-600 rounded text-sm h-16"
+                        placeholder="get_time&#10;list_files"
+                        value={(mcpConfig.tool_filter || []).join('\n')}
+                        onChange={(e) => updateToolConfig(selectedToolId, { ...mcpConfig, tool_filter: e.target.value.split('\n').filter(Boolean) })}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      Example: <code>uvx mcp-server-time</code>
+                    </div>
+                  </div>
+                );
+              })()}
+              
+              {actualToolType === 'function' && (() => {
+                const fnConfig = currentConfig as FunctionToolConfig;
+                return (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Function Name</label>
+                      <input
+                        className="w-full px-2 py-1 bg-studio-bg border border-gray-600 rounded text-sm"
+                        placeholder="get_weather"
+                        value={fnConfig.name}
+                        onChange={(e) => updateToolConfig(selectedToolId, { ...fnConfig, name: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Description</label>
+                      <textarea
+                        className="w-full px-2 py-1 bg-studio-bg border border-gray-600 rounded text-sm h-16"
+                        placeholder="Gets current weather for a location"
+                        value={fnConfig.description}
+                        onChange={(e) => updateToolConfig(selectedToolId, { ...fnConfig, description: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Parameters</label>
+                      {fnConfig.parameters.map((param, idx) => (
+                        <div key={idx} className="flex gap-1 mb-1 items-center">
+                          <input
+                            className="flex-1 px-1 py-0.5 bg-studio-bg border border-gray-600 rounded text-xs"
+                            placeholder="name"
+                            value={param.name}
+                            onChange={(e) => {
+                              const params = [...fnConfig.parameters];
+                              params[idx] = { ...param, name: e.target.value };
+                              updateToolConfig(selectedToolId, { ...fnConfig, parameters: params });
+                            }}
+                          />
+                          <select
+                            className="px-1 py-0.5 bg-studio-bg border border-gray-600 rounded text-xs"
+                            value={param.param_type}
+                            onChange={(e) => {
+                              const params = [...fnConfig.parameters];
+                              params[idx] = { ...param, param_type: e.target.value as 'string' | 'number' | 'boolean' };
+                              updateToolConfig(selectedToolId, { ...fnConfig, parameters: params });
+                            }}
+                          >
+                            <option value="string">string</option>
+                            <option value="number">number</option>
+                            <option value="boolean">boolean</option>
+                          </select>
+                          <label className="text-xs flex items-center gap-1">
+                            <input
+                              type="checkbox"
+                              checked={param.required}
+                              onChange={(e) => {
+                                const params = [...fnConfig.parameters];
+                                params[idx] = { ...param, required: e.target.checked };
+                                updateToolConfig(selectedToolId, { ...fnConfig, parameters: params });
+                              }}
+                            />
+                            req
+                          </label>
+                          <button
+                            className="text-red-400 hover:text-red-300 text-xs"
+                            onClick={() => {
+                              const params = fnConfig.parameters.filter((_, i) => i !== idx);
+                              updateToolConfig(selectedToolId, { ...fnConfig, parameters: params });
+                            }}
+                          >×</button>
+                        </div>
+                      ))}
+                      <button
+                        className="w-full py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs mt-1"
+                        onClick={() => {
+                          const newParam: FunctionParameter = { name: '', param_type: 'string', description: '', required: false };
+                          updateToolConfig(selectedToolId, { ...fnConfig, parameters: [...fnConfig.parameters, newParam] });
+                        }}
+                      >+ Add Parameter</button>
+                    </div>
+                  </div>
+                );
+              })()}
+              
+              {actualToolType === 'browser' && (() => {
+                const browserConfig = currentConfig as BrowserToolConfig;
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="headless"
+                        checked={browserConfig.headless}
+                        onChange={(e) => updateToolConfig(selectedToolId, { ...browserConfig, headless: e.target.checked })}
+                      />
+                      <label htmlFor="headless" className="text-sm">Headless Mode</label>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Timeout (ms)</label>
+                      <input
+                        type="number"
+                        className="w-full px-2 py-1 bg-studio-bg border border-gray-600 rounded text-sm"
+                        value={browserConfig.timeout_ms}
+                        onChange={(e) => updateToolConfig(selectedToolId, { ...browserConfig, timeout_ms: parseInt(e.target.value) || 30000 })}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      Browser tool provides: navigate, click, type, screenshot, get_text
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Test Console */}
