@@ -14,7 +14,7 @@ import Editor from '@monaco-editor/react';
 import { useStore } from '../../store';
 import { TestConsole } from '../Console/TestConsole';
 import { api, GeneratedProject } from '../../api/client';
-import type { McpToolConfig, FunctionToolConfig, BrowserToolConfig, FunctionParameter } from '../../types/project';
+import type { McpToolConfig, FunctionToolConfig, BrowserToolConfig, FunctionParameter, AgentSchema, ToolConfig } from '../../types/project';
 
 const AGENT_TYPES = [
   { type: 'llm', label: 'LLM Agent', enabled: true },
@@ -76,7 +76,7 @@ function extractUserCode(fullCode: string, config: FunctionToolConfig): string {
 }
 
 export function Canvas() {
-  const { currentProject, closeProject, saveProject, selectNode, selectedNodeId, updateAgent, addAgent, removeAgent, addEdge: addProjectEdge, removeEdge: removeProjectEdge, addToolToAgent, removeToolFromAgent, addSubAgentToContainer, selectedToolId, selectTool, updateToolConfig } = useStore();
+  const { currentProject, closeProject, saveProject, selectNode, selectedNodeId, updateAgent: storeUpdateAgent, addAgent, removeAgent, addEdge: addProjectEdge, removeEdge: removeProjectEdge, addToolToAgent, removeToolFromAgent, addSubAgentToContainer, selectedToolId, selectTool, updateToolConfig: storeUpdateToolConfig } = useStore();
   const [showConsole, setShowConsole] = useState(true);
   const [flowPhase, setFlowPhase] = useState<FlowPhase>('idle');
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
@@ -90,6 +90,16 @@ export function Canvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
+  // Wrap update functions to invalidate build when changes are made
+  const updateAgent = useCallback((id: string, updates: Partial<AgentSchema>) => {
+    storeUpdateAgent(id, updates);
+    setBuiltBinaryPath(null);
+  }, [storeUpdateAgent]);
+
+  const updateToolConfig = useCallback((toolId: string, config: ToolConfig) => {
+    storeUpdateToolConfig(toolId, config);
+    setBuiltBinaryPath(null);
+  }, [storeUpdateToolConfig]);
   const handleCompile = useCallback(async () => {
     if (!currentProject) return;
     try {
@@ -838,14 +848,14 @@ export function Canvas() {
                               { name: 'method', param_type: 'string' as const, description: 'GET, POST, PUT, DELETE', required: false },
                               { name: 'body', param_type: 'string' as const, description: 'Request body (JSON)', required: false },
                             ],
-                            code: `let method = args["method"].as_str().unwrap_or("GET");
-let client = reqwest::Client::new();
+                            code: `let client = reqwest::Client::new();
 let mut req = match method {
     "POST" => client.post(url),
     "PUT" => client.put(url),
     "DELETE" => client.delete(url),
     _ => client.get(url),
 };
+req = req.header("User-Agent", "ADK-Agent/1.0");
 if !body.is_empty() {
     req = req.header("Content-Type", "application/json").body(body.to_string());
 }

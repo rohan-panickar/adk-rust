@@ -474,7 +474,16 @@ fn generate_cargo_toml(project: &ProjectSchema) -> String {
         name = format!("project_{}", name);
     }
     
-    format!(r#"[package]
+    // Check if any function tool code uses reqwest
+    let needs_reqwest = project.tool_configs.values().any(|tc| {
+        if let ToolConfig::Function(fc) = tc {
+            fc.code.contains("reqwest::")
+        } else {
+            false
+        }
+    });
+    
+    let mut deps = format!(r#"[package]
 name = "{}"
 version = "0.1.0"
 edition = "2021"
@@ -492,5 +501,11 @@ serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 schemars = "0.8"
 tracing-subscriber = {{ version = "0.3", features = ["json", "env-filter"] }}
-"#, name)
+"#, name);
+
+    if needs_reqwest {
+        deps.push_str("reqwest = { version = \"0.11\", features = [\"json\"] }\n");
+    }
+    
+    deps
 }
