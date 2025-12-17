@@ -288,16 +288,20 @@ export function Canvas() {
               {tools.length > 0 && (
                 <div className="border-t border-gray-600 pt-1 mt-1">
                   {tools.map(t => {
-                    // Handle function_1, function_2, etc.
-                    const baseType = t.startsWith('function') ? 'function' : t;
+                    // Handle function_1, function_2, mcp_1, mcp_2, etc.
+                    const baseType = t.startsWith('function') ? 'function' : t.startsWith('mcp') ? 'mcp' : t;
                     const tool = TOOL_TYPES.find(tt => tt.type === baseType);
                     const isConfigurable = tool?.configurable;
                     const toolConfigId = `${id}_${t}`;
                     const fnConfig = currentProject?.tool_configs?.[toolConfigId];
-                    // Show function name if configured
-                    const displayName = baseType === 'function' && fnConfig && 'name' in fnConfig && fnConfig.name 
-                      ? fnConfig.name 
-                      : (tool?.label || t);
+                    // Show friendly name for function/mcp tools
+                    let displayName = tool?.label || t;
+                    if (baseType === 'function' && fnConfig && 'name' in fnConfig && fnConfig.name) {
+                      displayName = fnConfig.name;
+                    } else if (baseType === 'mcp') {
+                      const num = t.match(/mcp_(\d+)/)?.[1] || '1';
+                      displayName = `MCP Tool ${num}`;
+                    }
                     return (
                       <div 
                         key={t} 
@@ -481,10 +485,16 @@ export function Canvas() {
         selectNode(nodeId);
         if (TOOL_TYPES.find(t => t.type === toolType)?.configurable) {
           const agentTools = currentProject?.agents[nodeId]?.tools || [];
-          const functionCount = agentTools.filter(t => t.startsWith('function')).length;
-          const newToolId = toolType === 'function' 
-            ? `${nodeId}_function_${functionCount + 1}`
-            : `${nodeId}_${toolType}`;
+          let newToolId: string;
+          if (toolType === 'function') {
+            const count = agentTools.filter(t => t.startsWith('function')).length;
+            newToolId = `${nodeId}_function_${count + 1}`;
+          } else if (toolType === 'mcp') {
+            const count = agentTools.filter(t => t.startsWith('mcp')).length;
+            newToolId = `${nodeId}_mcp_${count + 1}`;
+          } else {
+            newToolId = `${nodeId}_${toolType}`;
+          }
           selectTool(newToolId);
         }
       }
@@ -561,11 +571,12 @@ export function Canvas() {
           <div className="space-y-1 flex-1">
             {TOOL_TYPES.map(({ type, label, icon, configurable }) => {
               const agentTools = selectedNodeId ? currentProject?.agents[selectedNodeId]?.tools || [] : [];
-              // For function tools, check if any function_* exists; for others, exact match
-              const isAdded = type === 'function' 
-                ? agentTools.some(t => t.startsWith('function'))
+              // For function/mcp tools, check if any exists; for others, exact match
+              const isMultiTool = type === 'function' || type === 'mcp';
+              const isAdded = isMultiTool
+                ? agentTools.some(t => t.startsWith(type))
                 : agentTools.includes(type);
-              const functionCount = type === 'function' ? agentTools.filter(t => t.startsWith('function')).length : 0;
+              const toolCount = isMultiTool ? agentTools.filter(t => t.startsWith(type)).length : 0;
               return (
                 <div
                   key={type}
@@ -579,10 +590,10 @@ export function Canvas() {
                   } ${!selectedNodeId ? 'opacity-50' : ''}`}
                   onClick={() => {
                     if (!selectedNodeId) return;
-                    // Function tools can always be added (multiple allowed)
-                    if (type === 'function') {
+                    // Function and MCP tools can always be added (multiple allowed)
+                    if (isMultiTool) {
                       addToolToAgent(selectedNodeId, type);
-                      const newToolId = `${selectedNodeId}_function_${functionCount + 1}`;
+                      const newToolId = `${selectedNodeId}_${type}_${toolCount + 1}`;
                       if (configurable) selectTool(newToolId);
                     } else if (isAdded) {
                       removeToolFromAgent(selectedNodeId, type);
@@ -594,8 +605,8 @@ export function Canvas() {
                 >
                   <span>{icon}</span>
                   <span className="text-xs">{label}</span>
-                  {type === 'function' && functionCount > 0 && <span className="ml-auto text-xs bg-blue-600 px-1 rounded">{functionCount}</span>}
-                  {type !== 'function' && isAdded && <span className="ml-auto text-xs">✓</span>}
+                  {isMultiTool && toolCount > 0 && <span className="ml-auto text-xs bg-blue-600 px-1 rounded">{toolCount}</span>}
+                  {!isMultiTool && isAdded && <span className="ml-auto text-xs">✓</span>}
                 </div>
               );
             })}
@@ -770,14 +781,18 @@ export function Canvas() {
                     <label className="block text-sm text-gray-400 mb-1">Tools</label>
                     <div className="flex flex-wrap gap-1">
                       {selectedAgent.tools.map(t => {
-                        const baseType = t.startsWith('function') ? 'function' : t;
+                        const baseType = t.startsWith('function') ? 'function' : t.startsWith('mcp') ? 'mcp' : t;
                         const tool = TOOL_TYPES.find(tt => tt.type === baseType);
                         const isConfigurable = tool?.configurable;
                         const toolId = `${selectedNodeId}_${t}`;
                         const toolConfig = currentProject?.tool_configs?.[toolId];
-                        const displayName = baseType === 'function' && toolConfig && 'name' in toolConfig && toolConfig.name
-                          ? toolConfig.name
-                          : (tool?.label || t);
+                        let displayName = tool?.label || t;
+                        if (baseType === 'function' && toolConfig && 'name' in toolConfig && toolConfig.name) {
+                          displayName = toolConfig.name;
+                        } else if (baseType === 'mcp') {
+                          const num = t.match(/mcp_(\d+)/)?.[1] || '1';
+                          displayName = `MCP Tool ${num}`;
+                        }
                         return (
                           <span key={t} className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${toolConfig ? 'bg-green-800' : 'bg-gray-700'}`}>
                             {tool?.icon} {displayName}

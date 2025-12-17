@@ -35,8 +35,8 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
     
     code.push_str("#![allow(unused_imports)]\n\n");
     
-    // Check if any agent uses MCP
-    let uses_mcp = project.agents.values().any(|a| a.tools.contains(&"mcp".to_string()));
+    // Check if any agent uses MCP (handles mcp, mcp_1, mcp_2, etc.)
+    let uses_mcp = project.agents.values().any(|a| a.tools.iter().any(|t| t == "mcp" || t.starts_with("mcp_")));
     
     // Graph imports
     code.push_str("use adk_agent::LlmAgentBuilder;\n");
@@ -295,29 +295,34 @@ fn generate_llm_node(id: &str, agent: &AgentSchema, project: &ProjectSchema, is_
     
     code.push_str(&format!("    // Agent: {}\n", id));
     
-    // Generate MCP toolset if agent uses MCP
-    if agent.tools.contains(&"mcp".to_string()) {
-        let tool_id = format!("{}_mcp", id);
+    // Generate MCP toolsets for all MCP tools (mcp, mcp_1, mcp_2, etc.)
+    let mcp_tools: Vec<_> = agent.tools.iter()
+        .filter(|t| *t == "mcp" || t.starts_with("mcp_"))
+        .collect();
+    
+    for (idx, mcp_tool) in mcp_tools.iter().enumerate() {
+        let tool_id = format!("{}_{}", id, mcp_tool);
         if let Some(ToolConfig::Mcp(config)) = project.tool_configs.get(&tool_id) {
             let cmd = &config.server_command;
+            let var_suffix = if idx == 0 { "mcp".to_string() } else { format!("mcp_{}", idx + 1) };
             // Build Command separately (arg() returns &mut, but TokioChildProcess needs owned)
-            code.push_str(&format!("    let mut {}_mcp_cmd = Command::new(\"{}\");\n", id, cmd));
+            code.push_str(&format!("    let mut {}_{}_cmd = Command::new(\"{}\");\n", id, var_suffix, cmd));
             for arg in &config.server_args {
-                code.push_str(&format!("    {}_mcp_cmd.arg(\"{}\");\n", id, arg));
+                code.push_str(&format!("    {}_{}_cmd.arg(\"{}\");\n", id, var_suffix, arg));
             }
             // Add timeout for MCP server initialization
-            code.push_str(&format!("    let {}_mcp_client = tokio::time::timeout(\n", id));
+            code.push_str(&format!("    let {}_{}_client = tokio::time::timeout(\n", id, var_suffix));
             code.push_str("        std::time::Duration::from_secs(10),\n");
-            code.push_str(&format!("        ().serve(TokioChildProcess::new({}_mcp_cmd)?)\n", id));
+            code.push_str(&format!("        ().serve(TokioChildProcess::new({}_{}_cmd)?)\n", id, var_suffix));
             code.push_str(&format!("    ).await.map_err(|_| anyhow::anyhow!(\"MCP server '{}' failed to start within 10s\"))??;\n", cmd));
-            code.push_str(&format!("    let {}_mcp_toolset = McpToolset::new({}_mcp_client)", id, id));
+            code.push_str(&format!("    let {}_{}_toolset = McpToolset::new({}_{}_client)", id, var_suffix, id, var_suffix));
             if !config.tool_filter.is_empty() {
                 code.push_str(&format!(".with_tools(&[{}])", 
                     config.tool_filter.iter().map(|t| format!("\"{}\"", t)).collect::<Vec<_>>().join(", ")));
             }
             code.push_str(";\n");
-            code.push_str(&format!("    let {}_mcp_tools = {}_mcp_toolset.tools(Arc::new(MinimalContext::new())).await?;\n", id, id));
-            code.push_str(&format!("    eprintln!(\"Loaded {{}} tools from MCP server\", {}_mcp_tools.len());\n\n", id));
+            code.push_str(&format!("    let {}_{}_tools = {}_{}_toolset.tools(Arc::new(MinimalContext::new())).await?;\n", id, var_suffix, id, var_suffix));
+            code.push_str(&format!("    eprintln!(\"Loaded {{}} tools from MCP server '{}'\", {}_{}_tools.len());\n\n", cmd, id, var_suffix));
         }
     }
     
@@ -330,8 +335,9 @@ fn generate_llm_node(id: &str, agent: &AgentSchema, project: &ProjectSchema, is_
     }
     
     // Add MCP tools if present
-    if agent.tools.contains(&"mcp".to_string()) {
-        code.push_str(&format!("    for tool in {}_mcp_tools {{\n", id));
+    for (idx, _) in mcp_tools.iter().enumerate() {
+        let var_suffix = if idx == 0 { "mcp".to_string() } else { format!("mcp_{}", idx + 1) };
+        code.push_str(&format!("    for tool in {}_{}_tools {{\n", id, var_suffix));
         code.push_str(&format!("        {}_builder = {}_builder.tool(tool);\n", id, id));
         code.push_str("    }\n");
     }
@@ -620,8 +626,8 @@ uuid = {{ version = "1", features = ["v4"] }}
         deps.push_str("base64 = \"0.21\"\n");
     }
     
-    // Add rmcp if any agent uses MCP
-    let uses_mcp = project.agents.values().any(|a| a.tools.contains(&"mcp".to_string()));
+    // Add rmcp if any agent uses MCP (handles mcp, mcp_1, mcp_2, etc.)
+    let uses_mcp = project.agents.values().any(|a| a.tools.iter().any(|t| t == "mcp" || t.starts_with("mcp_")));
     if uses_mcp {
         deps.push_str("rmcp = { version = \"0.9\", features = [\"client\", \"transport-child-process\"] }\n");
         deps.push_str("async-trait = \"0.1\"\n");

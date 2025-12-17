@@ -169,13 +169,13 @@ export const useStore = create<StudioState>((set, get) => ({
       const agent = s.currentProject.agents[agentId];
       if (!agent) return s;
       
-      // For function tools, generate unique ID to allow multiple
+      // For function and mcp tools, generate unique ID to allow multiple
       let toolId = toolType;
-      if (toolType === 'function') {
-        const existingFunctions = agent.tools.filter(t => t.startsWith('function'));
-        toolId = `function_${existingFunctions.length + 1}`;
+      if (toolType === 'function' || toolType === 'mcp') {
+        const existing = agent.tools.filter(t => t.startsWith(toolType));
+        toolId = `${toolType}_${existing.length + 1}`;
       } else if (agent.tools.includes(toolType)) {
-        return s; // Non-function tools can only be added once
+        return s; // Other tools can only be added once
       }
       
       return {
