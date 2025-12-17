@@ -35,6 +35,9 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
     
     code.push_str("#![allow(unused_imports)]\n\n");
     
+    // Check if any agent uses MCP
+    let uses_mcp = project.agents.values().any(|a| a.tools.contains(&"mcp".to_string()));
+    
     // Graph imports
     code.push_str("use adk_agent::LlmAgentBuilder;\n");
     code.push_str("use adk_core::ToolContext;\n");
@@ -47,10 +50,34 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
     code.push_str("};\n");
     code.push_str("use adk_model::gemini::GeminiModel;\n");
     code.push_str("use adk_tool::{FunctionTool, GoogleSearchTool, ExitLoopTool, LoadArtifactsTool};\n");
+    if uses_mcp {
+        code.push_str("use adk_tool::McpToolset;\n");
+        code.push_str("use adk_core::{ReadonlyContext, Toolset, Content};\n");
+        code.push_str("use rmcp::{ServiceExt, transport::TokioChildProcess};\n");
+        code.push_str("use tokio::process::Command;\n");
+        code.push_str("use async_trait::async_trait;\n");
+    }
     code.push_str("use anyhow::Result;\n");
     code.push_str("use serde_json::{json, Value};\n");
     code.push_str("use std::sync::Arc;\n");
     code.push_str("use tracing_subscriber::{fmt, EnvFilter};\n\n");
+    
+    // Add MinimalContext for MCP toolset
+    if uses_mcp {
+        code.push_str("// Minimal context for MCP toolset initialization\n");
+        code.push_str("struct MinimalContext { content: Content }\n");
+        code.push_str("impl MinimalContext { fn new() -> Self { Self { content: Content { role: String::new(), parts: vec![] } } } }\n");
+        code.push_str("#[async_trait]\n");
+        code.push_str("impl ReadonlyContext for MinimalContext {\n");
+        code.push_str("    fn invocation_id(&self) -> &str { \"init\" }\n");
+        code.push_str("    fn agent_name(&self) -> &str { \"init\" }\n");
+        code.push_str("    fn user_id(&self) -> &str { \"init\" }\n");
+        code.push_str("    fn app_name(&self) -> &str { \"init\" }\n");
+        code.push_str("    fn session_id(&self) -> &str { \"init\" }\n");
+        code.push_str("    fn branch(&self) -> &str { \"main\" }\n");
+        code.push_str("    fn user_content(&self) -> &Content { &self.content }\n");
+        code.push_str("}\n\n");
+    }
     
     // Generate function tools with parameter schemas
     for (agent_id, agent) in &project.agents {
@@ -267,13 +294,46 @@ fn generate_llm_node(id: &str, agent: &AgentSchema, project: &ProjectSchema, is_
     let model = agent.model.as_deref().unwrap_or("gemini-2.0-flash");
     
     code.push_str(&format!("    // Agent: {}\n", id));
-    code.push_str(&format!("    let {}_llm = Arc::new(\n", id));
-    code.push_str(&format!("        LlmAgentBuilder::new(\"{}\")\n", id));
-    code.push_str(&format!("            .model(Arc::new(GeminiModel::new(&api_key, \"{}\")?))\n", model));
+    
+    // Generate MCP toolset if agent uses MCP
+    if agent.tools.contains(&"mcp".to_string()) {
+        let tool_id = format!("{}_mcp", id);
+        if let Some(ToolConfig::Mcp(config)) = project.tool_configs.get(&tool_id) {
+            let cmd = &config.server_command;
+            // Build Command separately (arg() returns &mut, but TokioChildProcess needs owned)
+            code.push_str(&format!("    let mut {}_mcp_cmd = Command::new(\"{}\");\n", id, cmd));
+            for arg in &config.server_args {
+                code.push_str(&format!("    {}_mcp_cmd.arg(\"{}\");\n", id, arg));
+            }
+            // Add timeout for MCP server initialization
+            code.push_str(&format!("    let {}_mcp_client = tokio::time::timeout(\n", id));
+            code.push_str("        std::time::Duration::from_secs(10),\n");
+            code.push_str(&format!("        ().serve(TokioChildProcess::new({}_mcp_cmd)?)\n", id));
+            code.push_str(&format!("    ).await.map_err(|_| anyhow::anyhow!(\"MCP server '{}' failed to start within 10s\"))??;\n", cmd));
+            code.push_str(&format!("    let {}_mcp_toolset = McpToolset::new({}_mcp_client)", id, id));
+            if !config.tool_filter.is_empty() {
+                code.push_str(&format!(".with_tools(&[{}])", 
+                    config.tool_filter.iter().map(|t| format!("\"{}\"", t)).collect::<Vec<_>>().join(", ")));
+            }
+            code.push_str(";\n");
+            code.push_str(&format!("    let {}_mcp_tools = {}_mcp_toolset.tools(Arc::new(MinimalContext::new())).await?;\n", id, id));
+            code.push_str(&format!("    eprintln!(\"Loaded {{}} tools from MCP server\", {}_mcp_tools.len());\n\n", id));
+        }
+    }
+    
+    code.push_str(&format!("    let mut {}_builder = LlmAgentBuilder::new(\"{}\")\n", id, id));
+    code.push_str(&format!("        .model(Arc::new(GeminiModel::new(&api_key, \"{}\")?));\n", model));
     
     if !agent.instruction.is_empty() {
         let escaped = agent.instruction.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
-        code.push_str(&format!("            .instruction(\"{}\")\n", escaped));
+        code.push_str(&format!("    {}_builder = {}_builder.instruction(\"{}\");\n", id, id, escaped));
+    }
+    
+    // Add MCP tools if present
+    if agent.tools.contains(&"mcp".to_string()) {
+        code.push_str(&format!("    for tool in {}_mcp_tools {{\n", id));
+        code.push_str(&format!("        {}_builder = {}_builder.tool(tool);\n", id, id));
+        code.push_str("    }\n");
     }
     
     for tool_type in &agent.tools {
@@ -282,21 +342,20 @@ fn generate_llm_node(id: &str, agent: &AgentSchema, project: &ProjectSchema, is_
             let tool_id = format!("{}_{}", id, tool_type);
             if let Some(ToolConfig::Function(config)) = project.tool_configs.get(&tool_id) {
                 let struct_name = to_pascal_case(&config.name);
-                code.push_str(&format!("            .tool(Arc::new(FunctionTool::new(\"{}\", \"{}\", {}_fn).with_parameters_schema::<{}Args>()))\n", 
-                    config.name, config.description.replace('"', "\\\""), config.name, struct_name));
+                code.push_str(&format!("    {}_builder = {}_builder.tool(Arc::new(FunctionTool::new(\"{}\", \"{}\", {}_fn).with_parameters_schema::<{}Args>()));\n", 
+                    id, id, config.name, config.description.replace('"', "\\\""), config.name, struct_name));
             }
-        } else {
+        } else if tool_type != "mcp" {
             match tool_type.as_str() {
-                "google_search" => code.push_str("            .tool(Arc::new(GoogleSearchTool::new()))\n"),
-                "exit_loop" => code.push_str("            .tool(Arc::new(ExitLoopTool::new()))\n"),
-                "load_artifact" => code.push_str("            .tool(Arc::new(LoadArtifactsTool::new()))\n"),
+                "google_search" => code.push_str(&format!("    {}_builder = {}_builder.tool(Arc::new(GoogleSearchTool::new()));\n", id, id)),
+                "exit_loop" => code.push_str(&format!("    {}_builder = {}_builder.tool(Arc::new(ExitLoopTool::new()));\n", id, id)),
+                "load_artifact" => code.push_str(&format!("    {}_builder = {}_builder.tool(Arc::new(LoadArtifactsTool::new()));\n", id, id)),
                 _ => {}
             }
         }
     }
     
-    code.push_str("            .build()?\n");
-    code.push_str("    );\n\n");
+    code.push_str(&format!("    let {}_llm = Arc::new({}_builder.build()?);\n\n", id, id));
     
     code.push_str(&format!("    let {}_node = AgentNode::new({}_llm)\n", id, id));
     code.push_str("        .with_input_mapper(|state| {\n");
@@ -549,10 +608,10 @@ serde_json = "1"
 schemars = "0.8"
 tracing-subscriber = {{ version = "0.3", features = ["json", "env-filter"] }}
 uuid = {{ version = "1", features = ["v4"] }}
-{}"#, name, adk_deps, patch_section);
+"#, name, adk_deps);
 
     if needs_reqwest {
-        deps.push_str("reqwest = { version = \"0.11\", features = [\"json\"] }\n");
+        deps.push_str("reqwest = { version = \"0.12\", features = [\"json\"] }\n");
     }
     if needs_lettre {
         deps.push_str("lettre = \"0.11\"\n");
@@ -560,6 +619,16 @@ uuid = {{ version = "1", features = ["v4"] }}
     if needs_base64 {
         deps.push_str("base64 = \"0.21\"\n");
     }
+    
+    // Add rmcp if any agent uses MCP
+    let uses_mcp = project.agents.values().any(|a| a.tools.contains(&"mcp".to_string()));
+    if uses_mcp {
+        deps.push_str("rmcp = { version = \"0.9\", features = [\"client\", \"transport-child-process\"] }\n");
+        deps.push_str("async-trait = \"0.1\"\n");
+    }
+    
+    // Add patch section at the end (only in dev mode)
+    deps.push_str(&patch_section);
     
     deps
 }

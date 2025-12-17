@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, DragEvent } from 'react';
+import { useCallback, useEffect, useState, useRef, DragEvent } from 'react';
 import {
   ReactFlow,
   Background,
@@ -90,16 +90,25 @@ export function Canvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  // Wrap update functions to invalidate build when changes are made
+  // Debounced auto-save
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedSave = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => saveProject(), 500);
+  }, [saveProject]);
+
+  // Wrap update functions to invalidate build and auto-save
   const updateAgent = useCallback((id: string, updates: Partial<AgentSchema>) => {
     storeUpdateAgent(id, updates);
     setBuiltBinaryPath(null);
-  }, [storeUpdateAgent]);
+    debouncedSave();
+  }, [storeUpdateAgent, debouncedSave]);
 
   const updateToolConfig = useCallback((toolId: string, config: ToolConfig) => {
     storeUpdateToolConfig(toolId, config);
     setBuiltBinaryPath(null);
-  }, [storeUpdateToolConfig]);
+    debouncedSave();
+  }, [storeUpdateToolConfig, debouncedSave]);
   const handleCompile = useCallback(async () => {
     if (!currentProject) return;
     try {
@@ -635,10 +644,7 @@ export function Canvas() {
           <div className="w-72 bg-studio-panel border-l border-gray-700 p-4 overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold">{selectedNodeId}</h3>
-              <div className="flex gap-2">
-                <button onClick={saveProject} className="px-2 py-1 bg-studio-highlight rounded text-xs">Save</button>
-                <button onClick={() => selectNode(null)} className="px-2 py-1 bg-gray-600 rounded text-xs">Close</button>
-              </div>
+              <button onClick={() => selectNode(null)} className="px-2 py-1 bg-gray-600 rounded text-xs">Close</button>
             </div>
             
             {(selectedAgent.type === 'sequential' || selectedAgent.type === 'loop' || selectedAgent.type === 'parallel') ? (
