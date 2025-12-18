@@ -207,11 +207,12 @@ export function Canvas() {
         const subAgentNodes = (agent.sub_agents || []).map((subId, idx) => {
           const subAgent = currentProject.agents[subId];
           const isSelected = selectedSubAgent?.parent === id && selectedSubAgent?.sub === subId;
+          const isActive = activeAgent === subId;
           const subTools = subAgent?.tools || [];
           return (
             <div 
               key={subId} 
-              className={`rounded p-2 cursor-pointer ${isParallel ? '' : idx > 0 ? 'mt-2 border-t border-gray-600 pt-2' : ''} ${isSelected ? 'bg-gray-600 ring-2 ring-blue-400' : 'bg-gray-800 hover:bg-gray-700'}`}
+              className={`rounded p-2 cursor-pointer transition-all duration-300 ${isParallel ? '' : idx > 0 ? 'mt-2 border-t border-gray-600 pt-2' : ''} ${isActive ? 'bg-green-900 ring-2 ring-green-400 shadow-lg shadow-green-500/50' : isSelected ? 'bg-gray-600 ring-2 ring-blue-400' : 'bg-gray-800 hover:bg-gray-700'}`}
               onClick={(e) => { e.stopPropagation(); setSelectedSubAgent(isSelected ? null : {parent: id, sub: subId}); selectNode(isSelected ? null : subId); }}
               onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
               onDrop={(e) => {
@@ -227,7 +228,7 @@ export function Canvas() {
               }}
             >
               <div className="flex justify-between items-center">
-                <span className="text-xs font-medium">{isParallel ? '∥' : `${idx + 1}.`} 🤖 {subId}</span>
+                <span className="text-xs font-medium">{isActive ? '⚡' : (isParallel ? '∥' : `${idx + 1}.`)} 🤖 {subId}</span>
                 {isSelected && agent.sub_agents.length > 1 && (
                   <button 
                     className="text-red-400 hover:text-red-300 text-xs"
@@ -235,7 +236,7 @@ export function Canvas() {
                   >×</button>
                 )}
               </div>
-              <div className="text-xs text-gray-400">LLM Agent</div>
+              <div className="text-xs text-gray-400">{isActive ? 'Running...' : 'LLM Agent'}</div>
               {subTools.length > 0 && (
                 <div className="border-t border-gray-600 pt-1 mt-1">
                   {subTools.map(t => {
