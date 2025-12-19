@@ -14,6 +14,7 @@ import Editor from '@monaco-editor/react';
 import { useStore } from '../../store';
 import { TestConsole } from '../Console/TestConsole';
 import { MenuBar } from '../MenuBar';
+import { nodeTypes } from '../Nodes';
 import { api, GeneratedProject } from '../../api/client';
 import type { McpToolConfig, FunctionToolConfig, BrowserToolConfig, FunctionParameter, AgentSchema, ToolConfig } from '../../types/project';
 
@@ -313,79 +314,29 @@ export function Canvas() {
           style: { background: config.bg, border: `2px solid ${config.border}`, borderRadius: 8, padding: 12, color: '#fff', minWidth: isParallel ? 280 : 200 },
         });
       } else if (agent.type === 'router') {
-        const routes = agent.routes || [];
+        // Router Agent - use new node component
         newNodes.push({
           id,
+          type: 'router',
           position: { x: 50, y: 150 + i * 150 },
-          data: { label: (
-            <div className="text-center">
-              <div className="font-semibold">🔀 {id}</div>
-              <div className="text-xs text-gray-400 mb-1">Router Agent</div>
-              {routes.length > 0 && (
-                <div className="border-t border-gray-600 pt-1 mt-1 text-left">
-                  {routes.map((r, idx) => (
-                    <div key={idx} className="text-xs text-gray-300">
-                      {r.condition} → {r.target}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )},
-          style: { background: '#5f4b1e', border: `2px solid ${activeAgent === id ? '#4ade80' : '#fbbf24'}`, borderRadius: 8, padding: 12, color: '#fff', minWidth: 140, boxShadow: activeAgent === id ? '0 0 20px #4ade80' : 'none' },
+          data: { 
+            label: id,
+            routes: agent.routes || [],
+            isActive: activeAgent === id,
+          },
         });
       } else {
-        const tools = agent.tools || [];
-        const isActive = activeAgent === id;
+        // LLM Agent - use new node component
         newNodes.push({
           id,
+          type: 'llm',
           position: { x: 50, y: 150 + i * 150 },
-          data: { label: (
-            <div className="text-center">
-              <div>{isActive ? '⚡' : '🤖'} {id}</div>
-              <div className="text-xs text-gray-400">LLM Agent</div>
-              {tools.length > 0 && (
-                <div className="border-t border-gray-600 pt-1 mt-1">
-                  {tools.map(t => {
-                    // Handle function_1, function_2, mcp_1, mcp_2, etc.
-                    const baseType = t.startsWith('function') ? 'function' : t.startsWith('mcp') ? 'mcp' : t;
-                    const tool = TOOL_TYPES.find(tt => tt.type === baseType);
-                    const isConfigurable = tool?.configurable;
-                    const toolConfigId = `${id}_${t}`;
-                    const toolConfig = currentProject?.tool_configs?.[toolConfigId];
-                    // Show friendly name for function/mcp tools
-                    let displayName = tool?.label || t;
-                    if (baseType === 'function' && toolConfig && 'name' in toolConfig && toolConfig.name) {
-                      displayName = toolConfig.name;
-                    } else if (baseType === 'mcp') {
-                      if (toolConfig && 'name' in toolConfig && toolConfig.name) {
-                        displayName = toolConfig.name;
-                      } else {
-                        const num = t.match(/mcp_(\d+)/)?.[1] || '1';
-                        displayName = `MCP Tool ${num}`;
-                      }
-                    }
-                    return (
-                      <div 
-                        key={t} 
-                        className={`text-xs text-gray-300 px-1 py-0.5 rounded ${isConfigurable ? 'cursor-pointer hover:bg-gray-700 hover:text-white' : ''}`}
-                        onClick={(e) => {
-                          if (isConfigurable) {
-                            e.stopPropagation();
-                            selectNode(id);
-                            selectTool(toolConfigId);
-                          }
-                        }}
-                      >
-                        {tool?.icon} {displayName} {isConfigurable && <span className="text-blue-400">⚙</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )},
-          style: { background: isActive ? '#1a472a' : '#16213e', border: `2px solid ${isActive ? '#4ade80' : '#e94560'}`, borderRadius: 8, padding: 12, color: '#fff', minWidth: 120, boxShadow: isActive ? '0 0 20px #4ade80' : 'none', transition: 'all 0.3s ease' },
+          data: { 
+            label: id,
+            model: agent.model,
+            tools: agent.tools || [],
+            isActive: activeAgent === id,
+          },
         });
       }
     });
@@ -726,6 +677,7 @@ export function Canvas() {
           <ReactFlow
             nodes={nodes}
             edges={edges}
+            nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onEdgesDelete={onEdgesDelete}
