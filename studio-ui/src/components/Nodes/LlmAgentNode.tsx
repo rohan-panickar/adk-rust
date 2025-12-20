@@ -15,25 +15,16 @@ interface Props {
 }
 
 const toolIcons: Record<string, string> = {
-  google_search: '🔍',
-  browser: '🌐',
-  mcp: '🔌',
-  function: '⚡',
-  file: '📁',
-  code: '💻',
-  default: '🔧',
+  google_search: '🔍', browser: '🌐', mcp: '🔌', function: '⚡', file: '📁', code: '💻', default: '🔧',
 };
 
-const getToolIcon = (tool: string) => {
-  const key = Object.keys(toolIcons).find(k => tool.toLowerCase().includes(k));
-  return toolIcons[key || 'default'];
-};
+const getToolIcon = (tool: string) => toolIcons[Object.keys(toolIcons).find(k => tool.toLowerCase().includes(k)) || 'default'];
 
 export const LlmAgentNode = memo(({ data, selected }: Props) => {
   const isActive = data.isActive || false;
   
   return (
-    <div className="relative" style={{ overflow: 'visible' }}>
+    <div className="relative">
       <div 
         className="rounded-lg min-w-[180px] transition-all duration-200"
         style={{ 
@@ -69,34 +60,33 @@ export const LlmAgentNode = memo(({ data, selected }: Props) => {
               ))}
             </div>
           )}
+          
+          {/* Thought bubble inside node - expands downward */}
+          {data.thought && (
+            <div className="mt-2 pt-2 border-t border-white/10">
+              <div 
+                className="text-xs rounded px-2 py-1.5"
+                style={{ 
+                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                  maxHeight: '80px',
+                  overflowY: 'auto',
+                }}
+              >
+                <div className="flex items-start gap-1.5">
+                  <span className="flex-shrink-0">💭</span>
+                  <span className="text-white/90 leading-relaxed">
+                    {data.thought}
+                    {isActive && <span className="ml-1 animate-pulse">▊</span>}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         
         <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-gray-400" />
         <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400" />
       </div>
-      
-      {data.thought && (
-        <div 
-          style={{ 
-            position: 'absolute',
-            left: '100%',
-            marginLeft: '12px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            zIndex: 9999,
-            background: '#2563eb',
-            borderRadius: '8px',
-            padding: '8px 12px',
-            maxWidth: '250px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            color: 'white',
-            fontSize: '12px',
-          }}
-        >
-          💭 {data.thought}
-          {isActive && <span style={{ marginLeft: '4px', animation: 'pulse 1s infinite' }}>▊</span>}
-        </div>
-      )}
     </div>
   );
 });
