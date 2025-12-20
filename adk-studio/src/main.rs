@@ -26,6 +26,13 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(3000);
 
+    let host: [u8; 4] = args
+        .iter()
+        .position(|a| a == "--host" || a == "-h")
+        .and_then(|i| args.get(i + 1))
+        .map(|h| if h == "0.0.0.0" { [0, 0, 0, 0] } else { [127, 0, 0, 1] })
+        .unwrap_or([127, 0, 0, 1]);
+
     let projects_dir = args
         .iter()
         .position(|a| a == "--dir" || a == "-d")
@@ -53,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("📂 Serving static files from: {}", dir.display());
     }
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from((host, port));
     tracing::info!("🚀 ADK Studio starting on http://{}", addr);
     tracing::info!("📁 Projects directory: {}", projects_dir.display());
 
