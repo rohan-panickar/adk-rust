@@ -178,7 +178,7 @@ impl AuthMiddleware {
     }
 }
 
-/// Dynamic version of ProtectedTool for Arc<dyn Tool>.
+/// Dynamic version of [`ProtectedTool`] for `Arc<dyn Tool>`.
 pub struct ProtectedToolDyn {
     inner: Arc<dyn Tool>,
     access_control: Arc<AccessControl>,
