@@ -13,24 +13,27 @@ Access control and authentication for Rust Agent Development Kit (ADK-Rust).
 - **Role-Based Access** - Define roles with tool/agent permissions
 - **Permission Scopes** - Fine-grained allow/deny rules (deny precedence)
 - **Audit Logging** - Log all access attempts to JSONL files
-- **Middleware Integration** - Wrap tools with automatic permission checks
+- **SSO/OAuth** - JWT validation with Google, Azure AD, Okta, Auth0 providers
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| `default` | Core RBAC + audit logging |
+| `sso` | JWT/OIDC providers (Google, Azure AD, Okta, Auth0) |
 
 ## Quick Start
 
 ```rust
-use adk_auth::{Permission, Role, AccessControl, AuthMiddleware, FileAuditSink};
-use std::sync::Arc;
+use adk_auth::{Permission, Role, AccessControl, AuthMiddleware};
 
-// 1. Define roles
-let admin = Role::new("admin")
-    .allow(Permission::AllTools)
-    .allow(Permission::AllAgents);
-
+// Define roles
+let admin = Role::new("admin").allow(Permission::AllTools);
 let user = Role::new("user")
     .allow(Permission::Tool("search".into()))
     .deny(Permission::Tool("code_exec".into()));
 
-// 2. Build access control
+// Build access control
 let ac = AccessControl::builder()
     .role(admin)
     .role(user)
@@ -38,93 +41,74 @@ let ac = AccessControl::builder()
     .assign("bob@example.com", "user")
     .build()?;
 
-// 3. Create middleware with audit logging
-let audit = FileAuditSink::new("/var/log/adk/audit.jsonl")?;
-let middleware = AuthMiddleware::with_audit(ac, audit);
-
-// 4. Protect tools
+// Protect tools
+let middleware = AuthMiddleware::new(ac);
 let protected_tools = middleware.protect_all(tools);
 ```
 
-## Core Types
+## SSO Integration
 
-### Permission
-
-```rust
-pub enum Permission {
-    Tool(String),     // Specific tool
-    AllTools,         // All tools (wildcard)
-    Agent(String),    // Specific agent
-    AllAgents,        // All agents (wildcard)
-}
-```
-
-### Role
+Enable with `features = ["sso"]`:
 
 ```rust
-let role = Role::new("analyst")
-    .allow(Permission::Tool("search".into()))
-    .allow(Permission::Tool("chart".into()))
-    .deny(Permission::Tool("admin_panel".into()));
-```
+use adk_auth::sso::{GoogleProvider, ClaimsMapper, SsoAccessControl};
 
-### AccessControl
+// Create provider
+let provider = GoogleProvider::new("your-client-id");
 
-```rust
-let ac = AccessControl::builder()
-    .role(admin)
-    .role(analyst)
-    .assign("alice", "admin")
-    .assign("bob", "analyst")
+// Map IdP groups to roles
+let mapper = ClaimsMapper::builder()
+    .map_group("AdminGroup", "admin")
+    .default_role("viewer")
+    .user_id_from_email()
+    .build();
+
+// Combined SSO + RBAC
+let sso = SsoAccessControl::builder()
+    .validator(provider)
+    .mapper(mapper)
+    .access_control(ac)
     .build()?;
 
-// Check permission
-ac.check("bob", &Permission::Tool("search".into()))?;
+// Validate token and check permission
+let claims = sso.check_token(token, &Permission::Tool("search".into())).await?;
+println!("User: {}", claims.email.unwrap());
 ```
 
-## Middleware
+## Providers
 
-### Protect Single Tool
+| Provider | Usage |
+|----------|-------|
+| **Google** | `GoogleProvider::new(client_id)` |
+| **Azure AD** | `AzureADProvider::new(tenant_id, client_id)` |
+| **Okta** | `OktaProvider::new(domain, client_id)` |
+| **Auth0** | `Auth0Provider::new(domain, audience)` |
+| **Generic OIDC** | `OidcProvider::from_discovery(issuer, client_id).await` |
+
+## Audit Logging
 
 ```rust
-use adk_auth::ToolExt;
+use adk_auth::FileAuditSink;
 
-let protected = my_tool.with_access_control(Arc::new(ac));
+let audit = FileAuditSink::new("/var/log/adk/audit.jsonl")?;
+let middleware = AuthMiddleware::with_audit(ac, audit);
 ```
 
-### Protect with Audit Logging
-
-```rust
-let protected = my_tool.with_access_control_and_audit(
-    Arc::new(ac),
-    Arc::new(audit_sink),
-);
-```
-
-### Batch Protection
-
-```rust
-let middleware = AuthMiddleware::with_audit(ac, FileAuditSink::new("audit.jsonl")?);
-let protected_tools = middleware.protect_all(tools);
-```
-
-## Audit Output
-
+Output:
 ```json
-{"timestamp":"2025-01-01T00:00:00Z","user":"bob","session_id":"sess-123","event_type":"tool_access","resource":"search","outcome":"allowed"}
-{"timestamp":"2025-01-01T00:00:01Z","user":"bob","session_id":"sess-123","event_type":"tool_access","resource":"exec","outcome":"denied"}
+{"timestamp":"2025-01-01T10:30:00Z","user":"bob","resource":"search","outcome":"allowed"}
 ```
 
-## Features
+## Examples
 
-| Feature | Description |
-|---------|-------------|
-| Role-Based Access | Define roles with tool/agent permissions |
-| Permission Scopes | Fine-grained allow/deny rules |
-| Deny Precedence | Deny rules always override allow |
-| Audit Logging | JSONL logs with user, session, outcome |
-| ProtectedTool | Wrapper that enforces permissions |
-| AuthMiddleware | Batch protect multiple tools |
+```bash
+cargo run --example auth_basic          # RBAC basics
+cargo run --example auth_audit          # Audit logging
+cargo run --example auth_sso --features sso     # SSO integration
+cargo run --example auth_jwt --features sso     # JWT validation
+cargo run --example auth_oidc --features sso    # OIDC discovery
+cargo run --example auth_google --features sso  # Google Identity
+```
 
 ## License
 

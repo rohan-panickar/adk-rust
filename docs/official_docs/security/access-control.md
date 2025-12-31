@@ -4,27 +4,27 @@ Enterprise-grade access control for AI agents using `adk-auth`.
 
 ## Overview
 
-`adk-auth` provides role-based access control (RBAC) with audit logging for ADK agents. Control which users can access which tools, and log all access attempts for compliance.
+`adk-auth` provides role-based access control (RBAC) with audit logging and SSO support for ADK agents.
 
 ## Installation
 
 ```toml
 [dependencies]
 adk-auth = "0.1.8"
+
+# For SSO/OAuth support
+adk-auth = { version = "0.1.8", features = ["sso"] }
 ```
 
 ## Quick Start
 
 ```rust
-use adk_auth::{Permission, Role, AccessControl, AuthMiddleware, FileAuditSink};
+use adk_auth::{Permission, Role, AccessControl, AuthMiddleware};
 
 // Define roles
-let admin = Role::new("admin")
-    .allow(Permission::AllTools);
-
+let admin = Role::new("admin").allow(Permission::AllTools);
 let analyst = Role::new("analyst")
     .allow(Permission::Tool("search".into()))
-    .allow(Permission::Tool("summarize".into()))
     .deny(Permission::Tool("code_exec".into()));
 
 // Build access control
@@ -35,11 +35,8 @@ let ac = AccessControl::builder()
     .assign("bob@company.com", "analyst")
     .build()?;
 
-// Create middleware with audit logging
-let audit = FileAuditSink::new("/var/log/adk/audit.jsonl")?;
-let middleware = AuthMiddleware::with_audit(ac, audit);
-
 // Protect tools
+let middleware = AuthMiddleware::new(ac);
 let protected_tools = middleware.protect_all(tools);
 ```
 
@@ -54,7 +51,7 @@ let protected_tools = middleware.protect_all(tools);
 
 ## Defining Roles
 
-Roles combine allowed and denied permissions. **Deny rules take precedence over allow rules.**
+Roles combine allowed and denied permissions. **Deny rules take precedence.**
 
 ```rust
 let role = Role::new("data_analyst")
@@ -63,56 +60,68 @@ let role = Role::new("data_analyst")
     .deny(Permission::Tool("delete_data".into()));
 ```
 
-### Multi-Role Users
+## SSO Integration
 
-Users can have multiple roles. Access is granted if **any** role allows the permission (unless explicitly denied).
+Enable the `sso` feature for JWT/OIDC support:
+
+### Providers
+
+| Provider | Usage |
+|----------|-------|
+| Google | `GoogleProvider::new(client_id)` |
+| Azure AD | `AzureADProvider::new(tenant_id, client_id)` |
+| Okta | `OktaProvider::new(domain, client_id)` |
+| Auth0 | `Auth0Provider::new(domain, audience)` |
+| Generic OIDC | `OidcProvider::from_discovery(issuer, client_id).await` |
+
+### Example
 
 ```rust
-let ac = AccessControl::builder()
-    .role(reader)
-    .role(writer)
-    .assign("alice", "reader")
-    .assign("alice", "writer")  // Alice has both roles
+use adk_auth::sso::{GoogleProvider, ClaimsMapper, SsoAccessControl};
+
+// Create provider
+let provider = GoogleProvider::new("your-client-id");
+
+// Map IdP groups to adk-auth roles
+let mapper = ClaimsMapper::builder()
+    .map_group("AdminGroup", "admin")
+    .map_group("Users", "viewer")
+    .default_role("guest")
+    .user_id_from_email()
+    .build();
+
+// Build SSO access control
+let sso = SsoAccessControl::builder()
+    .validator(provider)
+    .mapper(mapper)
+    .access_control(ac)
     .build()?;
-```
 
-## Protecting Tools
+// Validate token and check permission
+let claims = sso.check_token(
+    bearer_token,
+    &Permission::Tool("search".into()),
+).await?;
 
-### Option 1: AuthMiddleware (Recommended)
-
-```rust
-let middleware = AuthMiddleware::new(ac);
-let protected_tools = middleware.protect_all(tools);
-```
-
-### Option 2: With Audit Logging
-
-```rust
-let audit = FileAuditSink::new("audit.jsonl")?;
-let middleware = AuthMiddleware::with_audit(ac, audit);
-let protected_tools = middleware.protect_all(tools);
-```
-
-### Option 3: Single Tool
-
-```rust
-use adk_auth::ToolExt;
-
-let protected = my_tool.with_access_control(Arc::new(ac));
+println!("User: {}", claims.email.unwrap());
 ```
 
 ## Audit Logging
 
-All access attempts are logged in JSONL format:
+```rust
+use adk_auth::FileAuditSink;
 
+let audit = FileAuditSink::new("/var/log/adk/audit.jsonl")?;
+let middleware = AuthMiddleware::with_audit(ac, audit);
+```
+
+Output:
 ```json
-{"timestamp":"2025-01-01T10:30:00Z","user":"bob","session_id":"sess-abc","event_type":"tool_access","resource":"search","outcome":"allowed"}
-{"timestamp":"2025-01-01T10:30:01Z","user":"bob","session_id":"sess-abc","event_type":"tool_access","resource":"code_exec","outcome":"denied"}
+{"timestamp":"2025-01-01T10:30:00Z","user":"bob","resource":"search","outcome":"allowed"}
+{"timestamp":"2025-01-01T10:30:01Z","user":"bob","resource":"code_exec","outcome":"denied"}
 ```
 
 ### Custom Audit Sink
-
-Implement `AuditSink` for custom logging:
 
 ```rust
 #[async_trait]
@@ -124,15 +133,18 @@ impl AuditSink for MyAuditSink {
 }
 ```
 
-## Error Handling
+## Examples
 
-```rust
-match ac.check("user", &Permission::Tool("dangerous".into())) {
-    Ok(()) => println!("Access granted"),
-    Err(AccessDenied { user, permission }) => {
-        println!("Access denied for {} to {}", user, permission);
-    }
-}
+```bash
+# Core RBAC
+cargo run --example auth_basic
+cargo run --example auth_audit
+
+# SSO (requires --features sso)
+cargo run --example auth_sso --features sso
+cargo run --example auth_jwt --features sso
+cargo run --example auth_oidc --features sso
+cargo run --example auth_google --features sso
 ```
 
 ## Best Practices
@@ -140,4 +152,5 @@ match ac.check("user", &Permission::Tool("dangerous".into())) {
 1. **Deny by default** - Only grant permissions explicitly needed
 2. **Use explicit denies** - Critical tools should have explicit deny rules
 3. **Enable audit logging** - Required for compliance and debugging
-4. **Multi-role carefully** - Avoid permission escalation through role combinations
+4. **Validate tokens** - Always validate JWT tokens server-side
+5. **Use HTTPS** - JWKS endpoints require secure connections
