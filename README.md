@@ -271,6 +271,7 @@ ADK-Rust follows a clean layered architecture from application interface down to
 | `adk-graph` | Graph-based workflows | LangGraph-style orchestration, state management, checkpointing, human-in-the-loop |
 | `adk-browser` | Browser automation | 46 WebDriver tools, navigation, forms, screenshots, PDF generation |
 | `adk-eval` | Agent evaluation | Test definitions, trajectory validation, LLM-judged scoring, rubrics |
+| `adk-auth` | Access control | Role-based permissions, audit logging, tool protection |
 
 ## Key Features
 
