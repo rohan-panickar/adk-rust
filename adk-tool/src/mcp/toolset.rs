@@ -143,9 +143,9 @@ where
     /// ```rust,ignore
     /// let toolset = McpToolset::new(client);
     /// let cancel_token = toolset.cancellation_token().await;
-    /// 
+    ///
     /// // ... use the toolset ...
-    /// 
+    ///
     /// // Before exiting:
     /// cancel_token.cancel();
     /// ```

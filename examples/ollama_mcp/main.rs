@@ -26,12 +26,24 @@ struct SimpleContext;
 
 #[async_trait]
 impl ReadonlyContext for SimpleContext {
-    fn invocation_id(&self) -> &str { "init" }
-    fn agent_name(&self) -> &str { "init" }
-    fn user_id(&self) -> &str { "user" }
-    fn app_name(&self) -> &str { "ollama-mcp" }
-    fn session_id(&self) -> &str { "init" }
-    fn branch(&self) -> &str { "main" }
+    fn invocation_id(&self) -> &str {
+        "init"
+    }
+    fn agent_name(&self) -> &str {
+        "init"
+    }
+    fn user_id(&self) -> &str {
+        "user"
+    }
+    fn app_name(&self) -> &str {
+        "ollama-mcp"
+    }
+    fn session_id(&self) -> &str {
+        "init"
+    }
+    fn branch(&self) -> &str {
+        "main"
+    }
     fn user_content(&self) -> &Content {
         static CONTENT: std::sync::OnceLock<Content> = std::sync::OnceLock::new();
         CONTENT.get_or_init(|| Content {
@@ -63,10 +75,10 @@ async fn main() -> anyhow::Result<()> {
     let model = Arc::new(OllamaModel::new(config)?);
 
     println!("Starting MCP server (@modelcontextprotocol/server-everything)...");
-    
+
     let mut cmd = Command::new("npx");
     cmd.arg("-y").arg("@modelcontextprotocol/server-everything");
-    
+
     let client = ().serve(TokioChildProcess::new(cmd)?).await?;
     println!("MCP server connected!");
 
@@ -79,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
 
     let ctx = Arc::new(SimpleContext) as Arc<dyn ReadonlyContext>;
     let tools = toolset.tools(ctx).await?;
-    
+
     println!("Discovered {} MCP tools:", tools.len());
     for tool in &tools {
         println!("  - {}: {}", tool.name(), tool.description());
@@ -91,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
         .model(model)
         .instruction(
             "You are a helpful assistant running locally via Ollama. \
-             You have access to MCP tools. Use them when appropriate to help the user."
+             You have access to MCP tools. Use them when appropriate to help the user.",
         );
 
     for tool in tools {
@@ -105,7 +117,8 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(agent),
         "ollama_mcp".to_string(),
         "user".to_string(),
-    ).await;
+    )
+    .await;
 
     // Cleanly shutdown the MCP server
     println!("\nShutting down MCP server...");

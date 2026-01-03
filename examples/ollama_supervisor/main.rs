@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
         })
         .with_output_mapper(|events| {
             let mut updates = std::collections::HashMap::new();
-            
+
             // Accumulate all text from all events
             let mut full_text = String::new();
             for event in events {
@@ -103,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            
+
             let text = full_text.to_lowercase();
             println!("[supervisor] full response: {:?}", text);
 
