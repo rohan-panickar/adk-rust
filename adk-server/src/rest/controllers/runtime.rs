@@ -8,7 +8,7 @@ use axum::{
 use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
-use tracing::{error, info, Instrument};
+use tracing::{info, Instrument};
 
 #[derive(Clone)]
 pub struct RuntimeController {
@@ -155,8 +155,8 @@ pub async fn run_sse_compat(
         .collect::<Vec<_>>()
         .join(" ");
 
-    // Validate session exists
-    controller
+    // Validate session exists or create it
+    let session_result = controller
         .config
         .session_service
         .get(adk_session::GetRequest {
@@ -166,11 +166,22 @@ pub async fn run_sse_compat(
             num_recent_events: None,
             after: None,
         })
-        .await
-        .map_err(|e| {
-            error!(error = ?e, "Session not found");
-            StatusCode::NOT_FOUND
-        })?;
+        .await;
+        
+    // If session doesn't exist, create it
+    if session_result.is_err() {
+        controller
+            .config
+            .session_service
+            .create(adk_session::CreateRequest {
+                app_name: app_name.clone(),
+                user_id: user_id.clone(),
+                session_id: Some(session_id.clone()),
+                state: std::collections::HashMap::new(),
+            })
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
 
     // Load agent
     let agent = controller
