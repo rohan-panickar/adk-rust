@@ -2,7 +2,7 @@ use adk_core::{
     AfterAgentCallback, AfterModelCallback, AfterToolCallback, Agent, BeforeAgentCallback,
     BeforeModelCallback, BeforeModelResult, BeforeToolCallback, CallbackContext, Content, Event,
     EventActions, FunctionResponseData, GlobalInstructionProvider, InstructionProvider, InvocationContext, Llm,
-    LlmRequest, MemoryEntry, Part, ReadonlyContext, Result, Tool, ToolContext,
+    LlmRequest, LlmResponse, MemoryEntry, Part, ReadonlyContext, Result, Tool, ToolContext,
 };
 use async_stream::stream;
 use async_trait::async_trait;
@@ -682,10 +682,18 @@ impl Agent for LlmAgent {
                     );
                     let _llm_guard = llm_span.enter();
                     
-                    // Call model with STREAMING ENABLED
+                    // Check streaming mode from run config
+                    use adk_core::StreamingMode;
+                    let streaming_mode = ctx.run_config().streaming_mode;
+                    let should_stream_to_client = matches!(streaming_mode, StreamingMode::SSE | StreamingMode::Bidi);
+                    
+                    // Always use streaming internally for LLM calls
                     let mut response_stream = model.generate_content(request, true).await?;
 
                     use futures::StreamExt;
+                    
+                    // Track last chunk for final event metadata (used in None mode)
+                    let mut last_chunk: Option<LlmResponse> = None;
 
                     // Stream and process chunks with AfterModel callbacks
                     while let Some(chunk_result) = response_stream.next().await {
@@ -718,23 +726,76 @@ impl Agent for LlmAgent {
                             }
                         }
 
-                        // Yield event with current chunk content (delta) and stable event ID
-                        // UI will accumulate content by event ID for display
-                        let mut partial_event = Event::with_id(&llm_event_id, &invocation_id);
-                        partial_event.author = agent_name.clone();
-                        partial_event.llm_request = Some(request_json.clone());
-                        partial_event.gcp_llm_request = Some(request_json.clone());
-                        partial_event.gcp_llm_response = Some(serde_json::to_string(&chunk).unwrap_or_default());
-                        // Copy streaming flags so UI knows when to finalize
-                        partial_event.llm_response.partial = chunk.partial;
-                        partial_event.llm_response.turn_complete = chunk.turn_complete;
-                        partial_event.llm_response.finish_reason = chunk.finish_reason;
-                        partial_event.llm_response.usage_metadata = chunk.usage_metadata.clone();
-                        // Send current chunk content only (delta), not accumulated
-                        partial_event.llm_response.content = chunk.content.clone();
+                        // Accumulate content for conversation history (always needed)
+                        if let Some(chunk_content) = chunk.content.clone() {
+                            if let Some(ref mut acc) = accumulated_content {
+                                acc.parts.extend(chunk_content.parts);
+                            } else {
+                                accumulated_content = Some(chunk_content);
+                            }
+                        }
 
-                        // Populate long_running_tool_ids for function calls from long-running tools
-                        if let Some(ref content) = chunk.content {
+                        // For SSE/Bidi mode: yield each chunk immediately with stable event ID
+                        if should_stream_to_client {
+                            let mut partial_event = Event::with_id(&llm_event_id, &invocation_id);
+                            partial_event.author = agent_name.clone();
+                            partial_event.llm_request = Some(request_json.clone());
+                            partial_event.gcp_llm_request = Some(request_json.clone());
+                            partial_event.gcp_llm_response = Some(serde_json::to_string(&chunk).unwrap_or_default());
+                            partial_event.llm_response.partial = chunk.partial;
+                            partial_event.llm_response.turn_complete = chunk.turn_complete;
+                            partial_event.llm_response.finish_reason = chunk.finish_reason;
+                            partial_event.llm_response.usage_metadata = chunk.usage_metadata.clone();
+                            partial_event.llm_response.content = chunk.content.clone();
+
+                            // Populate long_running_tool_ids
+                            if let Some(ref content) = chunk.content {
+                                let long_running_ids: Vec<String> = content.parts.iter()
+                                    .filter_map(|p| {
+                                        if let Part::FunctionCall { name, .. } = p {
+                                            if let Some(tool) = tools.iter().find(|t| t.name() == name) {
+                                                if tool.is_long_running() {
+                                                    return Some(name.clone());
+                                                }
+                                            }
+                                        }
+                                        None
+                                    })
+                                    .collect();
+                                partial_event.long_running_tool_ids = long_running_ids;
+                            }
+
+                            yield Ok(partial_event);
+                        }
+                        
+                        // Store last chunk for final event metadata
+                        last_chunk = Some(chunk.clone());
+
+                        // Check if turn is complete
+                        if chunk.turn_complete {
+                            break;
+                        }
+                    }
+                    
+                    // For None mode: yield single final event with accumulated content
+                    if !should_stream_to_client {
+                        let mut final_event = Event::with_id(&llm_event_id, &invocation_id);
+                        final_event.author = agent_name.clone();
+                        final_event.llm_request = Some(request_json.clone());
+                        final_event.gcp_llm_request = Some(request_json.clone());
+                        final_event.llm_response.content = accumulated_content.clone();
+                        final_event.llm_response.partial = false;
+                        final_event.llm_response.turn_complete = true;
+                        
+                        // Copy metadata from last chunk
+                        if let Some(ref last) = last_chunk {
+                            final_event.llm_response.finish_reason = last.finish_reason;
+                            final_event.llm_response.usage_metadata = last.usage_metadata.clone();
+                            final_event.gcp_llm_response = Some(serde_json::to_string(last).unwrap_or_default());
+                        }
+
+                        // Populate long_running_tool_ids
+                        if let Some(ref content) = accumulated_content {
                             let long_running_ids: Vec<String> = content.parts.iter()
                                 .filter_map(|p| {
                                     if let Part::FunctionCall { name, .. } = p {
@@ -747,24 +808,10 @@ impl Agent for LlmAgent {
                                     None
                                 })
                                 .collect();
-                            partial_event.long_running_tool_ids = long_running_ids;
+                            final_event.long_running_tool_ids = long_running_ids;
                         }
 
-                        yield Ok(partial_event);
-
-                        // Accumulate content for conversation history (server-side only)
-                        if let Some(chunk_content) = chunk.content {
-                            if let Some(ref mut acc) = accumulated_content {
-                                acc.parts.extend(chunk_content.parts);
-                            } else {
-                                accumulated_content = Some(chunk_content);
-                            }
-                        }
-
-                        // Check if turn is complete
-                        if chunk.turn_complete {
-                            break;
-                        }
+                        yield Ok(final_event);
                     }
                     
                     // Record LLM response to span before guard drops
