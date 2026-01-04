@@ -83,6 +83,11 @@ impl AdkSpanLayer {
 #[derive(Clone)]
 struct SpanFields(HashMap<String, String>);
 
+#[derive(Clone)]
+struct SpanTiming {
+    start_time: std::time::Instant,
+}
+
 impl<S> Layer<S> for AdkSpanLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -90,6 +95,11 @@ where
     fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
         let span = ctx.span(id).expect("Span not found");
         let mut extensions = span.extensions_mut();
+        
+        // Record start time
+        extensions.insert(SpanTiming {
+            start_time: std::time::Instant::now(),
+        });
         
         // Capture fields
         let mut visitor = StringVisitor::default();
@@ -134,6 +144,11 @@ where
         let span = ctx.span(&id).expect("Span not found");
         let extensions = span.extensions();
         
+        // Calculate actual duration
+        let timing = extensions.get::<SpanTiming>();
+        let end_time = std::time::Instant::now();
+        let duration_nanos = timing.map(|t| end_time.duration_since(t.start_time).as_nanos() as u64).unwrap_or(0);
+        
         // Get span metadata
         let metadata = span.metadata();
         let span_name = metadata.name();
@@ -143,10 +158,17 @@ where
             .map(|f| f.0.clone())
             .unwrap_or_default();
         
-        // Add span metadata to attributes
+        // Add span metadata and actual timing
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64;
+            
         attributes.insert("span_name".to_string(), span_name.to_string());
         attributes.insert("trace_id".to_string(), format!("{:016x}", id.into_u64()));
         attributes.insert("span_id".to_string(), format!("{:016x}", id.into_u64()));
+        attributes.insert("start_time".to_string(), (now_nanos - duration_nanos).to_string());
+        attributes.insert("end_time".to_string(), now_nanos.to_string());
         
         // Add parent span ID if exists
         if let Some(parent) = span.parent() {
