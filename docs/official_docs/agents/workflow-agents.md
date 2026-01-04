@@ -20,7 +20,7 @@ All workflow agents implement the `Agent` trait and can be nested within each ot
 
 ### Basic Usage
 
-```rust
+```rust,ignore
 use adk_rust::prelude::*;
 use std::sync::Arc;
 
@@ -52,7 +52,7 @@ let pipeline = SequentialAgent::new(
 
 ### Configuration Options
 
-```rust
+```rust,ignore
 // Add a description
 let pipeline = SequentialAgent::new("pipeline", sub_agents)
     .with_description("A three-step analysis pipeline");
@@ -82,7 +82,7 @@ let pipeline = SequentialAgent::new("pipeline", sub_agents)
 
 ### Basic Usage
 
-```rust
+```rust,ignore
 use adk_rust::prelude::*;
 use std::sync::Arc;
 
@@ -114,7 +114,7 @@ let parallel = ParallelAgent::new(
 
 ### Configuration Options
 
-```rust
+```rust,ignore
 // Add a description
 let parallel = ParallelAgent::new("analysis", sub_agents)
     .with_description("Concurrent multi-perspective analysis");
@@ -146,7 +146,7 @@ let parallel = ParallelAgent::new("analysis", sub_agents)
 
 ### Basic Usage
 
-```rust
+```rust,ignore
 use adk_rust::prelude::*;
 use std::sync::Arc;
 
@@ -171,7 +171,7 @@ let loop_agent = LoopAgent::new(
 
 ### Configuration Options
 
-```rust
+```rust,ignore
 // Set maximum iterations (required for safety)
 let loop_agent = LoopAgent::new("refiner", sub_agents)
     .with_max_iterations(10);
@@ -205,7 +205,7 @@ The `ExitLoopTool` is a built-in tool that allows agents to signal loop terminat
 
 ### Usage
 
-```rust
+```rust,ignore
 use adk_rust::prelude::*;
 use std::sync::Arc;
 
@@ -237,7 +237,7 @@ Workflow agents can be nested to create complex execution patterns.
 
 ### Sequential with Parallel
 
-```rust
+```rust,ignore
 // First, analyze from multiple perspectives in parallel
 let parallel_analysis = ParallelAgent::new(
     "parallel_analysis",
@@ -259,7 +259,7 @@ let pipeline = SequentialAgent::new(
 
 ### Loop with Sequential
 
-```rust
+```rust,ignore
 // Create a critique-refine loop
 let critic = LlmAgentBuilder::new("critic")
     .instruction("Critique the content and suggest improvements.")
@@ -293,7 +293,7 @@ let iterative_improvement = LoopAgent::new(
 
 Always set `max_iterations` on LoopAgent to prevent infinite loops:
 
-```rust
+```rust,ignore
 // Good: Always set a reasonable limit
 let loop_agent = LoopAgent::new("refiner", agents)
     .with_max_iterations(5);
@@ -305,7 +305,7 @@ let loop_agent = LoopAgent::new("refiner", agents)
 
 When using LoopAgent, make the exit condition clear in the agent's instruction:
 
-```rust
+```rust,ignore
 let refiner = LlmAgentBuilder::new("refiner")
     .instruction(
         "Review the content for quality. \
@@ -323,7 +323,7 @@ let refiner = LlmAgentBuilder::new("refiner")
 
 Use session state to pass data between agents in a workflow:
 
-```rust
+```rust,ignore
 // First agent stores result in state
 let analyzer = LlmAgentBuilder::new("analyzer")
     .instruction("Analyze the input. Store key findings in 'analysis' state key.")
@@ -342,7 +342,7 @@ let reporter = LlmAgentBuilder::new("reporter")
 
 ### SequentialAgent
 
-```rust
+```rust,ignore
 impl SequentialAgent {
     /// Create a new sequential agent with sub-agents
     pub fn new(name: impl Into<String>, sub_agents: Vec<Arc<dyn Agent>>) -> Self;
@@ -360,7 +360,7 @@ impl SequentialAgent {
 
 ### ParallelAgent
 
-```rust
+```rust,ignore
 impl ParallelAgent {
     /// Create a new parallel agent with sub-agents
     pub fn new(name: impl Into<String>, sub_agents: Vec<Arc<dyn Agent>>) -> Self;
@@ -378,7 +378,7 @@ impl ParallelAgent {
 
 ### LoopAgent
 
-```rust
+```rust,ignore
 impl LoopAgent {
     /// Create a new loop agent with sub-agents
     pub fn new(name: impl Into<String>, sub_agents: Vec<Arc<dyn Agent>>) -> Self;
@@ -399,7 +399,7 @@ impl LoopAgent {
 
 ### ExitLoopTool
 
-```rust
+```rust,ignore
 impl ExitLoopTool {
     /// Create a new exit loop tool
     pub fn new() -> Self;

@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
 };
 use serde::Serialize;
-use std::collections::HashMap;
+
 
 #[derive(Clone)]
 pub struct DebugController {
@@ -25,14 +25,36 @@ pub struct GraphResponse {
     pub dot_src: String,
 }
 
+#[derive(Serialize)]
+pub struct TraceResponse {
+    pub spans: Vec<adk_telemetry::memory::SpanData>,
+}
+
 pub async fn get_trace(
-    State(_controller): State<DebugController>,
-    Path(_event_id): Path<String>,
-) -> Result<Json<HashMap<String, String>>, StatusCode> {
-    // Stub: Return empty map or mock data
-    let mut trace = HashMap::new();
-    trace.insert("status".to_string(), "not_implemented".to_string());
-    Ok(Json(trace))
+    State(controller): State<DebugController>,
+    Path(event_id): Path<String>,
+) -> Result<Json<Vec<adk_telemetry::memory::SpanData>>, StatusCode> {
+    if let Some(storage) = &controller.config.trace_storage {
+        if let Some(spans) = storage.get_trace(&event_id) {
+            return Ok(Json(spans));
+        }
+    }
+    
+    // Return empty list if not found or no storage
+    Ok(Json(Vec::new()))
+}
+
+pub async fn get_session_traces(
+    State(controller): State<DebugController>,
+    Path(session_id): Path<String>,
+) -> Result<Json<Vec<adk_telemetry::memory::SpanData>>, StatusCode> {
+    if let Some(storage) = &controller.config.trace_storage {
+        if let Some(spans) = storage.get_trace(&session_id) {
+            return Ok(Json(spans));
+        }
+    }
+    
+    Ok(Json(Vec::new()))
 }
 
 pub async fn get_graph(

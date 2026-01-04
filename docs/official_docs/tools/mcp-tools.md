@@ -18,7 +18,7 @@ Benefits of MCP integration:
 
 Connect to an MCP server and use its tools:
 
-```rust
+```rust,no_run
 use adk_agent::LlmAgentBuilder;
 use adk_model::GeminiModel;
 use adk_tool::McpToolset;
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Set a custom name for the toolset:
 
-```rust
+```rust,ignore
 let toolset = McpToolset::new(client)
     .with_name("filesystem-tools");
 ```
@@ -67,7 +67,7 @@ let toolset = McpToolset::new(client)
 
 Filter which tools to expose using a predicate function:
 
-```rust
+```rust,ignore
 // Only expose specific tools
 let toolset = McpToolset::new(client)
     .with_filter(|name| {
@@ -77,7 +77,7 @@ let toolset = McpToolset::new(client)
 
 Or use the convenience method for exact name matching:
 
-```rust
+```rust,ignore
 let toolset = McpToolset::new(client)
     .with_tools(&["echo", "add", "get_time"]);
 ```
@@ -88,7 +88,7 @@ let toolset = McpToolset::new(client)
 
 Connect to a local MCP server via standard input/output:
 
-```rust
+```rust,ignore
 use rmcp::{ServiceExt, transport::TokioChildProcess};
 use tokio::process::Command;
 
@@ -112,7 +112,7 @@ let client = ().serve(TokioChildProcess::new(
 
 Connect to a remote MCP server via Server-Sent Events:
 
-```rust
+```rust,ignore
 use rmcp::{ServiceExt, transport::SseClient};
 
 let client = ().serve(
@@ -124,7 +124,7 @@ let client = ().serve(
 
 The `McpToolset` automatically discovers tools from the connected server:
 
-```rust
+```rust,ignore
 use adk_core::{ReadonlyContext, Toolset};
 
 // Get discovered tools
@@ -144,7 +144,7 @@ Each discovered tool:
 
 Here's a full example using the MCP "everything" test server:
 
-```rust
+```rust,no_run
 use adk_agent::LlmAgentBuilder;
 use adk_core::{Agent, Content, InvocationContext, Part, ReadonlyContext, RunConfig, Session, State};
 use adk_model::GeminiModel;
@@ -244,7 +244,7 @@ Find more servers at the [MCP Server Registry](https://github.com/modelcontextpr
 
 Handle MCP connection and execution errors:
 
-```rust
+```rust,ignore
 use adk_core::AdkError;
 
 match toolset.tools(ctx).await {
@@ -277,7 +277,7 @@ Common errors:
 
 You can create your own MCP server in Rust using the `rmcp` SDK:
 
-```rust
+```rust,ignore
 use rmcp::{tool, tool_router, handler::server::tool::ToolRouter, model::*};
 use tokio::sync::Mutex;
 use std::sync::Arc;

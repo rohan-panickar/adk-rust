@@ -52,6 +52,7 @@ pub struct ServerConfig {
     pub agent_loader: Arc<dyn adk_core::AgentLoader>,
     pub session_service: Arc<dyn adk_session::SessionService>,
     pub artifact_service: Option<Arc<dyn adk_artifact::ArtifactService>>,
+    pub trace_storage: Option<Arc<adk_telemetry::memory::SharedTraceStorage>>,
     pub backend_url: Option<String>,
     pub security: SecurityConfig,
 }
@@ -65,6 +66,7 @@ impl ServerConfig {
             agent_loader,
             session_service,
             artifact_service: None,
+            trace_storage: None,
             backend_url: None,
             security: SecurityConfig::default(),
         }
@@ -93,6 +95,14 @@ impl ServerConfig {
 
     pub fn with_security(mut self, security: SecurityConfig) -> Self {
         self.security = security;
+        self
+    }
+
+    pub fn with_trace_storage(
+        mut self,
+        trace_storage: Arc<adk_telemetry::memory::SharedTraceStorage>,
+    ) -> Self {
+        self.trace_storage = Some(trace_storage);
         self
     }
 

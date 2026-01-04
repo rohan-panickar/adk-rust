@@ -27,6 +27,7 @@
 //! ```
 
 pub mod init;
+pub mod memory;
 pub mod spans;
 
 // Re-export tracing macros for convenience
@@ -36,7 +37,7 @@ pub use tracing::{Span, debug, error, info, instrument, trace, warn};
 pub use spans::*;
 
 // Re-export init functions
-pub use init::{init_telemetry, init_with_otlp, shutdown_telemetry};
+pub use init::{init_telemetry, init_with_otlp, init_with_storage, shutdown_telemetry};
 
 // Re-export metrics
 pub use opentelemetry::global;

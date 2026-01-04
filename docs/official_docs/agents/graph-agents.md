@@ -19,10 +19,10 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-adk-graph = { version = "0.1", features = ["sqlite"] }
-adk-agent = "0.1"
-adk-model = "0.1"
-adk-core = "0.1"
+adk-graph = { version = "{{version}}", features = ["sqlite"] }
+adk-agent = "{{version}}"
+adk-model = "{{version}}"
+adk-core = "{{version}}"
 ```
 
 ### Basic Graph with AgentNode
@@ -31,7 +31,7 @@ The most common pattern is using `AgentNode` to wrap LLM agents as graph nodes. 
 - **Input mapper**: Transforms graph state to agent input `Content`
 - **Output mapper**: Transforms agent events to state updates
 
-```rust
+```rust,no_run
 use adk_graph::{
     edge::{END, START},
     node::{AgentNode, ExecutionConfig},
@@ -104,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
 
 Wraps any ADK `Agent` (typically `LlmAgent`) as a graph node:
 
-```rust
+```rust,ignore
 let node = AgentNode::new(llm_agent)
     .with_input_mapper(|state| {
         // Transform graph state to agent input Content
@@ -131,7 +131,7 @@ let node = AgentNode::new(llm_agent)
 
 Simple async functions that process state:
 
-```rust
+```rust,ignore
 .node_fn("process", |ctx| async move {
     let input = ctx.state.get("input").unwrap();
     let output = process_data(input).await?;
@@ -145,7 +145,7 @@ Simple async functions that process state:
 
 Direct connections between nodes:
 
-```rust
+```rust,ignore
 .edge(START, "first_node")
 .edge("first_node", "second_node")
 .edge("second_node", END)
@@ -155,7 +155,7 @@ Direct connections between nodes:
 
 Dynamic routing based on state:
 
-```rust
+```rust,ignore
 .conditional_edge(
     "router",
     |state| {
@@ -177,7 +177,7 @@ Dynamic routing based on state:
 
 Use built-in routers for common patterns:
 
-```rust
+```rust,ignore
 use adk_graph::edge::Router;
 
 // Route based on a state field value
@@ -204,7 +204,7 @@ use adk_graph::edge::Router;
 
 Multiple edges from a single node execute in parallel:
 
-```rust
+```rust,ignore
 let agent = GraphAgent::builder("parallel_processor")
     .channels(&["input", "translation", "summary", "analysis"])
     .node(translator_node)
@@ -227,7 +227,7 @@ let agent = GraphAgent::builder("parallel_processor")
 
 Build iterative reasoning agents with cycles:
 
-```rust
+```rust,ignore
 use adk_core::Part;
 
 // Create agent with tools
@@ -305,7 +305,7 @@ let react_agent = StateGraph::with_channels(&["question", "has_tool_calls", "res
 
 Route tasks to specialist agents:
 
-```rust
+```rust,ignore
 // Create supervisor agent
 let supervisor = Arc::new(
     LlmAgentBuilder::new("supervisor")
@@ -366,7 +366,7 @@ let graph = StateGraph::with_channels(&["task", "next_agent", "research", "conte
 
 Control how state updates are merged:
 
-```rust
+```rust,ignore
 let schema = StateSchema::builder()
     .channel("current_step")                    // Overwrite (default)
     .list_channel("messages")                   // Append to list
@@ -398,7 +398,7 @@ Enable persistent state for fault tolerance and human-in-the-loop:
 
 ### In-Memory (Development)
 
-```rust
+```rust,ignore
 use adk_graph::checkpoint::MemoryCheckpointer;
 
 let checkpointer = Arc::new(MemoryCheckpointer::new());
@@ -411,7 +411,7 @@ let graph = StateGraph::with_channels(&["task", "result"])
 
 ### SQLite (Production)
 
-```rust
+```rust,ignore
 use adk_graph::checkpoint::SqliteCheckpointer;
 
 let checkpointer = SqliteCheckpointer::new("checkpoints.db").await?;
@@ -424,7 +424,7 @@ let graph = StateGraph::with_channels(&["task", "result"])
 
 ### Checkpoint History (Time Travel)
 
-```rust
+```rust,ignore
 // List all checkpoints for a thread
 let checkpoints = checkpointer.list("thread-id").await?;
 for cp in checkpoints {
@@ -441,7 +441,7 @@ if let Some(checkpoint) = checkpointer.load_by_id(&checkpoint_id).await? {
 
 Pause execution for human approval using dynamic interrupts:
 
-```rust
+```rust,ignore
 use adk_graph::{error::GraphError, node::NodeOutput};
 
 // Planner agent assesses risk
@@ -534,7 +534,7 @@ match result {
 
 Use `interrupt_before` or `interrupt_after` for mandatory pause points:
 
-```rust
+```rust,ignore
 let graph = StateGraph::with_channels(&["task", "plan", "result"])
     .add_node(planner_node)
     .add_node(executor_node)
@@ -549,7 +549,7 @@ let graph = StateGraph::with_channels(&["task", "plan", "result"])
 
 Stream events as the graph executes:
 
-```rust
+```rust,ignore
 use futures::StreamExt;
 use adk_graph::stream::StreamMode;
 
@@ -586,7 +586,7 @@ GraphAgent implements the ADK `Agent` trait, so it works with:
 - **Sessions**: Works with `adk-session` for conversation history
 - **Streaming**: Returns ADK `EventStream`
 
-```rust
+```rust,ignore
 use adk_runner::Runner;
 
 let graph_agent = GraphAgent::builder("workflow")

@@ -6,7 +6,7 @@ This guide shows you how to get up and running with ADK-Rust. You'll create your
 
 Before you start, make sure you have:
 
-- Rust 1.75 or later (`rustup update stable`)
+- Rust 1.85.0 or later (`rustup update stable`)
 - A Google API key for Gemini
 
 ## Step 1: Create a New Project
@@ -36,10 +36,10 @@ Update your `Cargo.toml` with the required dependencies:
 [package]
 name = "my_agent"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-adk-rust = "0.1"
+adk-rust = "{{version}}"
 tokio = { version = "1.40", features = ["full"] }
 dotenv = "0.15"
 ```

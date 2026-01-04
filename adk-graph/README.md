@@ -40,10 +40,10 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-adk-graph = { version = "0.1.9", features = ["sqlite"] }
-adk-agent = "0.1.9"
-adk-model = "0.1.9"
-adk-core = "0.1.9"
+adk-graph = { version = "{{version}}", features = ["sqlite"] }
+adk-agent = "{{version}}"
+adk-model = "{{version}}"
+adk-core = "{{version}}"
 ```
 
 ### Basic Graph with AgentNode

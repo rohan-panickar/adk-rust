@@ -62,7 +62,16 @@ impl GeminiModel {
             if let Some(chunks) = &grounding.grounding_chunks {
                 let sources: Vec<String> = chunks
                     .iter()
-                    .filter_map(|c| c.web.as_ref().map(|w| format!("[{}]({})", w.title, w.uri)))
+                    .filter_map(|c| {
+                        c.web.as_ref().and_then(|w| {
+                            match (&w.title, &w.uri) {
+                                (Some(title), Some(uri)) => Some(format!("[{}]({})", title, uri)),
+                                (Some(title), None) => Some(title.clone()),
+                                (None, Some(uri)) => Some(uri.to_string()),
+                                (None, None) => None,
+                            }
+                        })
+                    })
                     .collect();
                 if !sources.is_empty() {
                     let sources_info = format!("\n📚 **Sources:** {}", sources.join(" | "));

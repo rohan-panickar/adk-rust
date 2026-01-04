@@ -11,7 +11,8 @@ Welcome to the official documentation for ADK-Rust (Agent Development Kit for Ru
 
 ### Models
 
-- [Model Providers](models/providers.md) - LLM integrations: Gemini, OpenAI, Anthropic, DeepSeek
+- [Model Providers](models/providers.md) - LLM integrations: Gemini, OpenAI, Anthropic, DeepSeek, Groq, Ollama
+- [mistral.rs Integration](models/mistralrs.md) - Native mistral.rs integration for high-performance local inference
 
 ### Agents
 

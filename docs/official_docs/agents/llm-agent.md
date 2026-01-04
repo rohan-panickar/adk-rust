@@ -16,7 +16,7 @@ An LlmAgent wraps an LLM (like Gemini) and provides:
 
 Create a minimal agent with just a name and model:
 
-```rust
+```rust,no_run
 use adk_rust::prelude::*;
 use std::sync::Arc;
 
@@ -84,7 +84,7 @@ The `LlmAgentBuilder` provides a fluent API for configuring agents:
 
 Instructions support variable injection using `{var}` syntax. Variables are resolved from session state at runtime:
 
-```rust
+```rust,ignore
 let agent = LlmAgentBuilder::new("greeter")
     .model(Arc::new(model))
     .instruction("You are helping {user_name}. Their preference is {preference}.")
@@ -101,7 +101,7 @@ State variables can be set through:
 2. **Tool responses** - Tools can update state via `EventActions`
 3. **Output keys** - Agent output saved to state with `output_key()`
 
-```rust
+```rust,ignore
 // Using output_key to save agent response to state
 let summarizer = LlmAgentBuilder::new("summarizer")
     .model(Arc::new(model))
@@ -114,7 +114,7 @@ let summarizer = LlmAgentBuilder::new("summarizer")
 
 The `IncludeContents` enum controls what conversation history the agent receives:
 
-```rust
+```rust,ignore
 use adk_rust::prelude::*;
 
 // Default - agent sees full conversation history
@@ -143,7 +143,7 @@ Use `None` for agents that should operate independently on each turn without con
 
 For structured output, provide a JSON schema:
 
-```rust
+```rust,ignore
 use serde_json::json;
 
 let agent = LlmAgentBuilder::new("structured_agent")
@@ -166,7 +166,7 @@ The LLM will format its response according to the schema.
 
 Tools extend agent capabilities with custom functions:
 
-```rust
+```rust,ignore
 use adk_rust::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
@@ -194,7 +194,7 @@ let agent = LlmAgentBuilder::new("weather_agent")
 
 For instructions that need runtime computation, use an instruction provider:
 
-```rust
+```rust,ignore
 use adk_rust::prelude::*;
 use std::sync::Arc;
 
@@ -215,7 +215,7 @@ The provider receives a `ReadonlyContext` with access to session information.
 
 Here's a fully configured agent demonstrating multiple features:
 
-```rust
+```rust,no_run
 use adk_rust::prelude::*;
 use adk_rust::IncludeContents;
 use std::sync::Arc;

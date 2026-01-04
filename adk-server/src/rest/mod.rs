@@ -88,6 +88,10 @@ pub fn create_app_with_a2a(config: ServerConfig, a2a_base_url: Option<&str>) -> 
         .with_state(artifacts_controller)
         .route("/debug/trace/{event_id}", get(controllers::debug::get_trace))
         .route(
+            "/debug/trace/session/{session_id}",
+            get(controllers::debug::get_session_traces),
+        )
+        .route(
             "/debug/graph/{app_name}/{user_id}/{session_id}/{event_id}",
             get(controllers::debug::get_graph),
         )

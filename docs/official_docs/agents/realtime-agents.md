@@ -44,7 +44,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-adk-realtime = { version = "0.1", features = ["openai"] }
+adk-realtime = { version = "{{version}}", features = ["openai"] }
 ```
 
 ### Basic Usage

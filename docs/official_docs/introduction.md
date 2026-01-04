@@ -2,7 +2,7 @@
 
 Agent Development Kit (ADK) is a flexible and modular framework for developing and deploying AI agents. While optimized for Gemini and the Google ecosystem, ADK is model-agnostic, deployment-agnostic, and built for compatibility with other frameworks. ADK was designed to make agent development feel more like software development, making it easier for developers to create, deploy, and orchestrate agentic architectures that range from simple tasks to complex workflows.
 
-> **Note:** ADK-Rust v0.1.4 requires Rust 1.75 or higher
+> **Note:** ADK-Rust v0.1.9 requires Rust 1.85.0 or higher
 
 ## Installation
 
@@ -16,7 +16,7 @@ Or add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-adk-rust = "0.1"
+adk-rust = "{{version}}"
 tokio = { version = "1.40", features = ["full"] }
 ```
 
@@ -129,10 +129,13 @@ Events form the conversation history and enable replay and debugging.
 
 The underlying LLM that powers LlmAgents. ADK-Rust is optimized for Gemini but supports multiple providers through the `Llm` trait:
 
-- **Gemini**: Google's Gemini models (2.0 Flash, Pro, etc.)
+- **Gemini**: Google's Gemini models (2.5 Flash, Pro, etc.)
 - **OpenAI**: GPT-4o, GPT-4o-mini, Azure OpenAI
 - **Anthropic**: Claude Opus 4.5, Claude Sonnet 4, Claude 3.5
 - **DeepSeek**: DeepSeek-Chat, DeepSeek-Reasoner with thinking mode
+- **Groq**: Ultra-fast inference with LLaMA, Mixtral, Gemma models
+- **Ollama**: Local inference with privacy and no API keys
+- **mistral.rs**: High-performance local inference with hardware acceleration
 
 All providers implement the same trait for interchangeable use:
 
@@ -158,13 +161,13 @@ ADK-Rust uses Cargo features for modularity:
 
 ```toml
 # Full installation (default)
-adk-rust = "0.1"
+adk-rust = "{{version}}"
 
 # Minimal: Only agents + Gemini
-adk-rust = { version = "0.1", default-features = false, features = ["minimal"] }
+adk-rust = { version = "{{version}}", default-features = false, features = ["minimal"] }
 
 # Custom: Pick what you need
-adk-rust = { version = "0.1", default-features = false, features = ["agents", "gemini", "tools"] }
+adk-rust = { version = "{{version}}", default-features = false, features = ["agents", "gemini", "tools"] }
 ```
 
 Available features:

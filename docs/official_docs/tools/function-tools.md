@@ -16,7 +16,7 @@ Key features:
 
 Create a function tool with `FunctionTool::new()`:
 
-```rust
+```rust,no_run
 use adk_rust::prelude::*;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -65,7 +65,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 Tool handlers must follow this signature:
 
-```rust
+```rust,ignore
 async fn handler(
     ctx: Arc<dyn ToolContext>,
     args: Value,
@@ -81,7 +81,7 @@ Where:
 
 You can also use closures for simple tools:
 
-```rust
+```rust,ignore
 let add_tool = FunctionTool::new(
     "add_numbers",
     "Add two numbers together",
@@ -97,7 +97,7 @@ let add_tool = FunctionTool::new(
 
 Parameters are passed as a `serde_json::Value` object. Extract values using the `serde_json` API:
 
-```rust
+```rust,ignore
 async fn process_order(
     _ctx: Arc<dyn ToolContext>,
     args: Value,
@@ -138,7 +138,7 @@ async fn process_order(
 
 For complex parameters, deserialize into a struct:
 
-```rust
+```rust,ignore
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -176,7 +176,7 @@ Tools return `Result<Value>` where:
 
 Return any JSON-serializable data:
 
-```rust
+```rust,ignore
 // Simple value
 Ok(json!("Success"))
 
@@ -207,7 +207,7 @@ Ok(serde_json::to_value(response)?)
 
 Return `AdkError::Tool` for tool-specific errors:
 
-```rust
+```rust,ignore
 async fn divide(
     _ctx: Arc<dyn ToolContext>,
     args: Value,
@@ -231,7 +231,7 @@ The error message is passed back to the LLM, which can then decide how to handle
 
 The `ToolContext` provides access to execution context:
 
-```rust
+```rust,ignore
 #[async_trait]
 pub trait ToolContext: CallbackContext {
     /// Unique ID for this function call
@@ -249,7 +249,7 @@ pub trait ToolContext: CallbackContext {
 
 Through `CallbackContext`, you also have access to:
 
-```rust
+```rust,ignore
 pub trait CallbackContext: ReadonlyContext {
     /// Access to artifact storage (if configured)
     fn artifacts(&self) -> Option<Arc<dyn Artifacts>>;
@@ -258,7 +258,7 @@ pub trait CallbackContext: ReadonlyContext {
 
 ### Inherited from ReadonlyContext
 
-```rust
+```rust,ignore
 pub trait ReadonlyContext {
     fn invocation_id(&self) -> &str;
     fn agent_name(&self) -> &str;
@@ -272,7 +272,7 @@ pub trait ReadonlyContext {
 
 ### Using Context in Tools
 
-```rust
+```rust,ignore
 async fn personalized_greeting(
     ctx: Arc<dyn ToolContext>,
     _args: Value,
@@ -291,7 +291,7 @@ async fn personalized_greeting(
 
 Define a JSON Schema for better LLM understanding of parameters:
 
-```rust
+```rust,ignore
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -329,7 +329,7 @@ The schema is automatically generated from the Rust types using `schemars`.
 
 Similarly, define a response schema:
 
-```rust
+```rust,ignore
 #[derive(JsonSchema, Serialize)]
 struct CalculatorResult {
     /// The computed result
@@ -351,7 +351,7 @@ let calculator = FunctionTool::new(
 
 For tools that may take a long time to execute, mark them as long-running:
 
-```rust
+```rust,ignore
 let slow_tool = FunctionTool::new(
     "generate_report",
     "Generate a comprehensive report (may take several minutes)",
@@ -366,7 +366,7 @@ let slow_tool = FunctionTool::new(
 
 Here's a complete example with multiple tools:
 
-```rust
+```rust,no_run
 use adk_rust::prelude::*;
 use serde_json::{json, Value};
 use std::sync::Arc;

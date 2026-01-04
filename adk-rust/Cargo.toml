@@ -29,7 +29,8 @@ full = [
     "telemetry",
     "cli",
     "graph",
-    "ui"
+    "ui",
+    "doc-audit"
 ]
 
 # CLI launcher support
@@ -47,6 +48,7 @@ server = ["dep:adk-server"]
 telemetry = ["dep:adk-telemetry"]
 graph = ["dep:adk-graph"]
 ui = ["dep:adk-ui"]
+doc-audit = ["dep:adk-doc-audit"]
 
 # Minimal preset (just agents + models + runner)
 minimal = ["agents", "models", "runner"]
@@ -68,6 +70,7 @@ adk-telemetry = { workspace = true, optional = true }
 adk-cli = { workspace = true, optional = true }
 adk-graph = { workspace = true, optional = true }
 adk-ui = { workspace = true, optional = true }
+adk-doc-audit = { workspace = true, optional = true }
 
 # Re-export common dependencies
 tokio = { workspace = true }

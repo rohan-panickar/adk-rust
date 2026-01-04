@@ -16,7 +16,7 @@ Key benefits of multi-agent systems:
 
 You can add sub-agents to an `LlmAgent` using the `sub_agent()` builder method:
 
-```rust
+```rust,ignore
 use adk_rust::prelude::*;
 use std::sync::Arc;
 
@@ -76,7 +76,7 @@ By default, an agent can transfer to:
 
 You can control transfer behavior using builder methods:
 
-```rust
+```rust,ignore
 let restricted_agent = LlmAgentBuilder::new("restricted")
     .description("An agent with restricted transfer capabilities")
     .model(model.clone())
@@ -89,7 +89,7 @@ let restricted_agent = LlmAgentBuilder::new("restricted")
 
 For agent transfer to work well, provide clear instructions and descriptions:
 
-```rust
+```rust,ignore
 // Parent agent with clear delegation instructions
 let coordinator = LlmAgentBuilder::new("coordinator")
     .description("Main coordinator for customer service")
@@ -125,7 +125,7 @@ The `global_instruction` provides tree-wide configuration that applies to all ag
 
 ### Basic Usage
 
-```rust
+```rust,ignore
 let agent = LlmAgentBuilder::new("assistant")
     .description("A helpful assistant")
     .global_instruction(
@@ -149,7 +149,7 @@ Both instructions are included in the conversation history, with global instruct
 
 For more advanced scenarios, you can use a global instruction provider that computes the instruction dynamically:
 
-```rust
+```rust,ignore
 use adk_core::GlobalInstructionProvider;
 
 let provider: GlobalInstructionProvider = Arc::new(|ctx| {
@@ -178,7 +178,7 @@ let agent = LlmAgentBuilder::new("assistant")
 
 Both global and agent instructions support state variable injection using `{variable}` syntax:
 
-```rust
+```rust,ignore
 // Set state in a previous agent or tool
 // state["company_name"] = "Acme Corp"
 // state["user_role"] = "manager"
@@ -201,7 +201,7 @@ The framework automatically injects values from the session state into the instr
 
 A central agent routes requests to specialized sub-agents:
 
-```rust
+```rust,ignore
 let billing = LlmAgentBuilder::new("billing")
     .description("Handles billing and payment questions")
     .model(model.clone())
@@ -249,7 +249,7 @@ Assistant: Let me investigate that duplicate charge for you...
 
 Multi-level hierarchies for breaking down complex tasks:
 
-```rust
+```rust,ignore
 // Low-level specialists
 let researcher = LlmAgentBuilder::new("researcher")
     .description("Researches topics and gathers information")
@@ -281,7 +281,7 @@ let project_manager = LlmAgentBuilder::new("project_manager")
 
 Multi-agent systems work well with workflow agents (Sequential, Parallel, Loop):
 
-```rust
+```rust,ignore
 use adk_agent::workflow::{SequentialAgent, ParallelAgent};
 
 // Create specialized agents
@@ -315,7 +315,7 @@ let coordinator = LlmAgentBuilder::new("coordinator")
 
 Agents in a hierarchy communicate through shared session state:
 
-```rust
+```rust,ignore
 // Agent A saves data to state
 let agent_a = LlmAgentBuilder::new("agent_a")
     .instruction("Analyze the topic and save key points.")
@@ -338,7 +338,7 @@ The `output_key` configuration automatically saves an agent's final response to 
 
 The `Launcher` provides an easy way to run and test multi-agent systems:
 
-```rust
+```rust,ignore
 use adk_rust::Launcher;
 
 let coordinator = /* your multi-agent setup */;

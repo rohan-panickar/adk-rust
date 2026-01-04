@@ -19,9 +19,9 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-adk-browser = "0.1"
-adk-agent = "0.1"
-adk-model = "0.1"
+adk-browser = "{{version}}"
+adk-agent = "{{version}}"
+adk-model = "{{version}}"
 ```
 
 ### Prerequisites
@@ -38,7 +38,7 @@ chromedriver --port=4444
 
 ### Basic Usage
 
-```rust
+```rust,no_run
 use adk_browser::{BrowserSession, BrowserToolset, BrowserConfig};
 use adk_agent::LlmAgentBuilder;
 use adk_model::GeminiModel;
@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Select only the tools your agent needs:
 
-```rust
+```rust,ignore
 let toolset = BrowserToolset::new(session)
     .with_navigation(true)   // Navigate, back, forward, refresh
     .with_extraction(true)   // Extract text, links, HTML
@@ -220,7 +220,7 @@ Tools that target elements accept CSS selectors:
 
 ## Example: Web Research Agent
 
-```rust
+```rust,ignore
 use adk_browser::{BrowserSession, BrowserToolset, BrowserConfig};
 use adk_agent::LlmAgentBuilder;
 
@@ -246,7 +246,7 @@ let agent = LlmAgentBuilder::new("researcher")
 
 ## Example: Form Automation
 
-```rust
+```rust,ignore
 let agent = LlmAgentBuilder::new("form_filler")
     .model(model)
     .instruction(r#"
@@ -262,7 +262,7 @@ let agent = LlmAgentBuilder::new("form_filler")
 
 ## Configuration
 
-```rust
+```rust,ignore
 let config = BrowserConfig::new("http://localhost:4444")
     .with_headless(true)          // Run headless if supported
     .with_timeout(Duration::from_secs(30))
@@ -286,7 +286,7 @@ Works with any WebDriver-compatible server:
 
 Browser tools return structured errors:
 
-```rust
+```rust,ignore
 match result {
     Ok(value) => println!("Success: {:?}", value),
     Err(e) => {

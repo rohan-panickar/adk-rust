@@ -20,16 +20,16 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-adk-rust = { version = "0.1", features = ["ui"] }
+adk-rust = { version = "{{version}}", features = ["ui"] }
 # Or use individual crates:
-adk-ui = "0.1"
-adk-agent = "0.1"
-adk-model = "0.1"
+adk-ui = "{{version}}"
+adk-agent = "{{version}}"
+adk-model = "{{version}}"
 ```
 
 ### Basic Usage
 
-```rust
+```rust,no_run
 use adk_rust::prelude::*;
 use adk_rust::ui::UiToolset;
 use std::sync::Arc;
@@ -255,7 +255,7 @@ Show brief toast notifications for status updates.
 
 Select only the tools your agent needs:
 
-```rust
+```rust,ignore
 let toolset = UiToolset::new()
     .without_chart()      // Disable charts
     .without_table()      // Disable tables
@@ -271,7 +271,7 @@ let forms_only = UiToolset::forms_only();
 
 When users interact with rendered UI (submit forms, click buttons), events are sent back to the agent:
 
-```rust
+```rust,ignore
 use adk_ui::{UiEvent, UiEventType};
 
 // UiEvent structure
@@ -289,7 +289,7 @@ let message = ui_event.to_message();
 
 For real-time UI updates, use `UiUpdate` to patch components by ID:
 
-```rust
+```rust,ignore
 use adk_ui::{UiUpdate, UiOperation};
 
 let update = UiUpdate {

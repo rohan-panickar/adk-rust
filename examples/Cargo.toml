@@ -482,6 +482,11 @@ name = "mistralrs_diffusion"
 path = "mistralrs_diffusion/main.rs"
 required-features = ["mistralrs"]
 
+[[example]]
+name = "doc-audit-example"
+path = "doc_audit/src/main.rs"
+required-features = ["doc-audit"]
+
 [features]
 default = []
 openai = ["adk-model/openai"]
@@ -495,6 +500,7 @@ realtime-gemini = ["adk-realtime/gemini"]
 browser = ["dep:adk-browser", "dep:reqwest"]
 guardrails = ["adk-agent/guardrails", "dep:adk-guardrail"]
 sso = ["adk-auth/sso"]
+doc-audit = ["dep:adk-doc-audit"]
 
 [dependencies]
 adk-core.workspace = true
@@ -514,6 +520,7 @@ adk-ui.workspace = true
 adk-auth.workspace = true
 adk-browser = { workspace = true, optional = true }
 adk-guardrail = { workspace = true, optional = true }
+adk-doc-audit = { workspace = true, optional = true }
 # adk-mistralrs is excluded from workspace to prevent --all-features failures
 # It must be built explicitly: cargo build -p adk-mistralrs
 adk-mistralrs = { path = "../adk-mistralrs", optional = true }
@@ -533,3 +540,4 @@ dotenvy = "0.15"
 rmcp = { version = "0.9", features = ["client", "transport-child-process"] }
 rustyline = "15"
 image = "0.25"
+clap = { version = "4.0", features = ["derive"] }
