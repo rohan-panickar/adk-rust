@@ -20,7 +20,9 @@ impl SessionController {
     /// Helper function to convert a session to SessionResponse with actual events and state
     fn session_to_response(session: &dyn adk_session::Session) -> SessionResponse {
         // Convert events to JSON values
-        let events: Vec<serde_json::Value> = session.events().all()
+        let events: Vec<serde_json::Value> = session
+            .events()
+            .all()
             .into_iter()
             .map(|event| serde_json::to_value(event).unwrap_or(serde_json::Value::Null))
             .collect();
@@ -210,11 +212,18 @@ pub async fn list_sessions(
     State(controller): State<SessionController>,
     Path(params): Path<SessionPathParams>,
 ) -> Result<Json<Vec<SessionResponse>>, StatusCode> {
-    tracing::info!("list_sessions called with app_name: {}, user_id: {}", params.app_name, params.user_id);
-    
+    tracing::info!(
+        "list_sessions called with app_name: {}, user_id: {}",
+        params.app_name,
+        params.user_id
+    );
+
     let sessions = controller
         .session_service
-        .list(adk_session::ListRequest { app_name: params.app_name.clone(), user_id: params.user_id.clone() })
+        .list(adk_session::ListRequest {
+            app_name: params.app_name.clone(),
+            user_id: params.user_id.clone(),
+        })
         .await
         .map_err(|e| {
             tracing::error!("Failed to list sessions: {:?}", e);
@@ -223,10 +232,8 @@ pub async fn list_sessions(
 
     tracing::info!("Found {} sessions", sessions.len());
 
-    let responses: Vec<SessionResponse> = sessions
-        .into_iter()
-        .map(|s| SessionController::session_to_response(s.as_ref()))
-        .collect();
+    let responses: Vec<SessionResponse> =
+        sessions.into_iter().map(|s| SessionController::session_to_response(s.as_ref())).collect();
 
     Ok(Json(responses))
 }

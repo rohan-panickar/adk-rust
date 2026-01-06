@@ -174,12 +174,8 @@ impl DocumentationParser {
     /// A new `DocumentationParser` instance or an error if regex compilation fails.
     pub fn new(workspace_version: String, rust_version: String) -> Result<Self> {
         let patterns = ParserPatterns::new()?;
-        
-        Ok(Self {
-            workspace_version,
-            rust_version,
-            patterns,
-        })
+
+        Ok(Self { workspace_version, rust_version, patterns })
     }
 
     /// Parses a markdown file and extracts all relevant content for validation.
@@ -192,12 +188,9 @@ impl DocumentationParser {
     ///
     /// A `ParsedDocument` containing all extracted content or an error if parsing fails.
     pub async fn parse_file(&self, file_path: &Path) -> Result<ParsedDocument> {
-        let content = tokio::fs::read_to_string(file_path)
-            .await
-            .map_err(|e| AuditError::IoError {
-                path: file_path.to_path_buf(),
-                details: e.to_string(),
-            })?;
+        let content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
+            AuditError::IoError { path: file_path.to_path_buf(), details: e.to_string() }
+        })?;
 
         self.parse_content(file_path, &content)
     }
@@ -214,7 +207,7 @@ impl DocumentationParser {
     /// A `ParsedDocument` containing all extracted content.
     pub fn parse_content(&self, file_path: &Path, content: &str) -> Result<ParsedDocument> {
         let lines: Vec<&str> = content.lines().collect();
-        
+
         let code_examples = self.extract_code_examples(&lines)?;
         let api_references = self.extract_api_references(&lines)?;
         let version_references = self.extract_version_references(&lines)?;
@@ -238,7 +231,7 @@ impl DocumentationParser {
     pub fn extract_rust_examples(&self, content: &str) -> Result<Vec<CodeExample>> {
         let lines: Vec<&str> = content.lines().collect();
         let all_examples = self.extract_code_examples(&lines)?;
-        
+
         // Filter to only Rust examples and enhance with compilation metadata
         let rust_examples: Vec<CodeExample> = all_examples
             .into_iter()
@@ -260,13 +253,11 @@ impl DocumentationParser {
     pub fn extract_configuration_examples(&self, content: &str) -> Result<Vec<CodeExample>> {
         let lines: Vec<&str> = content.lines().collect();
         let all_examples = self.extract_code_examples(&lines)?;
-        
+
         // Filter to configuration files (TOML, YAML, JSON)
         let config_examples: Vec<CodeExample> = all_examples
             .into_iter()
-            .filter(|example| {
-                matches!(example.language.as_str(), "toml" | "yaml" | "yml" | "json")
-            })
+            .filter(|example| matches!(example.language.as_str(), "toml" | "yaml" | "yml" | "json"))
             .collect();
 
         Ok(config_examples)
@@ -278,41 +269,45 @@ impl DocumentationParser {
     /// based on code content, attributes, and context.
     fn should_compile_rust_example(&self, example: &CodeExample) -> bool {
         // Don't compile if explicitly marked as non-runnable
-        if example.attributes.contains(&"ignore".to_string()) 
+        if example.attributes.contains(&"ignore".to_string())
             || example.attributes.contains(&"no_run".to_string())
-            || example.attributes.contains(&"compile_fail".to_string()) {
+            || example.attributes.contains(&"compile_fail".to_string())
+        {
             return false;
         }
 
         // Check for incomplete code patterns that shouldn't be compiled
         let content = &example.content;
-        
+
         // Skip examples that are clearly incomplete
         if content.contains("// ...") 
             || content.contains("/* ... */")
             || content.trim().starts_with("use ")  // Just import statements
             || content.trim().starts_with("//")    // Just comments
-            || content.lines().count() < 2 {       // Too short to be meaningful
+            || content.lines().count() < 2
+        {
+            // Too short to be meaningful
             return false;
         }
 
         // Skip examples that look like they're showing syntax or partial code
-        if content.contains("fn example(") 
+        if content.contains("fn example(")
             || content.contains("struct Example")
-            || content.contains("// Example:") {
+            || content.contains("// Example:")
+        {
             return false;
         }
 
         // Examples with main functions or test functions are usually runnable
-        if content.contains("fn main(") 
+        if content.contains("fn main(")
             || content.contains("#[test]")
-            || content.contains("#[tokio::main]") {
+            || content.contains("#[tokio::main]")
+        {
             return true;
         }
 
         // Examples that use common ADK patterns are likely runnable
-        if content.contains("adk_") 
-            && (content.contains(".await") || content.contains("async")) {
+        if content.contains("adk_") && (content.contains(".await") || content.contains("async")) {
             return true;
         }
 
@@ -334,8 +329,9 @@ impl DocumentationParser {
                 if line.starts_with("```") {
                     if in_code_block {
                         // End of code block
-                        let is_runnable = self.is_code_runnable(&current_language, &current_attributes);
-                        
+                        let is_runnable =
+                            self.is_code_runnable(&current_language, &current_attributes);
+
                         examples.push(CodeExample {
                             content: current_code.trim().to_string(),
                             language: current_language.clone(),
@@ -379,7 +375,7 @@ impl DocumentationParser {
                 if let Some(api_match) = captures.get(0) {
                     let full_path = api_match.as_str();
                     let (crate_name, item_path, item_type) = self.parse_api_path(full_path);
-                    
+
                     references.push(ApiReference {
                         crate_name,
                         item_path: item_path.to_string(),
@@ -415,7 +411,7 @@ impl DocumentationParser {
             for captures in self.patterns.version_reference.captures_iter(line) {
                 if let Some(version_match) = captures.get(1) {
                     let version_type = self.classify_version_type(line, version_match.as_str());
-                    
+
                     references.push(VersionReference {
                         version: version_match.as_str().to_string(),
                         version_type,
@@ -438,7 +434,7 @@ impl DocumentationParser {
                 if let (Some(text_match), Some(target_match)) = (captures.get(1), captures.get(2)) {
                     let target = target_match.as_str();
                     let is_relative = !target.starts_with("http") && !target.starts_with('#');
-                    
+
                     links.push(InternalLink {
                         target: target.to_string(),
                         text: text_match.as_str().to_string(),
@@ -461,7 +457,7 @@ impl DocumentationParser {
                 if let Some(feature_match) = captures.get(1) {
                     let feature_name = feature_match.as_str().to_string();
                     let crate_name = self.extract_crate_from_context(line);
-                    
+
                     mentions.push(FeatureMention {
                         feature_name,
                         crate_name,
@@ -479,7 +475,7 @@ impl DocumentationParser {
     fn is_code_runnable(&self, language: &str, attributes: &[String]) -> bool {
         // Rust code is runnable unless explicitly marked otherwise
         if language == "rust" {
-            !attributes.contains(&"ignore".to_string()) 
+            !attributes.contains(&"ignore".to_string())
                 && !attributes.contains(&"no_run".to_string())
                 && !attributes.contains(&"compile_fail".to_string())
         } else {
@@ -491,28 +487,28 @@ impl DocumentationParser {
     /// Parses language specification from code block header.
     fn parse_language_spec(&self, lang_spec: &str) -> (String, Vec<String>) {
         let parts: Vec<&str> = lang_spec.split(',').map(|s| s.trim()).collect();
-        
+
         if parts.is_empty() {
             return ("text".to_string(), Vec::new());
         }
 
         let language = parts[0].to_string();
         let attributes = parts[1..].iter().map(|s| s.to_string()).collect();
-        
+
         (language, attributes)
     }
 
     /// Parses an API path to extract crate name, item path, and type.
     fn parse_api_path(&self, full_path: &str) -> (String, String, ApiItemType) {
         let parts: Vec<&str> = full_path.split("::").collect();
-        
+
         if parts.is_empty() {
             return ("unknown".to_string(), full_path.to_string(), ApiItemType::Unknown);
         }
 
         let crate_name = parts[0].to_string();
         let item_path = full_path.to_string();
-        
+
         // Infer item type from naming conventions and context
         let item_type = if let Some(last_part) = parts.last() {
             self.infer_api_item_type(last_part)
@@ -566,14 +562,14 @@ impl DocumentationParser {
                 return Some(crate_match.as_str().to_string());
             }
         }
-        
+
         // Fallback to API reference patterns (e.g., "adk_core::")
         if let Some(captures) = self.patterns.api_reference.captures(line) {
             if let Some(crate_match) = captures.get(1) {
                 return Some(crate_match.as_str().to_string());
             }
         }
-        
+
         None
     }
 }
@@ -582,47 +578,52 @@ impl ParserPatterns {
     /// Creates new compiled regex patterns for parsing.
     fn new() -> Result<Self> {
         Ok(Self {
-            code_block: Regex::new(r"^```(\w+(?:,\w+)*)?")
-                .map_err(|e| AuditError::RegexError {
-                    pattern: "code_block".to_string(),
-                    details: e.to_string(),
-                })?,
-            
-            api_reference: Regex::new(r"\b(adk_\w+)::([\w:]+)")
-                .map_err(|e| AuditError::RegexError {
+            code_block: Regex::new(r"^```(\w+(?:,\w+)*)?").map_err(|e| AuditError::RegexError {
+                pattern: "code_block".to_string(),
+                details: e.to_string(),
+            })?,
+
+            api_reference: Regex::new(r"\b(adk_\w+)::([\w:]+)").map_err(|e| {
+                AuditError::RegexError {
                     pattern: "api_reference".to_string(),
                     details: e.to_string(),
-                })?,
-            
-            version_reference: Regex::new(r#"version\s*=\s*"([^"]+)""#)
-                .map_err(|e| AuditError::RegexError {
+                }
+            })?,
+
+            version_reference: Regex::new(r#"version\s*=\s*"([^"]+)""#).map_err(|e| {
+                AuditError::RegexError {
                     pattern: "version_reference".to_string(),
                     details: e.to_string(),
-                })?,
-            
-            internal_link: Regex::new(r"\[([^\]]+)\]\(([^)]+)\)")
-                .map_err(|e| AuditError::RegexError {
+                }
+            })?,
+
+            internal_link: Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").map_err(|e| {
+                AuditError::RegexError {
                     pattern: "internal_link".to_string(),
                     details: e.to_string(),
-                })?,
-            
-            feature_flag: Regex::new(r#"features?\s*=\s*\[?"([^"\]]+)""#)
-                .map_err(|e| AuditError::RegexError {
+                }
+            })?,
+
+            feature_flag: Regex::new(r#"features?\s*=\s*\[?"([^"\]]+)""#).map_err(|e| {
+                AuditError::RegexError {
                     pattern: "feature_flag".to_string(),
                     details: e.to_string(),
-                })?,
-            
-            rust_version: Regex::new(r#"rust-version\s*=\s*"([^"]+)""#)
-                .map_err(|e| AuditError::RegexError {
+                }
+            })?,
+
+            rust_version: Regex::new(r#"rust-version\s*=\s*"([^"]+)""#).map_err(|e| {
+                AuditError::RegexError {
                     pattern: "rust_version".to_string(),
                     details: e.to_string(),
-                })?,
-            
-            toml_dependency: Regex::new(r#"^([a-zA-Z0-9_-]+)\s*=\s*\{"#)
-                .map_err(|e| AuditError::RegexError {
+                }
+            })?,
+
+            toml_dependency: Regex::new(r#"^([a-zA-Z0-9_-]+)\s*=\s*\{"#).map_err(|e| {
+                AuditError::RegexError {
                     pattern: "toml_dependency".to_string(),
                     details: e.to_string(),
-                })?,
+                }
+            })?,
         })
     }
 }
@@ -679,14 +680,14 @@ serde = "1.0"
 "#;
 
         let result = parser.parse_content(&PathBuf::from("test.md"), content).unwrap();
-        
+
         assert_eq!(result.code_examples.len(), 2);
-        
+
         let rust_example = &result.code_examples[0];
         assert_eq!(rust_example.language, "rust");
         assert!(rust_example.is_runnable);
         assert!(rust_example.content.contains("println!"));
-        
+
         let toml_example = &result.code_examples[1];
         assert_eq!(toml_example.language, "toml");
         assert!(!toml_example.is_runnable);
@@ -701,13 +702,13 @@ The `adk_model::Llm::generate` method is useful.
 "#;
 
         let result = parser.parse_content(&PathBuf::from("test.md"), content).unwrap();
-        
+
         assert_eq!(result.api_references.len(), 2);
-        
+
         let first_ref = &result.api_references[0];
         assert_eq!(first_ref.crate_name, "adk_core");
         assert_eq!(first_ref.item_path, "adk_core::Agent");
-        
+
         let second_ref = &result.api_references[1];
         assert_eq!(second_ref.crate_name, "adk_model");
         assert_eq!(second_ref.item_path, "adk_model::Llm::generate");
@@ -728,7 +729,7 @@ rust-version = "1.85.0"
 "#;
 
         let result = parser.parse_content(&PathBuf::from("test.md"), content).unwrap();
-        
+
         // Should find version references in the content
         assert!(!result.version_references.is_empty());
     }
@@ -742,9 +743,9 @@ Check out [API Reference](../api/index.md) for details.
 "#;
 
         let result = parser.parse_content(&PathBuf::from("test.md"), content).unwrap();
-        
+
         assert_eq!(result.internal_links.len(), 2);
-        
+
         let first_link = &result.internal_links[0];
         assert_eq!(first_link.text, "Getting Started");
         assert_eq!(first_link.target, "./getting-started.md");
@@ -764,7 +765,7 @@ Enable the `cuda` feature for GPU acceleration.
 "#;
 
         let result = parser.parse_content(&PathBuf::from("test.md"), content).unwrap();
-        
+
         // Should find feature mentions
         assert!(!result.feature_mentions.is_empty());
     }
@@ -785,13 +786,13 @@ fn no_run_example() {}
 "#;
 
         let result = parser.parse_content(&PathBuf::from("test.md"), content).unwrap();
-        
+
         assert_eq!(result.code_examples.len(), 2);
-        
+
         let ignored_example = &result.code_examples[0];
         assert!(!ignored_example.is_runnable);
         assert!(ignored_example.attributes.contains(&"ignore".to_string()));
-        
+
         let no_run_example = &result.code_examples[1];
         assert!(!no_run_example.is_runnable);
         assert!(no_run_example.attributes.contains(&"no_run".to_string()));
@@ -822,17 +823,17 @@ serde = "1.0"
 "#;
 
         let rust_examples = parser.extract_rust_examples(content).unwrap();
-        
+
         // Should have 3 Rust examples, but only some should be runnable
         assert_eq!(rust_examples.len(), 3);
-        
+
         // First example with main() should be runnable
         assert!(rust_examples[0].is_runnable);
         assert!(rust_examples[0].content.contains("main"));
-        
+
         // Second example is ignored
         assert!(!rust_examples[1].is_runnable);
-        
+
         // Third example is just a comment, shouldn't be runnable
         assert!(!rust_examples[2].is_runnable);
     }
@@ -859,10 +860,10 @@ fn main() {}
 "#;
 
         let config_examples = parser.extract_configuration_examples(content).unwrap();
-        
+
         // Should have 2 configuration examples (TOML and YAML)
         assert_eq!(config_examples.len(), 2);
-        
+
         assert_eq!(config_examples[0].language, "toml");
         assert_eq!(config_examples[1].language, "yaml");
     }
@@ -882,10 +883,10 @@ You can also use the `async` feature with adk-core.
 "#;
 
         let result = parser.parse_content(&PathBuf::from("test.md"), content).unwrap();
-        
+
         // Should detect feature mentions
         assert!(!result.feature_mentions.is_empty());
-        
+
         // Should also detect them in code examples
         let config_examples = parser.extract_configuration_examples(content).unwrap();
         assert_eq!(config_examples.len(), 1);

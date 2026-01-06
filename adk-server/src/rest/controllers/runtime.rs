@@ -8,7 +8,7 @@ use axum::{
 use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
-use tracing::{info, Instrument};
+use tracing::{Instrument, info};
 
 fn default_streaming_true() -> bool {
     true
@@ -72,7 +72,7 @@ pub async fn run_sse(
     Json(req): Json<RunRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
     let span = tracing::info_span!("run_sse", session_id = %session_id, app_name = %app_name, user_id = %user_id);
-    
+
     async move {
         // Validate session exists
         controller
@@ -114,16 +114,14 @@ pub async fn run_sse(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         // Convert to SSE stream
-        let sse_stream = stream::unfold(event_stream, move |mut stream| {
-            async move {
-                use futures::StreamExt;
-                match stream.next().await {
-                    Some(Ok(event)) => {
-                        let json = serde_json::to_string(&event).ok()?;
-                        Some((Ok(Event::default().data(json)), stream))
-                    }
-                    _ => None,
+        let sse_stream = stream::unfold(event_stream, move |mut stream| async move {
+            use futures::StreamExt;
+            match stream.next().await {
+                Some(Ok(event)) => {
+                    let json = serde_json::to_string(&event).ok()?;
+                    Some((Ok(Event::default().data(json)), stream))
                 }
+                _ => None,
             }
         });
 
@@ -172,7 +170,7 @@ pub async fn run_sse_compat(
             after: None,
         })
         .await;
-        
+
     // If session doesn't exist, create it
     if session_result.is_err() {
         controller
@@ -197,12 +195,9 @@ pub async fn run_sse_compat(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Create runner with streaming config from request
-    let streaming_mode = if req.streaming {
-        adk_core::StreamingMode::SSE
-    } else {
-        adk_core::StreamingMode::None
-    };
-    
+    let streaming_mode =
+        if req.streaming { adk_core::StreamingMode::SSE } else { adk_core::StreamingMode::None };
+
     let runner = adk_runner::Runner::new(adk_runner::RunnerConfig {
         app_name,
         agent,
@@ -220,16 +215,14 @@ pub async fn run_sse_compat(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Convert to SSE stream
-    let sse_stream = stream::unfold(event_stream, move |mut stream| {
-        async move {
-            use futures::StreamExt;
-            match stream.next().await {
-                Some(Ok(event)) => {
-                    let json = serde_json::to_string(&event).ok()?;
-                    Some((Ok(Event::default().data(json)), stream))
-                }
-                _ => None,
+    let sse_stream = stream::unfold(event_stream, move |mut stream| async move {
+        use futures::StreamExt;
+        match stream.next().await {
+            Some(Ok(event)) => {
+                let json = serde_json::to_string(&event).ok()?;
+                Some((Ok(Event::default().data(json)), stream))
             }
+            _ => None,
         }
     });
 

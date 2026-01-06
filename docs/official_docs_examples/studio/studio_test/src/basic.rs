@@ -17,9 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState::new(storage);
     println!("✓ AppState::new works");
 
-    let _app: Router<()> = Router::new()
-        .nest("/api", api_routes())
-        .with_state(state);
+    let _app: Router<()> = Router::new().nest("/api", api_routes()).with_state(state);
     println!("✓ api_routes() works");
 
     // Cleanup

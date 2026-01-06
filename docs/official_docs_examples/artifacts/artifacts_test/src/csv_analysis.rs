@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 //! CSV Data Analysis Example
 //!
 //! Demonstrates using BeforeModelCallback to inject CSV data
@@ -78,12 +79,8 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Ask questions about the sales data:\n");
 
-    adk_cli::console::run_console(
-        Arc::new(agent),
-        "csv_demo".to_string(),
-        "user".to_string(),
-    )
-    .await?;
+    adk_cli::console::run_console(Arc::new(agent), "csv_demo".to_string(), "user".to_string())
+        .await?;
 
     Ok(())
 }

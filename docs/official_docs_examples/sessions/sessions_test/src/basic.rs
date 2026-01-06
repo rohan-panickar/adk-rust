@@ -7,8 +7,8 @@
 //!   cargo run --bin basic
 
 use adk_session::{
-    CreateRequest, DeleteRequest, Event, GetRequest, InMemorySessionService, ListRequest,
-    SessionService, KEY_PREFIX_USER,
+    CreateRequest, DeleteRequest, Event, GetRequest, InMemorySessionService, KEY_PREFIX_USER,
+    ListRequest, SessionService,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -69,10 +69,7 @@ async fn main() -> anyhow::Result<()> {
     // 5. List all sessions
     println!("\n5. Listing sessions...");
     let sessions = service
-        .list(ListRequest {
-            app_name: "demo".to_string(),
-            user_id: "alice".to_string(),
-        })
+        .list(ListRequest { app_name: "demo".to_string(), user_id: "alice".to_string() })
         .await?;
 
     println!("   Total sessions: {}", sessions.len());
@@ -94,10 +91,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Verify deletion
     let sessions = service
-        .list(ListRequest {
-            app_name: "demo".to_string(),
-            user_id: "alice".to_string(),
-        })
+        .list(ListRequest { app_name: "demo".to_string(), user_id: "alice".to_string() })
         .await?;
     println!("   Remaining sessions: {}", sessions.len());
 

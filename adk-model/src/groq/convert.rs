@@ -168,7 +168,8 @@ pub fn content_to_message(content: &Content) -> Message {
             }
             Part::FunctionResponse { function_response, id } => {
                 tool_call_id = id.clone();
-                text_parts.push(serde_json::to_string(&function_response.response).unwrap_or_default());
+                text_parts
+                    .push(serde_json::to_string(&function_response.response).unwrap_or_default());
             }
             _ => {}
         }

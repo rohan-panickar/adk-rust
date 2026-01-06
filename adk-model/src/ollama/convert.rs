@@ -25,7 +25,10 @@ pub fn content_to_chat_message(content: &Content) -> Option<ChatMessage> {
             let mut response_texts = Vec::new();
             for part in &content.parts {
                 if let Part::FunctionResponse { function_response, .. } = part {
-                    response_texts.push(format!("{}: {}", function_response.name, function_response.response));
+                    response_texts.push(format!(
+                        "{}: {}",
+                        function_response.name, function_response.response
+                    ));
                 }
             }
             if !response_texts.is_empty() {

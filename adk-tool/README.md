@@ -22,14 +22,14 @@ Tool system for Rust Agent Development Kit (ADK-Rust) agents (FunctionTool, MCP,
 
 ```toml
 [dependencies]
-adk-tool = "{{version}}"
+adk-tool = "0.2.0"
 ```
 
 Or use the meta-crate:
 
 ```toml
 [dependencies]
-adk-rust = { version = "{{version}}", features = ["tools"] }
+adk-rust = { version = "0.2.0", features = ["tools"] }
 ```
 
 ## Quick Start

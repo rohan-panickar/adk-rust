@@ -3,10 +3,10 @@
 //! This example shows how to use template variables in instructions that get
 //! replaced with values from session state at runtime.
 
+use adk_rust::futures::StreamExt;
 use adk_rust::prelude::*;
 use adk_rust::runner::{Runner, RunnerConfig};
 use adk_rust::session::{CreateRequest, InMemorySessionService, SessionService};
-use adk_rust::futures::StreamExt;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,8 +19,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     // Agent with templated instruction
     let agent = LlmAgentBuilder::new("personalized")
-        .instruction("You are helping {user_name}. Their role is {user_role}. \
-                     Tailor your responses to their expertise level.")
+        .instruction(
+            "You are helping {user_name}. Their role is {user_role}. \
+                     Tailor your responses to their expertise level.",
+        )
         .model(Arc::new(model))
         .build()?;
 
@@ -40,12 +42,14 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     state.insert("user_name".to_string(), json!("Alice"));
     state.insert("user_role".to_string(), json!("Senior Developer"));
 
-    let session = session_service.create(CreateRequest {
-        app_name: "templating_demo".to_string(),
-        user_id: "user123".to_string(),
-        session_id: None,
-        state,
-    }).await?;
+    let session = session_service
+        .create(CreateRequest {
+            app_name: "templating_demo".to_string(),
+            user_id: "user123".to_string(),
+            session_id: None,
+            state,
+        })
+        .await?;
 
     println!("📝 Instruction Templating Demo");
     println!();
@@ -54,11 +58,13 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Run the agent with templated instruction
-    let mut response_stream = runner.run(
-        "user123".to_string(),
-        session.id().to_string(),
-        Content::new("user").with_text("Explain async/await in Rust"),
-    ).await?;
+    let mut response_stream = runner
+        .run(
+            "user123".to_string(),
+            session.id().to_string(),
+            Content::new("user").with_text("Explain async/await in Rust"),
+        )
+        .await?;
 
     // Print the response
     while let Some(event) = response_stream.next().await {

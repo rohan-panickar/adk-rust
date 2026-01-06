@@ -101,12 +101,9 @@ pub fn a2a_parts_to_adk(parts: &[crate::a2a::Part]) -> Result<Vec<Part>> {
                     let response =
                         resp.get("response").cloned().unwrap_or(Value::Object(Map::new()));
                     let id = resp.get("id").and_then(|v| v.as_str()).map(String::from);
-                    Ok(Part::FunctionResponse { 
-                        function_response: adk_core::FunctionResponseData {
-                            name,
-                            response,
-                        },
-                        id 
+                    Ok(Part::FunctionResponse {
+                        function_response: adk_core::FunctionResponseData { name, response },
+                        id,
                     })
                 } else {
                     Err(adk_core::AdkError::Agent("Unknown data part format".to_string()))

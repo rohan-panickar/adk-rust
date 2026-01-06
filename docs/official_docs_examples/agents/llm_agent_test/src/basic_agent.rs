@@ -1,13 +1,13 @@
 //! Basic Agent - Demonstrates Quick Start from llm-agent.md
 
-use adk_rust::prelude::*;
 use adk_rust::Launcher;
+use adk_rust::prelude::*;
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
-    
+
     let api_key = std::env::var("GOOGLE_API_KEY")?;
     let model = GeminiModel::new(&api_key, "gemini-2.5-flash")?;
 

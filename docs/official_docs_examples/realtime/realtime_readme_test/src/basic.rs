@@ -1,15 +1,14 @@
 //! Validates adk-realtime README examples compile correctly
 
 use adk_realtime::{
-    RealtimeAgent, RealtimeConfig, VadConfig, VadMode,
-    openai::OpenAIRealtimeModel,
+    RealtimeAgent, RealtimeConfig, VadConfig, VadMode, openai::OpenAIRealtimeModel,
 };
 use std::sync::Arc;
 
 // Validate: RealtimeAgent builder pattern
 fn _realtime_agent_builder() {
     let model = Arc::new(OpenAIRealtimeModel::new("api_key", "gpt-4o-realtime-preview-2024-12-17"));
-    
+
     let _agent = RealtimeAgent::builder("voice_assistant")
         .model(model)
         .instruction("You are a helpful voice assistant.")
@@ -21,7 +20,7 @@ fn _realtime_agent_builder() {
 // Validate: Custom VAD config
 fn _vad_config_example() {
     let model = Arc::new(OpenAIRealtimeModel::new("api_key", "gpt-4o-realtime-preview-2024-12-17"));
-    
+
     let _agent = RealtimeAgent::builder("assistant")
         .model(model)
         .vad(VadConfig {
@@ -50,7 +49,7 @@ fn _openai_model_example() {
 // Validate: Builder methods
 fn _builder_methods() {
     let model = Arc::new(OpenAIRealtimeModel::new("api_key", "gpt-4o-realtime-preview-2024-12-17"));
-    
+
     let _agent = RealtimeAgent::builder("test")
         .model(model)
         .description("A test agent")

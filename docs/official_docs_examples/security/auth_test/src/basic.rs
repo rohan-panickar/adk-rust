@@ -6,9 +6,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Access Control Doc-Test ===\n");
 
     // From docs: Deny Precedence
-    let role = Role::new("limited")
-        .allow(Permission::AllTools)
-        .deny(Permission::Tool("admin".into()));
+    let role =
+        Role::new("limited").allow(Permission::AllTools).deny(Permission::Tool("admin".into()));
 
     assert!(role.can_access(&Permission::Tool("search".into())));
     assert!(!role.can_access(&Permission::Tool("admin".into())));
@@ -25,9 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✓ Role creation works");
 
     // From docs: AccessControl builder
-    let admin = Role::new("admin")
-        .allow(Permission::AllTools)
-        .allow(Permission::AllAgents);
+    let admin = Role::new("admin").allow(Permission::AllTools).allow(Permission::AllAgents);
 
     let ac = AccessControl::builder()
         .role(admin)

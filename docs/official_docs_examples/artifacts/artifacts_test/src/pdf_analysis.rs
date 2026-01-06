@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 //! PDF Document Analysis Example
 //!
 //! Demonstrates using BeforeModelCallback to inject a PDF document
@@ -34,10 +35,7 @@ async fn main() -> anyhow::Result<()> {
             user_id: "user".to_string(),
             session_id: "init".to_string(),
             file_name: "user:document.pdf".to_string(),
-            part: Part::InlineData {
-                data: pdf_bytes,
-                mime_type: "application/pdf".to_string(),
-            },
+            part: Part::InlineData { data: pdf_bytes, mime_type: "application/pdf".to_string() },
             version: None,
         })
         .await?;
@@ -75,12 +73,8 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Ask questions about the PDF document:\n");
 
-    adk_cli::console::run_console(
-        Arc::new(agent),
-        "pdf_demo".to_string(),
-        "user".to_string(),
-    )
-    .await?;
+    adk_cli::console::run_console(Arc::new(agent), "pdf_demo".to_string(), "user".to_string())
+        .await?;
 
     Ok(())
 }

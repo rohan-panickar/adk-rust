@@ -1,8 +1,8 @@
 //! Basic evaluation doc-test - validates test file creation and parsing
 //! from evaluation.md documentation
 
-use adk_eval::{EvalCase, IntermediateData, TestFile, ToolUse, Turn};
 use adk_eval::schema::ContentData;
+use adk_eval::{EvalCase, IntermediateData, TestFile, ToolUse, Turn};
 use serde_json::json;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -66,27 +66,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eval_set_id: "my_tests".to_string(),
         name: "My Test Suite".to_string(),
         description: "Tests created programmatically".to_string(),
-        eval_cases: vec![
-            EvalCase {
-                eval_id: "test_1".to_string(),
-                description: "Simple test".to_string(),
-                conversation: vec![
-                    Turn {
-                        invocation_id: "turn_1".to_string(),
-                        user_content: ContentData::text("Hello"),
-                        final_response: Some(ContentData::model_response("Hi there!")),
-                        intermediate_data: Some(IntermediateData {
-                            tool_uses: vec![
-                                ToolUse::new("greet").with_args(json!({"name": "user"}))
-                            ],
-                            ..Default::default()
-                        }),
-                    }
-                ],
-                session_input: Default::default(),
-                tags: vec!["basic".to_string()],
-            }
-        ],
+        eval_cases: vec![EvalCase {
+            eval_id: "test_1".to_string(),
+            description: "Simple test".to_string(),
+            conversation: vec![Turn {
+                invocation_id: "turn_1".to_string(),
+                user_content: ContentData::text("Hello"),
+                final_response: Some(ContentData::model_response("Hi there!")),
+                intermediate_data: Some(IntermediateData {
+                    tool_uses: vec![ToolUse::new("greet").with_args(json!({"name": "user"}))],
+                    ..Default::default()
+                }),
+            }],
+            session_input: Default::default(),
+            tags: vec!["basic".to_string()],
+        }],
     };
 
     // Serialize and verify round-trip

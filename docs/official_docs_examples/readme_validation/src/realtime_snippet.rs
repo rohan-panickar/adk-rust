@@ -1,6 +1,6 @@
 //! README Realtime Voice Agents snippet validation
 
-use adk_realtime::{openai::OpenAIRealtimeModel, RealtimeAgent, RealtimeModel};
+use adk_realtime::{RealtimeAgent, RealtimeModel, openai::OpenAIRealtimeModel};
 use std::sync::Arc;
 
 #[tokio::main]

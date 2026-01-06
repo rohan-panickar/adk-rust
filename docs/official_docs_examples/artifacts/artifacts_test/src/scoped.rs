@@ -91,10 +91,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Save - just name and data
     let version = artifacts
-        .save("report.pdf", &Part::InlineData {
-            mime_type: "application/pdf".to_string(),
-            data: vec![0x25, 0x50, 0x44, 0x46], // PDF header
-        })
+        .save(
+            "report.pdf",
+            &Part::InlineData {
+                mime_type: "application/pdf".to_string(),
+                data: vec![0x25, 0x50, 0x44, 0x46], // PDF header
+            },
+        )
         .await?;
     println!("   Saved report.pdf as version {}", version);
 

@@ -65,13 +65,11 @@ impl GeminiModel {
                 let sources: Vec<String> = chunks
                     .iter()
                     .filter_map(|c| {
-                        c.web.as_ref().and_then(|w| {
-                            match (&w.title, &w.uri) {
-                                (Some(title), Some(uri)) => Some(format!("[{}]({})", title, uri)),
-                                (Some(title), None) => Some(title.clone()),
-                                (None, Some(uri)) => Some(uri.to_string()),
-                                (None, None) => None,
-                            }
+                        c.web.as_ref().and_then(|w| match (&w.title, &w.uri) {
+                            (Some(title), Some(uri)) => Some(format!("[{}]({})", title, uri)),
+                            (Some(title), None) => Some(title.clone()),
+                            (None, Some(uri)) => Some(uri.to_string()),
+                            (None, None) => None,
                         })
                     })
                     .collect();
@@ -217,7 +215,10 @@ impl Llm for GeminiModel {
                     for part in &content.parts {
                         if let Part::FunctionResponse { function_response, .. } = part {
                             builder = builder
-                                .with_function_response(&function_response.name, function_response.response.clone())
+                                .with_function_response(
+                                    &function_response.name,
+                                    function_response.response.clone(),
+                                )
                                 .map_err(|e| adk_core::AdkError::Model(e.to_string()))?;
                         }
                     }

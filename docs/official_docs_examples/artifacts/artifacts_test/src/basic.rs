@@ -7,8 +7,8 @@
 //!   cargo run --bin basic
 
 use adk_artifact::{
-    ArtifactService, DeleteRequest, InMemoryArtifactService, ListRequest, LoadRequest,
-    SaveRequest, VersionsRequest,
+    ArtifactService, DeleteRequest, InMemoryArtifactService, ListRequest, LoadRequest, SaveRequest,
+    VersionsRequest,
 };
 use adk_core::Part;
 

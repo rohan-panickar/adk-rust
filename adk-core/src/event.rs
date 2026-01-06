@@ -243,8 +243,10 @@ mod tests {
         event.llm_response.content = Some(Content {
             role: "function".to_string(),
             parts: vec![Part::FunctionResponse {
-                name: "get_weather".to_string(),
-                response: serde_json::json!({"temp": 72}),
+                function_response: crate::FunctionResponseData {
+                    name: "get_weather".to_string(),
+                    response: serde_json::json!({"temp": 72}),
+                },
                 id: Some("call_123".to_string()),
             }],
         });
@@ -271,8 +273,10 @@ mod tests {
         event.llm_response.content = Some(Content {
             role: "function".to_string(),
             parts: vec![Part::FunctionResponse {
-                name: "tool".to_string(),
-                response: serde_json::json!({"result": "done"}),
+                function_response: crate::FunctionResponseData {
+                    name: "tool".to_string(),
+                    response: serde_json::json!({"result": "done"}),
+                },
                 id: Some("call_tool".to_string()),
             }],
         });

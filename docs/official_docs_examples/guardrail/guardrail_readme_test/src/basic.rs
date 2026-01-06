@@ -1,11 +1,10 @@
 //! Validates adk-guardrail README examples compile correctly
 
-use adk_guardrail::{
-    PiiRedactor, ContentFilter, GuardrailSet, Guardrail,
-    GuardrailResult, Severity,
-};
 use adk_agent::LlmAgentBuilder;
 use adk_core::Content;
+use adk_guardrail::{
+    ContentFilter, Guardrail, GuardrailResult, GuardrailSet, PiiRedactor, Severity,
+};
 
 // Validate: PiiRedactor
 async fn _pii_redactor_example() {
@@ -24,30 +23,23 @@ fn _content_filter_examples() {
 
 // Validate: GuardrailSet builder
 fn _guardrail_set_example() {
-    let _set = GuardrailSet::new()
-        .with(ContentFilter::harmful_content())
-        .with(PiiRedactor::new());
+    let _set = GuardrailSet::new().with(ContentFilter::harmful_content()).with(PiiRedactor::new());
 }
 
 // Validate: Agent integration
 fn _agent_integration_example() {
-    let input_guardrails = GuardrailSet::new()
-        .with(ContentFilter::harmful_content())
-        .with(PiiRedactor::new());
+    let input_guardrails =
+        GuardrailSet::new().with(ContentFilter::harmful_content()).with(PiiRedactor::new());
 
-    let _agent = LlmAgentBuilder::new("assistant")
-        .input_guardrails(input_guardrails)
-        .build();
+    let _agent = LlmAgentBuilder::new("assistant").input_guardrails(input_guardrails).build();
 }
 
 // Validate: GuardrailResult variants
 fn _guardrail_result_examples() {
     let _pass = GuardrailResult::pass();
     let _fail = GuardrailResult::fail("reason", Severity::High);
-    let _transform = GuardrailResult::transform(
-        Content::new("user").with_text("redacted"),
-        "PII removed"
-    );
+    let _transform =
+        GuardrailResult::transform(Content::new("user").with_text("redacted"), "PII removed");
 }
 
 // Validate: Severity levels

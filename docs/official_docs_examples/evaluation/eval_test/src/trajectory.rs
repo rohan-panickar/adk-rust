@@ -1,11 +1,11 @@
 //! Trajectory evaluation doc-test - validates tool trajectory scoring
 //! from evaluation.md documentation
 
-use adk_eval::{
-    EvaluationCriteria, ResponseMatchConfig, ToolTrajectoryConfig,
-    ToolTrajectoryScorer, ToolUse, Rubric,
-};
 use adk_eval::criteria::SimilarityAlgorithm;
+use adk_eval::{
+    EvaluationCriteria, ResponseMatchConfig, Rubric, ToolTrajectoryConfig, ToolTrajectoryScorer,
+    ToolUse,
+};
 use serde_json::json;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,8 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(criteria_with_response.response_similarity, Some(0.8));
 
     // Builder pattern from docs
-    let builder_criteria = EvaluationCriteria::exact_tools()
-        .with_response_similarity(0.8);
+    let builder_criteria = EvaluationCriteria::exact_tools().with_response_similarity(0.8);
     println!("✓ Builder pattern works");
     assert_eq!(builder_criteria.tool_trajectory_score, Some(1.0));
     assert_eq!(builder_criteria.response_similarity, Some(0.8));
@@ -50,15 +49,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(semantic_criteria.semantic_match_score, Some(0.85));
 
     // Rubric-based evaluation from docs
-    let rubric_criteria = EvaluationCriteria::default()
-        .with_rubrics(0.7, vec![
-            Rubric::new("Accuracy", "Response is factually correct")
-                .with_weight(0.5),
-            Rubric::new("Helpfulness", "Response addresses user's needs")
-                .with_weight(0.3),
-            Rubric::new("Clarity", "Response is clear and well-organized")
-                .with_weight(0.2),
-        ]);
+    let rubric_criteria = EvaluationCriteria::default().with_rubrics(
+        0.7,
+        vec![
+            Rubric::new("Accuracy", "Response is factually correct").with_weight(0.5),
+            Rubric::new("Helpfulness", "Response addresses user's needs").with_weight(0.3),
+            Rubric::new("Clarity", "Response is clear and well-organized").with_weight(0.2),
+        ],
+    );
     println!("✓ Rubric-based criteria");
     assert_eq!(rubric_criteria.rubric_quality_score, Some(0.7));
     assert_eq!(rubric_criteria.rubric_config.as_ref().unwrap().rubrics.len(), 3);
@@ -69,9 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         strict_args: false,
     });
 
-    let expected = vec![
-        ToolUse::new("get_weather").with_args(json!({"location": "NYC"})),
-    ];
+    let expected = vec![ToolUse::new("get_weather").with_args(json!({"location": "NYC"}))];
     let actual = vec![
         ToolUse::new("get_weather").with_args(json!({"location": "NYC", "units": "fahrenheit"})),
     ];
@@ -82,7 +78,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Detailed comparison
     let comparison = scorer.compare(&expected, &actual);
-    println!("✓ Detailed comparison: {} matched, {} missing, {} extra",
+    println!(
+        "✓ Detailed comparison: {} matched, {} missing, {} extra",
         comparison.matched.len(),
         comparison.missing.len(),
         comparison.extra.len()

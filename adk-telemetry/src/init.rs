@@ -124,10 +124,12 @@ pub fn shutdown_telemetry() {
 /// Initialize telemetry with ADK-Go style span exporter
 /// This creates a shared span exporter that can be used by both telemetry and debug API
 /// Returns the exporter so it can be passed to the debug controller
-pub fn init_with_adk_exporter(service_name: &str) -> Result<Arc<AdkSpanExporter>, Box<dyn std::error::Error>> {
+pub fn init_with_adk_exporter(
+    service_name: &str,
+) -> Result<Arc<AdkSpanExporter>, Box<dyn std::error::Error>> {
     let exporter = Arc::new(AdkSpanExporter::new());
     let exporter_clone = exporter.clone();
-    
+
     INIT.call_once(|| {
         let filter = EnvFilter::try_from_default_env()
             .or_else(|_| EnvFilter::try_new("info"))

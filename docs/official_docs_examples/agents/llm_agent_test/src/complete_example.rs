@@ -1,7 +1,7 @@
 //! Complete Example - Production-ready agent with multiple tools
 
-use adk_rust::prelude::*;
 use adk_rust::Launcher;
+use adk_rust::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -39,14 +39,18 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     let a: f64 = parts[0].trim().parse().unwrap_or(0.0);
                     let b: f64 = parts[1].trim().parse().unwrap_or(0.0);
                     a + b
-                } else { 0.0 }
+                } else {
+                    0.0
+                }
             } else if expr.contains('*') {
                 let parts: Vec<&str> = expr.split('*').collect();
                 if parts.len() == 2 {
                     let a: f64 = parts[0].trim().parse().unwrap_or(0.0);
                     let b: f64 = parts[1].trim().parse().unwrap_or(0.0);
                     a * b
-                } else { 0.0 }
+                } else {
+                    0.0
+                }
             } else {
                 0.0
             };
@@ -57,10 +61,12 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Build the full agent
     let agent = LlmAgentBuilder::new("assistant")
         .description("A helpful assistant with weather and calculation abilities")
-        .instruction("You are a helpful assistant. \
+        .instruction(
+            "You are a helpful assistant. \
                      Use the weather tool for weather questions. \
                      Use the calculator for math. \
-                     Be concise and friendly.")
+                     Be concise and friendly.",
+        )
         .model(Arc::new(model))
         .tool(Arc::new(weather))
         .tool(Arc::new(calc))

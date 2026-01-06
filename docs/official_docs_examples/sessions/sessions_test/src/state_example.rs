@@ -7,8 +7,7 @@
 //!   cargo run --bin state_example
 
 use adk_session::{
-    CreateRequest, InMemorySessionService, SessionService, KEY_PREFIX_APP,
-    KEY_PREFIX_USER,
+    CreateRequest, InMemorySessionService, KEY_PREFIX_APP, KEY_PREFIX_USER, SessionService,
 };
 use serde_json::json;
 use std::collections::HashMap;

@@ -9,8 +9,8 @@
 //! Run in server mode:
 //!   GOOGLE_API_KEY=your_key cargo run --bin basic -- serve --port 8080
 
-use adk_rust::prelude::*;
 use adk_rust::Launcher;
+use adk_rust::prelude::*;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -30,10 +30,7 @@ async fn main() -> adk_core::Result<()> {
     // Launcher handles CLI parsing:
     // - No args or `chat`: Interactive console
     // - `serve [--port PORT]`: HTTP server with web UI
-    Launcher::new(Arc::new(agent))
-        .app_name("launcher_demo_app")
-        .run()
-        .await?;
+    Launcher::new(Arc::new(agent)).app_name("launcher_demo_app").run().await?;
 
     Ok(())
 }

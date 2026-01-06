@@ -15,7 +15,7 @@ dotenvy = "0.15"
 anyhow = "1.0"
 
 [[bin]]
-name = "basic"
+name = "browser_test_basic"
 path = "src/basic.rs"
 
 [[bin]]

@@ -22,12 +22,24 @@ struct SimpleContext;
 
 #[async_trait::async_trait]
 impl ReadonlyContext for SimpleContext {
-    fn invocation_id(&self) -> &str { "init" }
-    fn agent_name(&self) -> &str { "init" }
-    fn user_id(&self) -> &str { "user" }
-    fn app_name(&self) -> &str { "mcp" }
-    fn session_id(&self) -> &str { "init" }
-    fn branch(&self) -> &str { "main" }
+    fn invocation_id(&self) -> &str {
+        "init"
+    }
+    fn agent_name(&self) -> &str {
+        "init"
+    }
+    fn user_id(&self) -> &str {
+        "user"
+    }
+    fn app_name(&self) -> &str {
+        "mcp"
+    }
+    fn session_id(&self) -> &str {
+        "init"
+    }
+    fn branch(&self) -> &str {
+        "main"
+    }
     fn user_content(&self) -> &Content {
         static CONTENT: std::sync::OnceLock<Content> = std::sync::OnceLock::new();
         CONTENT.get_or_init(|| Content::new("user").with_text("init"))
@@ -69,13 +81,11 @@ async fn main() -> anyhow::Result<()> {
     println!();
 
     // 5. Build agent with all tools
-    let mut builder = LlmAgentBuilder::new("mcp_basic")
-        .model(model)
-        .instruction(
-            "You have access to MCP tools from the 'everything' server. \
+    let mut builder = LlmAgentBuilder::new("mcp_basic").model(model).instruction(
+        "You have access to MCP tools from the 'everything' server. \
              Use them to help the user. Available tools include echo, add, \
-             longRunningOperation, and more."
-        );
+             longRunningOperation, and more.",
+    );
 
     for tool in tools {
         builder = builder.tool(tool);
@@ -84,11 +94,9 @@ async fn main() -> anyhow::Result<()> {
     let agent = builder.build()?;
 
     // 6. Run interactive console
-    let result = adk_cli::console::run_console(
-        Arc::new(agent),
-        "mcp_basic".to_string(),
-        "user".to_string(),
-    ).await;
+    let result =
+        adk_cli::console::run_console(Arc::new(agent), "mcp_basic".to_string(), "user".to_string())
+            .await;
 
     // 7. Cleanup: shutdown MCP server
     println!("\nShutting down MCP server...");

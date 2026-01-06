@@ -1,10 +1,10 @@
 //! Guardrails doc-test - validates guardrails.md documentation
 
-use adk_guardrail::{
-    ContentFilter, ContentFilterConfig, GuardrailExecutor, GuardrailSet,
-    PiiRedactor, PiiType, SchemaValidator, Severity, Guardrail, GuardrailResult,
-};
 use adk_core::Content;
+use adk_guardrail::{
+    ContentFilter, ContentFilterConfig, Guardrail, GuardrailExecutor, GuardrailResult,
+    GuardrailSet, PiiRedactor, PiiType, SchemaValidator, Severity,
+};
 use serde_json::json;
 
 #[tokio::main]
@@ -32,9 +32,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✓ Blocked keywords filter works");
 
     // From docs: Content filtering - on topic
-    let filter = ContentFilter::on_topic("cooking", vec![
-        "recipe".into(), "cook".into(), "bake".into()
-    ]);
+    let filter =
+        ContentFilter::on_topic("cooking", vec!["recipe".into(), "cook".into(), "bake".into()]);
     let content = Content::new("user").with_text("Give me a recipe");
     let result = filter.validate(&content).await;
     assert!(result.is_pass());
@@ -67,9 +66,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         "required": ["name"]
     });
-    let validator = SchemaValidator::new(&schema)?
-        .with_name("user_schema")
-        .with_severity(Severity::High);
+    let validator =
+        SchemaValidator::new(&schema)?.with_name("user_schema").with_severity(Severity::High);
 
     let content = Content::new("model").with_text(r#"{"name": "Alice", "age": 30}"#);
     let result = validator.validate(&content).await;

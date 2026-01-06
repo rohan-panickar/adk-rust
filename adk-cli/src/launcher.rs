@@ -259,7 +259,7 @@ impl Launcher {
 
         let mut config = ServerConfig::new(agent_loader, session_service)
             .with_artifact_service_opt(self.artifact_service);
-        
+
         if let Some(exporter) = span_exporter {
             config = config.with_span_exporter(exporter);
         }

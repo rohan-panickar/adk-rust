@@ -22,12 +22,24 @@ struct SimpleContext;
 
 #[async_trait::async_trait]
 impl ReadonlyContext for SimpleContext {
-    fn invocation_id(&self) -> &str { "init" }
-    fn agent_name(&self) -> &str { "init" }
-    fn user_id(&self) -> &str { "user" }
-    fn app_name(&self) -> &str { "mcp" }
-    fn session_id(&self) -> &str { "init" }
-    fn branch(&self) -> &str { "main" }
+    fn invocation_id(&self) -> &str {
+        "init"
+    }
+    fn agent_name(&self) -> &str {
+        "init"
+    }
+    fn user_id(&self) -> &str {
+        "user"
+    }
+    fn app_name(&self) -> &str {
+        "mcp"
+    }
+    fn session_id(&self) -> &str {
+        "init"
+    }
+    fn branch(&self) -> &str {
+        "main"
+    }
     fn user_content(&self) -> &Content {
         static CONTENT: std::sync::OnceLock<Content> = std::sync::OnceLock::new();
         CONTENT.get_or_init(|| Content::new("user").with_text("init"))
@@ -54,9 +66,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 2. Create toolset with filtering
     // Method 1: Filter by exact names
-    let toolset = McpToolset::new(client)
-        .with_name("math-tools")
-        .with_tools(&["echo", "add"]);
+    let toolset = McpToolset::new(client).with_name("math-tools").with_tools(&["echo", "add"]);
 
     // Method 2: Filter by predicate (alternative)
     // let toolset = McpToolset::new(client)
@@ -76,14 +86,12 @@ async fn main() -> anyhow::Result<()> {
     println!();
 
     // 5. Build agent
-    let mut builder = LlmAgentBuilder::new("mcp_filtered")
-        .model(model)
-        .instruction(
-            "You have access to two MCP tools:\n\
+    let mut builder = LlmAgentBuilder::new("mcp_filtered").model(model).instruction(
+        "You have access to two MCP tools:\n\
              - echo: Repeats a message back to you\n\
              - add: Adds two numbers (parameters: a and b)\n\n\
-             Use these tools to help the user."
-        );
+             Use these tools to help the user.",
+    );
 
     for tool in tools {
         builder = builder.tool(tool);
@@ -96,7 +104,8 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(agent),
         "mcp_filtered".to_string(),
         "user".to_string(),
-    ).await;
+    )
+    .await;
 
     // 7. Cleanup
     println!("\nShutting down MCP server...");

@@ -1,7 +1,7 @@
 //! README Groq Example - Validates GroqClient + GroqConfig::llama70b pattern
 
-use adk_rust::prelude::*;
 use adk_rust::Launcher;
+use adk_rust::prelude::*;
 
 #[tokio::main]
 async fn main() -> AnyhowResult<()> {

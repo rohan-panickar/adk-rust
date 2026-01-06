@@ -21,7 +21,7 @@ rand = "0.8"
 lazy_static = "1.4"
 
 [[bin]]
-name = "basic"
+name = "function_tools_test_basic"
 path = "src/basic.rs"
 
 [[bin]]

@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "adk-agent"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "adk-guardrail",
@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "adk-artifact"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "adk-auth"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "adk-browser"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "adk-cli"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-agent",
  "adk-artifact",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "adk-core"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "adk-doc-audit"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -169,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "adk-eval"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "adk-model",
@@ -190,7 +190,7 @@ dependencies = [
 
 [[package]]
 name = "adk-examples"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-agent",
  "adk-artifact",
@@ -198,7 +198,6 @@ dependencies = [
  "adk-browser",
  "adk-cli",
  "adk-core",
- "adk-doc-audit",
  "adk-eval",
  "adk-graph",
  "adk-guardrail",
@@ -232,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "adk-gemini"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -259,7 +258,7 @@ dependencies = [
 
 [[package]]
 name = "adk-graph"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "async-stream",
@@ -277,7 +276,7 @@ dependencies = [
 
 [[package]]
 name = "adk-guardrail"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -293,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "adk-memory"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -303,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "adk-mistralrs"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "adk-telemetry",
@@ -325,7 +324,7 @@ dependencies = [
 
 [[package]]
 name = "adk-model"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "adk-gemini",
@@ -348,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "adk-realtime"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "async-openai",
@@ -369,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "adk-runner"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-artifact",
  "adk-core",
@@ -386,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "adk-rust"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-agent",
  "adk-artifact",
@@ -412,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "adk-server"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-agent",
  "adk-artifact",
@@ -446,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "adk-session"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -460,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "adk-studio"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-agent",
  "adk-core",
@@ -495,7 +494,7 @@ dependencies = [
 
 [[package]]
 name = "adk-telemetry"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -510,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "adk-tool"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "adk-telemetry",
@@ -529,7 +528,7 @@ dependencies = [
 
 [[package]]
 name = "adk-ui"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -7788,16 +7787,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "tool_readme_test"
-version = "0.1.0"
-dependencies = [
- "adk-core",
- "adk-tool",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

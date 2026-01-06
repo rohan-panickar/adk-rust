@@ -8,7 +8,7 @@
 
 use adk_cli::launcher::SingleAgentLoader;
 use adk_rust::prelude::*;
-use adk_server::{create_app_with_a2a, ServerConfig};
+use adk_server::{ServerConfig, create_app_with_a2a};
 use adk_session::InMemorySessionService;
 use std::sync::Arc;
 

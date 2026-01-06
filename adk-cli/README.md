@@ -19,14 +19,14 @@ Command-line launcher for Rust Agent Development Kit (ADK-Rust) agents.
 
 ```toml
 [dependencies]
-adk-cli = "{{version}}"
+adk-cli = "0.2.0"
 ```
 
 Or use the meta-crate:
 
 ```toml
 [dependencies]
-adk-rust = { version = "{{version}}", features = ["cli"] }
+adk-rust = { version = "0.2.0", features = ["cli"] }
 ```
 
 ## Quick Start

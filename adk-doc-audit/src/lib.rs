@@ -56,45 +56,42 @@
 //! adk-doc-audit validate docs/official_docs/getting-started.md
 //! ```
 
+pub mod analyzer;
 pub mod cli;
 pub mod config;
 pub mod error;
+pub mod orchestrator;
 pub mod parser;
-pub mod analyzer;
+pub mod reporter;
+pub mod suggestion;
 pub mod validator;
 pub mod version;
-pub mod suggestion;
-pub mod reporter;
-pub mod orchestrator;
 
 // Re-export commonly used types
+pub use analyzer::{
+    CodeAnalyzer, CrateInfo, CrateRegistry, Dependency, PublicApi, ValidationResult,
+};
 pub use cli::{AuditCli, AuditCommand, CliOutputFormat, CliSeverity};
 pub use config::{AuditConfig, AuditConfigBuilder, IssueSeverity, OutputFormat};
 pub use error::{AuditError, Result};
+pub use orchestrator::AuditOrchestrator;
 pub use parser::{
-    DocumentationParser, ParsedDocument, CodeExample, ApiReference, ApiItemType,
-    VersionReference, VersionType, InternalLink, FeatureMention
-};
-pub use analyzer::{
-    CodeAnalyzer, CrateRegistry, CrateInfo, PublicApi, Dependency, ValidationResult
-};
-pub use validator::{
-    ExampleValidator, ValidationResult as ExampleValidationResult, CompilationError, 
-    ErrorType, AsyncValidationConfig, ValidationMetadata
-};
-pub use version::{
-    VersionValidator, WorkspaceVersionInfo, VersionValidationResult, ValidationSeverity,
-    VersionValidationConfig, VersionTolerance, DependencySpec
-};
-pub use suggestion::{
-    SuggestionEngine, Suggestion, SuggestionType, SuggestionConfig
+    ApiItemType, ApiReference, CodeExample, DocumentationParser, FeatureMention, InternalLink,
+    ParsedDocument, VersionReference, VersionType,
 };
 pub use reporter::{
-    AuditReport, AuditSummary, FileAuditResult, AuditIssue, IssueCategory,
-    Recommendation, RecommendationType, AuditReportConfig, ProblematicFile,
-    ReportGenerator
+    AuditIssue, AuditReport, AuditReportConfig, AuditSummary, FileAuditResult, IssueCategory,
+    ProblematicFile, Recommendation, RecommendationType, ReportGenerator,
 };
-pub use orchestrator::AuditOrchestrator;
+pub use suggestion::{Suggestion, SuggestionConfig, SuggestionEngine, SuggestionType};
+pub use validator::{
+    AsyncValidationConfig, CompilationError, ErrorType, ExampleValidator, ValidationMetadata,
+    ValidationResult as ExampleValidationResult,
+};
+pub use version::{
+    DependencySpec, ValidationSeverity, VersionTolerance, VersionValidationConfig,
+    VersionValidationResult, VersionValidator, WorkspaceVersionInfo,
+};
 
 // Placeholder exports for components that will be implemented in later tasks
 // These will be uncommented as the components are implemented
@@ -112,32 +109,30 @@ pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_version_info() {
         assert!(!VERSION.is_empty());
         assert_eq!(CRATE_NAME, "adk-doc-audit");
     }
-    
+
     #[test]
     fn test_config_creation() {
         // Create temporary directories for testing
         let temp_dir = std::env::temp_dir();
         let workspace_path = temp_dir.join("test_workspace_2");
         let docs_path = temp_dir.join("test_docs_2");
-        
+
         // Create the directories
         std::fs::create_dir_all(&workspace_path).unwrap();
         std::fs::create_dir_all(&docs_path).unwrap();
-        
-        let config = AuditConfig::builder()
-            .workspace_path(&workspace_path)
-            .docs_path(&docs_path)
-            .build();
-        
+
+        let config =
+            AuditConfig::builder().workspace_path(&workspace_path).docs_path(&docs_path).build();
+
         // This should succeed now that paths exist
         assert!(config.is_ok());
-        
+
         // Clean up
         std::fs::remove_dir_all(&workspace_path).ok();
         std::fs::remove_dir_all(&docs_path).ok();

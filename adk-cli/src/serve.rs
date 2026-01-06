@@ -12,8 +12,7 @@ pub async fn run_serve(agent_loader: Arc<dyn AgentLoader>, port: u16) -> Result<
 
     let session_service = Arc::new(InMemorySessionService::new());
 
-    let config = ServerConfig::new(agent_loader, session_service)
-        .with_span_exporter(span_exporter);
+    let config = ServerConfig::new(agent_loader, session_service).with_span_exporter(span_exporter);
 
     let app = create_app(config);
 

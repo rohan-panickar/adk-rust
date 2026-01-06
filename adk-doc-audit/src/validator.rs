@@ -3,7 +3,7 @@
 //! This module provides functionality to validate that code examples in documentation
 //! compile correctly and follow proper patterns, especially for async code.
 
-use crate::{AuditError, Result, CodeExample};
+use crate::{AuditError, CodeExample, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -118,19 +118,12 @@ impl ExampleValidator {
     /// A new `ExampleValidator` instance or an error if setup fails.
     #[instrument(skip(workspace_path))]
     pub async fn new(workspace_version: String, workspace_path: PathBuf) -> Result<Self> {
-        let temp_dir = TempDir::new()
-            .map_err(|e| AuditError::TempDirError {
-                details: e.to_string(),
-            })?;
+        let temp_dir =
+            TempDir::new().map_err(|e| AuditError::TempDirError { details: e.to_string() })?;
 
         info!("Created temporary directory for example validation: {:?}", temp_dir.path());
 
-        Ok(Self {
-            temp_dir,
-            workspace_version,
-            workspace_path,
-            cargo_templates: HashMap::new(),
-        })
+        Ok(Self { temp_dir, workspace_version, workspace_path, cargo_templates: HashMap::new() })
     }
 
     /// Validates a code example by attempting to compile it.
@@ -256,7 +249,12 @@ impl ExampleValidator {
             }
 
             // Check nesting depth
-            self.validate_async_nesting(content, config.max_async_nesting, &mut warnings, &mut suggestions);
+            self.validate_async_nesting(
+                content,
+                config.max_async_nesting,
+                &mut warnings,
+                &mut suggestions,
+            );
 
             // Additional async pattern validations
             self.validate_tokio_usage(content, &mut errors, &mut warnings, &mut suggestions);
@@ -311,22 +309,31 @@ impl ExampleValidator {
                     }
                 }
                 ErrorType::AsyncPatternError => {
-                    suggestions.push("Consider using #[tokio::main] for async main functions".to_string());
+                    suggestions
+                        .push("Consider using #[tokio::main] for async main functions".to_string());
                     suggestions.push("Ensure all async calls use .await".to_string());
                 }
                 ErrorType::RuntimeSetupError => {
-                    suggestions.push("Add tokio runtime setup: #[tokio::main] or tokio::runtime::Runtime::new()".to_string());
+                    suggestions.push(
+                        "Add tokio runtime setup: #[tokio::main] or tokio::runtime::Runtime::new()"
+                            .to_string(),
+                    );
                 }
                 ErrorType::DeprecatedApi => {
-                    suggestions.push("Update to use the current API - check the latest documentation".to_string());
+                    suggestions.push(
+                        "Update to use the current API - check the latest documentation"
+                            .to_string(),
+                    );
                 }
                 _ => {
                     // Generic suggestions based on error message
                     if error.message.contains("cannot find") {
-                        suggestions.push("Check if the module or type is properly imported".to_string());
+                        suggestions
+                            .push("Check if the module or type is properly imported".to_string());
                     }
                     if error.message.contains("async") {
-                        suggestions.push("Ensure async functions are called with .await".to_string());
+                        suggestions
+                            .push("Ensure async functions are called with .await".to_string());
                     }
                 }
             }
@@ -337,7 +344,8 @@ impl ExampleValidator {
             suggestions.push("Add appropriate use statements for ADK crates".to_string());
         }
 
-        if example.content.contains("async fn main") && !example.content.contains("#[tokio::main]") {
+        if example.content.contains("async fn main") && !example.content.contains("#[tokio::main]")
+        {
             suggestions.push("Add #[tokio::main] attribute to async main function".to_string());
         }
 
@@ -360,11 +368,8 @@ impl ExampleValidator {
 
         // Generate main.rs or lib.rs
         let rust_code = self.prepare_rust_code(example)?;
-        let target_file = if example.content.contains("fn main") {
-            "src/main.rs"
-        } else {
-            "src/lib.rs"
-        };
+        let target_file =
+            if example.content.contains("fn main") { "src/main.rs" } else { "src/lib.rs" };
         fs::write(project_path.join(target_file), rust_code).await?;
 
         debug!("Created temporary project at: {:?}", project_path);
@@ -372,31 +377,49 @@ impl ExampleValidator {
     }
 
     /// Generates a Cargo.toml file for the temporary project.
-    async fn generate_cargo_toml(&self, project_name: &str, example: &CodeExample) -> Result<String> {
+    async fn generate_cargo_toml(
+        &self,
+        project_name: &str,
+        example: &CodeExample,
+    ) -> Result<String> {
         let mut dependencies = HashMap::new();
 
         // Add ADK dependencies based on code content
         if example.content.contains("adk_core") {
-            dependencies.insert("adk-core", format!("{{ path = \"{}\" }}", self.workspace_path.join("adk-core").display()));
+            dependencies.insert(
+                "adk-core",
+                format!("{{ path = \"{}\" }}", self.workspace_path.join("adk-core").display()),
+            );
         }
         if example.content.contains("adk_model") {
-            dependencies.insert("adk-model", format!("{{ path = \"{}\" }}", self.workspace_path.join("adk-model").display()));
+            dependencies.insert(
+                "adk-model",
+                format!("{{ path = \"{}\" }}", self.workspace_path.join("adk-model").display()),
+            );
         }
         if example.content.contains("adk_agent") {
-            dependencies.insert("adk-agent", format!("{{ path = \"{}\" }}", self.workspace_path.join("adk-agent").display()));
+            dependencies.insert(
+                "adk-agent",
+                format!("{{ path = \"{}\" }}", self.workspace_path.join("adk-agent").display()),
+            );
         }
         if example.content.contains("adk_tool") {
-            dependencies.insert("adk-tool", format!("{{ path = \"{}\" }}", self.workspace_path.join("adk-tool").display()));
+            dependencies.insert(
+                "adk-tool",
+                format!("{{ path = \"{}\" }}", self.workspace_path.join("adk-tool").display()),
+            );
         }
 
         // Add tokio if async code is detected
         if example.content.contains("async") || example.content.contains(".await") {
-            dependencies.insert("tokio", "{ version = \"1.0\", features = [\"full\"] }".to_string());
+            dependencies
+                .insert("tokio", "{ version = \"1.0\", features = [\"full\"] }".to_string());
         }
 
         // Add common dependencies based on imports
         if example.content.contains("serde") {
-            dependencies.insert("serde", "{ version = \"1.0\", features = [\"derive\"] }".to_string());
+            dependencies
+                .insert("serde", "{ version = \"1.0\", features = [\"derive\"] }".to_string());
         }
         if example.content.contains("anyhow") {
             dependencies.insert("anyhow", "\"1.0\"".to_string());
@@ -430,7 +453,7 @@ edition = "2021"
         // Add common imports if not present
         if !code.contains("use ") && (code.contains("adk_") || code.contains("tokio")) {
             let mut imports = Vec::new();
-            
+
             if code.contains("adk_core") {
                 imports.push("use adk_core::*;");
             }
@@ -440,7 +463,7 @@ edition = "2021"
             if code.contains("tokio") && code.contains("async") {
                 imports.push("use tokio;");
             }
-            
+
             if !imports.is_empty() {
                 code = format!("{}\n\n{}", imports.join("\n"), code);
             }
@@ -461,11 +484,15 @@ edition = "2021"
 
     /// Compiles the example in the temporary project.
     #[instrument(skip(self, example))]
-    async fn compile_example(&self, project_path: &Path, example: &CodeExample) -> Result<ValidationResult> {
+    async fn compile_example(
+        &self,
+        project_path: &Path,
+        example: &CodeExample,
+    ) -> Result<ValidationResult> {
         let cargo_command = "cargo check";
-        
+
         debug!("Running cargo check in: {:?}", project_path);
-        
+
         let output = Command::new("cargo")
             .arg("check")
             .arg("--message-format=json")
@@ -478,7 +505,7 @@ edition = "2021"
 
         let exit_code = output.status.code();
         let success = output.status.success();
-        
+
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -504,7 +531,11 @@ edition = "2021"
     }
 
     /// Parses cargo output to extract errors and warnings.
-    fn parse_cargo_output(&self, stdout: &str, stderr: &str) -> Result<(Vec<CompilationError>, Vec<String>)> {
+    fn parse_cargo_output(
+        &self,
+        stdout: &str,
+        stderr: &str,
+    ) -> Result<(Vec<CompilationError>, Vec<String>)> {
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
 
@@ -636,7 +667,11 @@ edition = "2021"
         suggestions: &mut Vec<String>,
     ) {
         // Check for .await without proper error handling
-        if content.contains(".await") && !content.contains("?") && !content.contains("unwrap") && !content.contains("expect") {
+        if content.contains(".await")
+            && !content.contains("?")
+            && !content.contains("unwrap")
+            && !content.contains("expect")
+        {
             errors.push(CompilationError {
                 message: "Async calls should handle errors properly".to_string(),
                 line: None,
@@ -645,7 +680,9 @@ edition = "2021"
                 suggestion: Some("Use ? operator or explicit error handling".to_string()),
                 code_snippet: None,
             });
-            suggestions.push("Consider using the ? operator for error propagation in async code".to_string());
+            suggestions.push(
+                "Consider using the ? operator for error propagation in async code".to_string(),
+            );
         }
     }
 
@@ -660,7 +697,11 @@ edition = "2021"
         // Check for missing .await on async calls
         let lines: Vec<&str> = content.lines().collect();
         for (i, line) in lines.iter().enumerate() {
-            if line.contains("async") && line.contains("(") && !line.contains(".await") && !line.contains("fn ") {
+            if line.contains("async")
+                && line.contains("(")
+                && !line.contains(".await")
+                && !line.contains("fn ")
+            {
                 warnings.push(format!("Line {}: Possible missing .await on async call", i + 1));
                 suggestions.push("Ensure async function calls use .await".to_string());
             }
@@ -689,8 +730,14 @@ edition = "2021"
         }
 
         if max_found > max_depth {
-            warnings.push(format!("Async nesting depth {} exceeds recommended maximum {}", max_found, max_depth));
-            suggestions.push("Consider refactoring deeply nested async blocks into separate functions".to_string());
+            warnings.push(format!(
+                "Async nesting depth {} exceeds recommended maximum {}",
+                max_found, max_depth
+            ));
+            suggestions.push(
+                "Consider refactoring deeply nested async blocks into separate functions"
+                    .to_string(),
+            );
         }
     }
 
@@ -712,7 +759,10 @@ edition = "2021"
         if error_message.contains("adk") {
             Some("Add the appropriate ADK crate to Cargo.toml dependencies".to_string())
         } else if error_message.contains("tokio") {
-            Some("Add tokio = { version = \"1.0\", features = [\"full\"] } to dependencies".to_string())
+            Some(
+                "Add tokio = { version = \"1.0\", features = [\"full\"] } to dependencies"
+                    .to_string(),
+            )
         } else {
             None
         }
@@ -728,22 +778,29 @@ edition = "2021"
     ) {
         // Check for proper tokio runtime attributes
         if content.contains("async fn main")
-            && !content.contains("#[tokio::main]") && !content.contains("Runtime::new()") {
-                errors.push(CompilationError {
-                    message: "Async main function requires tokio runtime setup".to_string(),
-                    line: None,
-                    column: None,
-                    error_type: ErrorType::RuntimeSetupError,
-                    suggestion: Some("Add #[tokio::main] attribute or create runtime manually".to_string()),
-                    code_snippet: None,
-                });
-                suggestions.push("Use #[tokio::main] for simple async main functions".to_string());
-            }
+            && !content.contains("#[tokio::main]")
+            && !content.contains("Runtime::new()")
+        {
+            errors.push(CompilationError {
+                message: "Async main function requires tokio runtime setup".to_string(),
+                line: None,
+                column: None,
+                error_type: ErrorType::RuntimeSetupError,
+                suggestion: Some(
+                    "Add #[tokio::main] attribute or create runtime manually".to_string(),
+                ),
+                code_snippet: None,
+            });
+            suggestions.push("Use #[tokio::main] for simple async main functions".to_string());
+        }
 
         // Check for tokio::test usage in test functions
         if content.contains("#[test]") && content.contains("async fn") {
-            warnings.push("Async test functions should use #[tokio::test] instead of #[test]".to_string());
-            suggestions.push("Replace #[test] with #[tokio::test] for async test functions".to_string());
+            warnings.push(
+                "Async test functions should use #[tokio::test] instead of #[test]".to_string(),
+            );
+            suggestions
+                .push("Replace #[test] with #[tokio::test] for async test functions".to_string());
         }
 
         // Check for proper spawn usage
@@ -762,15 +819,23 @@ edition = "2021"
     ) {
         // Check for async closures without proper handling
         if (content.contains("async move |") || content.contains("async |"))
-            && !content.contains("Box::pin") && !content.contains("futures::") {
-                warnings.push("Async closures may need special handling for compilation".to_string());
-                suggestions.push("Consider using Box::pin for async closures or futures utilities".to_string());
-            }
+            && !content.contains("Box::pin")
+            && !content.contains("futures::")
+        {
+            warnings.push("Async closures may need special handling for compilation".to_string());
+            suggestions.push(
+                "Consider using Box::pin for async closures or futures utilities".to_string(),
+            );
+        }
 
         // Check for closure capture issues
         if content.contains("move |") && content.contains(".await") {
-            warnings.push("Be careful with move closures and async - ensure proper lifetime management".to_string());
-            suggestions.push("Verify that moved values live long enough for async operations".to_string());
+            warnings.push(
+                "Be careful with move closures and async - ensure proper lifetime management"
+                    .to_string(),
+            );
+            suggestions
+                .push("Verify that moved values live long enough for async operations".to_string());
         }
     }
 
@@ -795,7 +860,9 @@ edition = "2021"
                 warnings.push(format!("Potentially blocking call '{}' in async context", pattern));
                 match *pattern {
                     "std::thread::sleep" => {
-                        suggestions.push("Use tokio::time::sleep instead of std::thread::sleep".to_string());
+                        suggestions.push(
+                            "Use tokio::time::sleep instead of std::thread::sleep".to_string(),
+                        );
                     }
                     "std::fs::" => {
                         suggestions.push("Use tokio::fs for async file operations".to_string());
@@ -804,10 +871,14 @@ edition = "2021"
                         suggestions.push("Use tokio::net for async networking".to_string());
                     }
                     "reqwest::blocking::" => {
-                        suggestions.push("Use async reqwest client instead of blocking client".to_string());
+                        suggestions.push(
+                            "Use async reqwest client instead of blocking client".to_string(),
+                        );
                     }
                     _ => {
-                        suggestions.push("Consider using async alternatives for blocking operations".to_string());
+                        suggestions.push(
+                            "Consider using async alternatives for blocking operations".to_string(),
+                        );
                     }
                 }
             }
@@ -822,18 +893,30 @@ edition = "2021"
         suggestions: &mut Vec<String>,
     ) {
         // Check for async trait methods without async-trait
-        if content.contains("trait ") && content.contains("async fn") && !content.contains("#[async_trait]") {
+        if content.contains("trait ")
+            && content.contains("async fn")
+            && !content.contains("#[async_trait]")
+        {
             warnings.push("Async methods in traits require the async-trait crate".to_string());
             suggestions.push("Add #[async_trait] attribute and use async-trait crate".to_string());
         }
 
         // Check for proper async trait implementation
-        if content.contains("impl ") && content.contains("async fn") && !content.contains("#[async_trait]") {
+        if content.contains("impl ")
+            && content.contains("async fn")
+            && !content.contains("#[async_trait]")
+        {
             let lines: Vec<&str> = content.lines().collect();
             for (i, line) in lines.iter().enumerate() {
-                if line.contains("impl ") && i + 1 < lines.len() && lines[i + 1].contains("async fn") {
-                    warnings.push("Implementing async trait methods requires #[async_trait]".to_string());
-                    suggestions.push("Add #[async_trait] to impl blocks with async methods".to_string());
+                if line.contains("impl ")
+                    && i + 1 < lines.len()
+                    && lines[i + 1].contains("async fn")
+                {
+                    warnings.push(
+                        "Implementing async trait methods requires #[async_trait]".to_string(),
+                    );
+                    suggestions
+                        .push("Add #[async_trait] to impl blocks with async methods".to_string());
                     break;
                 }
             }
@@ -852,8 +935,6 @@ impl Default for AsyncValidationConfig {
     }
 }
 
-
-
 // Add uuid dependency for unique project names
 use uuid;
 
@@ -865,10 +946,8 @@ mod tests {
     async fn create_test_validator() -> ExampleValidator {
         let temp_workspace = env::temp_dir().join("test_workspace");
         tokio::fs::create_dir_all(&temp_workspace).await.unwrap();
-        
-        ExampleValidator::new("0.1.0".to_string(), temp_workspace)
-            .await
-            .unwrap()
+
+        ExampleValidator::new("0.1.0".to_string(), temp_workspace).await.unwrap()
     }
 
     #[tokio::test]
@@ -880,7 +959,7 @@ mod tests {
     #[tokio::test]
     async fn test_simple_rust_example_validation() {
         let validator = create_test_validator().await;
-        
+
         let example = CodeExample {
             content: "fn main() { println!(\"Hello, world!\"); }".to_string(),
             language: "rust".to_string(),
@@ -897,7 +976,7 @@ mod tests {
     #[tokio::test]
     async fn test_non_rust_example_skipped() {
         let validator = create_test_validator().await;
-        
+
         let example = CodeExample {
             content: "console.log('Hello, world!');".to_string(),
             language: "javascript".to_string(),
@@ -915,7 +994,7 @@ mod tests {
     #[tokio::test]
     async fn test_non_runnable_example_skipped() {
         let validator = create_test_validator().await;
-        
+
         let example = CodeExample {
             content: "fn main() { println!(\"Hello, world!\"); }".to_string(),
             language: "rust".to_string(),
@@ -934,13 +1013,14 @@ mod tests {
     async fn test_async_pattern_validation() {
         let validator = create_test_validator().await;
         let config = AsyncValidationConfig::default();
-        
+
         let example = CodeExample {
             content: r#"
 async fn main() {
     println!("Hello, async world!");
 }
-"#.to_string(),
+"#
+            .to_string(),
             language: "rust".to_string(),
             line_number: 1,
             is_runnable: true,
@@ -948,7 +1028,7 @@ async fn main() {
         };
 
         let result = validator.validate_async_patterns(&example, &config).await.unwrap();
-        
+
         // Should detect missing #[tokio::main]
         assert!(!result.success);
         assert!(!result.errors.is_empty());
@@ -959,7 +1039,7 @@ async fn main() {
     async fn test_proper_async_example() {
         let validator = create_test_validator().await;
         let config = AsyncValidationConfig::default();
-        
+
         let example = CodeExample {
             content: r#"
 #[tokio::main]
@@ -967,7 +1047,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Hello, async world!");
     Ok(())
 }
-"#.to_string(),
+"#
+            .to_string(),
             language: "rust".to_string(),
             line_number: 1,
             is_runnable: true,
@@ -982,27 +1063,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[tokio::test]
     async fn test_error_classification() {
         let validator = create_test_validator().await;
-        
-        assert_eq!(validator.classify_error_type("cannot find type `UnknownType`"), ErrorType::UnresolvedImport);
+
+        assert_eq!(
+            validator.classify_error_type("cannot find type `UnknownType`"),
+            ErrorType::UnresolvedImport
+        );
         assert_eq!(validator.classify_error_type("mismatched types"), ErrorType::TypeMismatch);
-        assert_eq!(validator.classify_error_type("use of deprecated function"), ErrorType::DeprecatedApi);
-        assert_eq!(validator.classify_error_type("async function in sync context"), ErrorType::AsyncPatternError);
+        assert_eq!(
+            validator.classify_error_type("use of deprecated function"),
+            ErrorType::DeprecatedApi
+        );
+        assert_eq!(
+            validator.classify_error_type("async function in sync context"),
+            ErrorType::AsyncPatternError
+        );
     }
 
     #[tokio::test]
     async fn test_suggestion_generation() {
         let validator = create_test_validator().await;
-        
-        let errors = vec![
-            CompilationError {
-                message: "cannot find adk_core in scope".to_string(),
-                line: None,
-                column: None,
-                error_type: ErrorType::UnresolvedImport,
-                suggestion: None,
-                code_snippet: None,
-            }
-        ];
+
+        let errors = vec![CompilationError {
+            message: "cannot find adk_core in scope".to_string(),
+            line: None,
+            column: None,
+            error_type: ErrorType::UnresolvedImport,
+            suggestion: None,
+            code_snippet: None,
+        }];
 
         let example = CodeExample {
             content: "use adk_core::Agent;".to_string(),
@@ -1020,7 +1108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[tokio::test]
     async fn test_cargo_toml_generation() {
         let validator = create_test_validator().await;
-        
+
         let example = CodeExample {
             content: r#"
 use adk_core::Agent;
@@ -1030,7 +1118,8 @@ use tokio;
 async fn main() {
     println!("Hello!");
 }
-"#.to_string(),
+"#
+            .to_string(),
             language: "rust".to_string(),
             line_number: 1,
             is_runnable: true,
@@ -1038,7 +1127,7 @@ async fn main() {
         };
 
         let cargo_toml = validator.generate_cargo_toml("test_project", &example).await.unwrap();
-        
+
         assert!(cargo_toml.contains("adk-core"));
         assert!(cargo_toml.contains("tokio"));
         assert!(cargo_toml.contains("[package]"));
@@ -1048,7 +1137,7 @@ async fn main() {
     #[tokio::test]
     async fn test_rust_code_preparation() {
         let validator = create_test_validator().await;
-        
+
         let example = CodeExample {
             content: "async fn main() { println!(\"Hello!\"); }".to_string(),
             language: "rust".to_string(),
@@ -1066,14 +1155,15 @@ async fn main() {
     async fn test_tokio_usage_validation() {
         let validator = create_test_validator().await;
         let config = AsyncValidationConfig::default();
-        
+
         let example = CodeExample {
             content: r#"
 #[test]
 async fn test_something() {
     // This should trigger a warning about using #[test] with async
 }
-"#.to_string(),
+"#
+            .to_string(),
             language: "rust".to_string(),
             line_number: 1,
             is_runnable: true,
@@ -1089,14 +1179,15 @@ async fn test_something() {
     async fn test_blocking_calls_validation() {
         let validator = create_test_validator().await;
         let config = AsyncValidationConfig::default();
-        
+
         let example = CodeExample {
             content: r#"
 async fn read_file() {
     let content = std::fs::read_to_string("file.txt");
     println!("{}", content);
 }
-"#.to_string(),
+"#
+            .to_string(),
             language: "rust".to_string(),
             line_number: 1,
             is_runnable: true,
@@ -1113,13 +1204,14 @@ async fn read_file() {
     async fn test_async_trait_validation() {
         let validator = create_test_validator().await;
         let config = AsyncValidationConfig::default();
-        
+
         let example = CodeExample {
             content: r#"
 trait MyTrait {
     async fn do_something(&self) -> Result<(), Error>;
 }
-"#.to_string(),
+"#
+            .to_string(),
             language: "rust".to_string(),
             line_number: 1,
             is_runnable: true,
@@ -1140,7 +1232,7 @@ trait MyTrait {
             check_await_patterns: true,
             max_async_nesting: 2,
         };
-        
+
         let example = CodeExample {
             content: r#"
 #[tokio::main]
@@ -1161,7 +1253,8 @@ async fn async_operation() -> Result<String, std::io::Error> {
 async fn async_nested_operation() -> Result<(), std::io::Error> {
     Ok(())
 }
-"#.to_string(),
+"#
+            .to_string(),
             language: "rust".to_string(),
             line_number: 1,
             is_runnable: true,

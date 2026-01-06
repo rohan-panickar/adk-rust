@@ -6,7 +6,7 @@
 //! - Multiple output formats (JSON, Markdown, Console)
 //! - Actionable recommendations for fixing issues
 
-use crate::{AuditError, Result, IssueSeverity};
+use crate::{AuditError, IssueSeverity, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -296,23 +296,19 @@ impl AuditReport {
     /// Calculate and update the summary statistics.
     pub fn calculate_summary(&mut self) {
         let total_files = self.file_results.len();
-        let files_with_issues = self.file_results.iter()
-            .filter(|f| f.issues_count > 0)
-            .count();
-        
+        let files_with_issues = self.file_results.iter().filter(|f| f.issues_count > 0).count();
+
         let total_issues = self.issues.len();
-        let critical_issues = self.issues.iter()
-            .filter(|i| i.severity == IssueSeverity::Critical)
-            .count();
-        let warning_issues = self.issues.iter()
-            .filter(|i| i.severity == IssueSeverity::Warning)
-            .count();
-        let info_issues = self.issues.iter()
-            .filter(|i| i.severity == IssueSeverity::Info)
-            .count();
+        let critical_issues =
+            self.issues.iter().filter(|i| i.severity == IssueSeverity::Critical).count();
+        let warning_issues =
+            self.issues.iter().filter(|i| i.severity == IssueSeverity::Warning).count();
+        let info_issues = self.issues.iter().filter(|i| i.severity == IssueSeverity::Info).count();
 
         // Calculate coverage percentage (files without critical issues / total files)
-        let files_without_critical = self.file_results.iter()
+        let files_without_critical = self
+            .file_results
+            .iter()
             .filter(|f| !f.issues.iter().any(|i| i.severity == IssueSeverity::Critical))
             .count();
         let coverage_percentage = if total_files > 0 {
@@ -321,27 +317,29 @@ impl AuditReport {
             100.0
         };
 
-        let average_issues_per_file = if total_files > 0 {
-            total_issues as f64 / total_files as f64
-        } else {
-            0.0
-        };
+        let average_issues_per_file =
+            if total_files > 0 { total_issues as f64 / total_files as f64 } else { 0.0 };
 
         // Find most common issue category
         let mut category_counts: HashMap<IssueCategory, usize> = HashMap::new();
         for issue in &self.issues {
             *category_counts.entry(issue.category).or_insert(0) += 1;
         }
-        let most_common_issue = category_counts.into_iter()
+        let most_common_issue = category_counts
+            .into_iter()
             .max_by_key(|(_, count)| *count)
             .map(|(category, _)| category);
 
         // Find most problematic files (top 5)
-        let mut file_issue_counts: Vec<_> = self.file_results.iter()
+        let mut file_issue_counts: Vec<_> = self
+            .file_results
+            .iter()
             .map(|f| ProblematicFile {
                 path: f.file_path.clone(),
                 issue_count: f.issues_count,
-                max_severity: f.issues.iter()
+                max_severity: f
+                    .issues
+                    .iter()
                     .map(|i| i.severity)
                     .max()
                     .unwrap_or(IssueSeverity::Info),
@@ -373,9 +371,7 @@ impl AuditReport {
     pub fn issues_by_category(&self) -> HashMap<IssueCategory, Vec<&AuditIssue>> {
         let mut categorized = HashMap::new();
         for issue in &self.issues {
-            categorized.entry(issue.category)
-                .or_insert_with(Vec::new)
-                .push(issue);
+            categorized.entry(issue.category).or_insert_with(Vec::new).push(issue);
         }
         categorized
     }
@@ -384,18 +380,14 @@ impl AuditReport {
     pub fn issues_by_severity(&self) -> HashMap<IssueSeverity, Vec<&AuditIssue>> {
         let mut by_severity = HashMap::new();
         for issue in &self.issues {
-            by_severity.entry(issue.severity)
-                .or_insert_with(Vec::new)
-                .push(issue);
+            by_severity.entry(issue.severity).or_insert_with(Vec::new).push(issue);
         }
         by_severity
     }
 
     /// Get issues for a specific file.
     pub fn issues_for_file(&self, file_path: &PathBuf) -> Vec<&AuditIssue> {
-        self.issues.iter()
-            .filter(|issue| &issue.file_path == file_path)
-            .collect()
+        self.issues.iter().filter(|issue| &issue.file_path == file_path).collect()
     }
 }
 
@@ -418,14 +410,10 @@ impl Default for AuditSummary {
 
 impl AuditIssue {
     /// Create a new audit issue with the given parameters.
-    pub fn new(
-        file_path: PathBuf,
-        category: IssueCategory,
-        message: String,
-    ) -> Self {
+    pub fn new(file_path: PathBuf, category: IssueCategory, message: String) -> Self {
         let id = uuid::Uuid::new_v4().to_string();
         let severity = category.default_severity();
-        
+
         Self {
             id,
             file_path,
@@ -492,7 +480,7 @@ impl Recommendation {
         description: String,
     ) -> Self {
         let id = uuid::Uuid::new_v4().to_string();
-        
+
         Self {
             id,
             recommendation_type,
@@ -538,7 +526,7 @@ mod tests {
     fn test_audit_report_creation() {
         let config = AuditReportConfig::default();
         let report = AuditReport::new(config);
-        
+
         assert_eq!(report.summary.total_files, 0);
         assert_eq!(report.issues.len(), 0);
         assert!(report.passed());
@@ -567,10 +555,7 @@ mod tests {
             IssueCategory::ApiMismatch.description(),
             "API reference doesn't match implementation"
         );
-        assert_eq!(
-            IssueCategory::CompilationError.description(),
-            "Code example fails to compile"
-        );
+        assert_eq!(IssueCategory::CompilationError.description(), "Code example fails to compile");
     }
 
     #[test]
@@ -598,7 +583,7 @@ mod tests {
     #[test]
     fn test_audit_summary_calculation() {
         let mut report = AuditReport::new(AuditReportConfig::default());
-        
+
         // Add some test file results
         let file1 = FileAuditResult {
             file_path: PathBuf::from("file1.md"),
@@ -646,19 +631,19 @@ mod tests {
     #[test]
     fn test_issues_by_category() {
         let mut report = AuditReport::new(AuditReportConfig::default());
-        
+
         report.add_issue(AuditIssue::new(
             PathBuf::from("test.md"),
             IssueCategory::ApiMismatch,
             "API issue".to_string(),
         ));
-        
+
         report.add_issue(AuditIssue::new(
             PathBuf::from("test.md"),
             IssueCategory::ApiMismatch,
             "Another API issue".to_string(),
         ));
-        
+
         report.add_issue(AuditIssue::new(
             PathBuf::from("test.md"),
             IssueCategory::CompilationError,
@@ -673,18 +658,18 @@ mod tests {
     #[test]
     fn test_report_generator_json() {
         let mut report = AuditReport::new(AuditReportConfig::default());
-        
+
         report.add_issue(AuditIssue::new(
             PathBuf::from("test.md"),
             IssueCategory::ApiMismatch,
             "Test issue".to_string(),
         ));
-        
+
         report.calculate_summary();
-        
+
         let generator = ReportGenerator::new(OutputFormat::Json);
         let json_output = generator.generate_report_string(&report).unwrap();
-        
+
         // Verify it's valid JSON
         let parsed: serde_json::Value = serde_json::from_str(&json_output).unwrap();
         assert!(parsed.get("summary").is_some());
@@ -695,18 +680,21 @@ mod tests {
     #[test]
     fn test_report_generator_markdown() {
         let mut report = AuditReport::new(AuditReportConfig::default());
-        
-        report.add_issue(AuditIssue::new(
-            PathBuf::from("test.md"),
-            IssueCategory::CompilationError,
-            "Compilation failed".to_string(),
-        ).with_line_number(42));
-        
+
+        report.add_issue(
+            AuditIssue::new(
+                PathBuf::from("test.md"),
+                IssueCategory::CompilationError,
+                "Compilation failed".to_string(),
+            )
+            .with_line_number(42),
+        );
+
         report.calculate_summary();
-        
+
         let generator = ReportGenerator::new(OutputFormat::Markdown);
         let markdown_output = generator.generate_report_string(&report).unwrap();
-        
+
         // Verify markdown structure
         assert!(markdown_output.contains("# Documentation Audit Report"));
         assert!(markdown_output.contains("## Executive Summary"));
@@ -717,18 +705,18 @@ mod tests {
     #[test]
     fn test_report_generator_console() {
         let mut report = AuditReport::new(AuditReportConfig::default());
-        
+
         report.add_issue(AuditIssue::new(
             PathBuf::from("test.md"),
             IssueCategory::VersionInconsistency,
             "Version mismatch".to_string(),
         ));
-        
+
         report.calculate_summary();
-        
+
         let generator = ReportGenerator::new(OutputFormat::Console);
         let console_output = generator.generate_report_string(&report).unwrap();
-        
+
         // Verify console structure
         assert!(console_output.contains("DOCUMENTATION AUDIT REPORT"));
         assert!(console_output.contains("SUMMARY"));
@@ -739,14 +727,14 @@ mod tests {
     #[test]
     fn test_wrap_text() {
         use super::wrap_text;
-        
+
         let text = "This is a very long line that should be wrapped at the specified width";
         let wrapped = wrap_text(text, 20);
-        
+
         for line in wrapped.lines() {
             assert!(line.len() <= 20);
         }
-        
+
         // Should preserve all words
         let original_words: Vec<&str> = text.split_whitespace().collect();
         let wrapped_words: Vec<&str> = wrapped.split_whitespace().collect();
@@ -783,18 +771,12 @@ pub struct ReportGenerator {
 impl ReportGenerator {
     /// Create a new report generator with the specified output format.
     pub fn new(output_format: OutputFormat) -> Self {
-        Self {
-            output_format,
-            config: AuditReportConfig::default(),
-        }
+        Self { output_format, config: AuditReportConfig::default() }
     }
 
     /// Create a new report generator with custom configuration.
     pub fn with_config(output_format: OutputFormat, config: AuditReportConfig) -> Self {
-        Self {
-            output_format,
-            config,
-        }
+        Self { output_format, config }
     }
 
     /// Generate a report and write it to the provided writer.
@@ -810,8 +792,9 @@ impl ReportGenerator {
     pub fn generate_report_string(&self, report: &AuditReport) -> Result<String> {
         let mut buffer = Vec::new();
         self.generate_report(report, &mut buffer)?;
-        String::from_utf8(buffer)
-            .map_err(|e| AuditError::ReportGeneration { details: format!("UTF-8 conversion error: {}", e) })
+        String::from_utf8(buffer).map_err(|e| AuditError::ReportGeneration {
+            details: format!("UTF-8 conversion error: {}", e),
+        })
     }
 
     /// Generate JSON format report.
@@ -833,22 +816,31 @@ impl ReportGenerator {
             serde_json::to_string_pretty(&simplified)
         };
 
-        let json = json.map_err(|e| AuditError::ReportGeneration { details: format!("JSON serialization error: {}", e) })?;
-        writer.write_all(json.as_bytes())
+        let json = json.map_err(|e| AuditError::ReportGeneration {
+            details: format!("JSON serialization error: {}", e),
+        })?;
+        writer
+            .write_all(json.as_bytes())
             .map_err(|e| AuditError::ReportGeneration { details: format!("Write error: {}", e) })?;
-        
+
         Ok(())
     }
 
     /// Generate Markdown format report.
-    fn generate_markdown_report<W: IoWrite>(&self, report: &AuditReport, writer: &mut W) -> Result<()> {
+    fn generate_markdown_report<W: IoWrite>(
+        &self,
+        report: &AuditReport,
+        writer: &mut W,
+    ) -> Result<()> {
         let mut output = String::new();
 
         // Title and summary
         writeln!(output, "# Documentation Audit Report").unwrap();
         writeln!(output).unwrap();
-        writeln!(output, "**Generated:** {}", report.timestamp.format("%Y-%m-%d %H:%M:%S UTC")).unwrap();
-        writeln!(output, "**Status:** {}", if report.passed() { "✅ PASSED" } else { "❌ FAILED" }).unwrap();
+        writeln!(output, "**Generated:** {}", report.timestamp.format("%Y-%m-%d %H:%M:%S UTC"))
+            .unwrap();
+        writeln!(output, "**Status:** {}", if report.passed() { "✅ PASSED" } else { "❌ FAILED" })
+            .unwrap();
         writeln!(output).unwrap();
 
         // Executive summary
@@ -860,39 +852,54 @@ impl ReportGenerator {
         writeln!(output, "- **Critical Issues:** {}", report.summary.critical_issues).unwrap();
         writeln!(output, "- **Warning Issues:** {}", report.summary.warning_issues).unwrap();
         writeln!(output, "- **Info Issues:** {}", report.summary.info_issues).unwrap();
-        writeln!(output, "- **Documentation Coverage:** {:.1}%", report.summary.coverage_percentage).unwrap();
+        writeln!(
+            output,
+            "- **Documentation Coverage:** {:.1}%",
+            report.summary.coverage_percentage
+        )
+        .unwrap();
         writeln!(output).unwrap();
 
         // Issues by category
         if !report.issues.is_empty() {
             writeln!(output, "## Issues by Category").unwrap();
             writeln!(output).unwrap();
-            
+
             let issues_by_category = report.issues_by_category();
             for (category, issues) in issues_by_category {
-                writeln!(output, "### {} ({} issues)", category.description(), issues.len()).unwrap();
+                writeln!(output, "### {} ({} issues)", category.description(), issues.len())
+                    .unwrap();
                 writeln!(output).unwrap();
-                
-                for issue in issues.iter().take(self.config.max_issues_per_file.unwrap_or(usize::MAX)) {
+
+                for issue in
+                    issues.iter().take(self.config.max_issues_per_file.unwrap_or(usize::MAX))
+                {
                     let severity_icon = match issue.severity {
                         IssueSeverity::Critical => "🔴",
                         IssueSeverity::Warning => "🟡",
                         IssueSeverity::Info => "🔵",
                     };
-                    
-                    write!(output, "- {} **{}**: {}", severity_icon, issue.file_path.display(), issue.message).unwrap();
-                    
+
+                    write!(
+                        output,
+                        "- {} **{}**: {}",
+                        severity_icon,
+                        issue.file_path.display(),
+                        issue.message
+                    )
+                    .unwrap();
+
                     if let Some(line) = issue.line_number {
                         write!(output, " (line {})", line).unwrap();
                     }
                     writeln!(output).unwrap();
-                    
+
                     if self.config.include_suggestions {
                         if let Some(suggestion) = &issue.suggestion {
                             writeln!(output, "  - *Suggestion:* {}", suggestion).unwrap();
                         }
                     }
-                    
+
                     if self.config.include_code_snippets {
                         if let Some(snippet) = &issue.code_snippet {
                             writeln!(output, "  ```").unwrap();
@@ -909,15 +916,22 @@ impl ReportGenerator {
         if !report.summary.problematic_files.is_empty() {
             writeln!(output, "## Most Problematic Files").unwrap();
             writeln!(output).unwrap();
-            
+
             for (i, file) in report.summary.problematic_files.iter().enumerate() {
                 let severity_icon = match file.max_severity {
                     IssueSeverity::Critical => "🔴",
                     IssueSeverity::Warning => "🟡",
                     IssueSeverity::Info => "🔵",
                 };
-                writeln!(output, "{}. {} {} ({} issues)", 
-                    i + 1, severity_icon, file.path.display(), file.issue_count).unwrap();
+                writeln!(
+                    output,
+                    "{}. {} {} ({} issues)",
+                    i + 1,
+                    severity_icon,
+                    file.path.display(),
+                    file.issue_count
+                )
+                .unwrap();
             }
             writeln!(output).unwrap();
         }
@@ -926,10 +940,10 @@ impl ReportGenerator {
         if self.config.include_recommendations && !report.recommendations.is_empty() {
             writeln!(output, "## Recommendations").unwrap();
             writeln!(output).unwrap();
-            
+
             let mut sorted_recommendations = report.recommendations.clone();
             sorted_recommendations.sort_by_key(|r| r.priority);
-            
+
             for rec in sorted_recommendations {
                 let priority_text = match rec.priority {
                     1 => "🔴 High",
@@ -939,15 +953,15 @@ impl ReportGenerator {
                     5 => "🔵 Low",
                     _ => "🔵 Low",
                 };
-                
+
                 writeln!(output, "### {} - {}", priority_text, rec.title).unwrap();
                 writeln!(output).unwrap();
                 writeln!(output, "{}", rec.description).unwrap();
-                
+
                 if let Some(effort) = rec.estimated_effort_hours {
                     writeln!(output, "**Estimated Effort:** {:.1} hours", effort).unwrap();
                 }
-                
+
                 if !rec.affected_files.is_empty() {
                     writeln!(output, "**Affected Files:**").unwrap();
                     for file in &rec.affected_files {
@@ -958,73 +972,141 @@ impl ReportGenerator {
             }
         }
 
-        writer.write_all(output.as_bytes())
+        writer
+            .write_all(output.as_bytes())
             .map_err(|e| AuditError::ReportGeneration { details: format!("Write error: {}", e) })?;
-        
+
         Ok(())
     }
 
     /// Generate console format report.
-    fn generate_console_report<W: IoWrite>(&self, report: &AuditReport, writer: &mut W) -> Result<()> {
+    fn generate_console_report<W: IoWrite>(
+        &self,
+        report: &AuditReport,
+        writer: &mut W,
+    ) -> Result<()> {
         let mut output = String::new();
 
         // Header
-        writeln!(output, "╔══════════════════════════════════════════════════════════════════════════════╗").unwrap();
-        writeln!(output, "║                          DOCUMENTATION AUDIT REPORT                         ║").unwrap();
-        writeln!(output, "╚══════════════════════════════════════════════════════════════════════════════╝").unwrap();
+        writeln!(
+            output,
+            "╔══════════════════════════════════════════════════════════════════════════════╗"
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "║                          DOCUMENTATION AUDIT REPORT                         ║"
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "╚══════════════════════════════════════════════════════════════════════════════╝"
+        )
+        .unwrap();
         writeln!(output).unwrap();
 
         // Status
         let status = if report.passed() { "✅ PASSED" } else { "❌ FAILED" };
         writeln!(output, "Status: {}", status).unwrap();
-        writeln!(output, "Generated: {}", report.timestamp.format("%Y-%m-%d %H:%M:%S UTC")).unwrap();
+        writeln!(output, "Generated: {}", report.timestamp.format("%Y-%m-%d %H:%M:%S UTC"))
+            .unwrap();
         writeln!(output).unwrap();
 
         // Summary box
-        writeln!(output, "┌─ SUMMARY ─────────────────────────────────────────────────────────────────────┐").unwrap();
-        writeln!(output, "│ Total Files:        {:>8}                                                │", report.summary.total_files).unwrap();
-        writeln!(output, "│ Files with Issues:  {:>8}                                                │", report.summary.files_with_issues).unwrap();
-        writeln!(output, "│ Total Issues:       {:>8}                                                │", report.summary.total_issues).unwrap();
-        writeln!(output, "│ Critical Issues:    {:>8}                                                │", report.summary.critical_issues).unwrap();
-        writeln!(output, "│ Warning Issues:     {:>8}                                                │", report.summary.warning_issues).unwrap();
-        writeln!(output, "│ Info Issues:        {:>8}                                                │", report.summary.info_issues).unwrap();
-        writeln!(output, "│ Coverage:           {:>7.1}%                                               │", report.summary.coverage_percentage).unwrap();
-        writeln!(output, "└───────────────────────────────────────────────────────────────────────────────┘").unwrap();
+        writeln!(
+            output,
+            "┌─ SUMMARY ─────────────────────────────────────────────────────────────────────┐"
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "│ Total Files:        {:>8}                                                │",
+            report.summary.total_files
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "│ Files with Issues:  {:>8}                                                │",
+            report.summary.files_with_issues
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "│ Total Issues:       {:>8}                                                │",
+            report.summary.total_issues
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "│ Critical Issues:    {:>8}                                                │",
+            report.summary.critical_issues
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "│ Warning Issues:     {:>8}                                                │",
+            report.summary.warning_issues
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "│ Info Issues:        {:>8}                                                │",
+            report.summary.info_issues
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "│ Coverage:           {:>7.1}%                                               │",
+            report.summary.coverage_percentage
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "└───────────────────────────────────────────────────────────────────────────────┘"
+        )
+        .unwrap();
         writeln!(output).unwrap();
 
         // Issues by severity
         if report.summary.total_issues > 0 {
             writeln!(output, "ISSUES BY SEVERITY:").unwrap();
-            writeln!(output, "─────────────────────────────────────────────────────────────────────────────").unwrap();
-            
+            writeln!(
+                output,
+                "─────────────────────────────────────────────────────────────────────────────"
+            )
+            .unwrap();
+
             let issues_by_severity = report.issues_by_severity();
-            
+
             if let Some(critical_issues) = issues_by_severity.get(&IssueSeverity::Critical) {
                 writeln!(output, "🔴 CRITICAL ({}):", critical_issues.len()).unwrap();
                 for issue in critical_issues.iter().take(5) {
-                    writeln!(output, "   {} - {}", issue.file_path.display(), issue.message).unwrap();
+                    writeln!(output, "   {} - {}", issue.file_path.display(), issue.message)
+                        .unwrap();
                 }
                 if critical_issues.len() > 5 {
                     writeln!(output, "   ... and {} more", critical_issues.len() - 5).unwrap();
                 }
                 writeln!(output).unwrap();
             }
-            
+
             if let Some(warning_issues) = issues_by_severity.get(&IssueSeverity::Warning) {
                 writeln!(output, "🟡 WARNING ({}):", warning_issues.len()).unwrap();
                 for issue in warning_issues.iter().take(3) {
-                    writeln!(output, "   {} - {}", issue.file_path.display(), issue.message).unwrap();
+                    writeln!(output, "   {} - {}", issue.file_path.display(), issue.message)
+                        .unwrap();
                 }
                 if warning_issues.len() > 3 {
                     writeln!(output, "   ... and {} more", warning_issues.len() - 3).unwrap();
                 }
                 writeln!(output).unwrap();
             }
-            
+
             if let Some(info_issues) = issues_by_severity.get(&IssueSeverity::Info) {
                 writeln!(output, "🔵 INFO ({}):", info_issues.len()).unwrap();
                 for issue in info_issues.iter().take(2) {
-                    writeln!(output, "   {} - {}", issue.file_path.display(), issue.message).unwrap();
+                    writeln!(output, "   {} - {}", issue.file_path.display(), issue.message)
+                        .unwrap();
                 }
                 if info_issues.len() > 2 {
                     writeln!(output, "   ... and {} more", info_issues.len() - 2).unwrap();
@@ -1036,16 +1118,27 @@ impl ReportGenerator {
         // Most problematic files
         if !report.summary.problematic_files.is_empty() {
             writeln!(output, "MOST PROBLEMATIC FILES:").unwrap();
-            writeln!(output, "─────────────────────────────────────────────────────────────────────────────").unwrap();
-            
+            writeln!(
+                output,
+                "─────────────────────────────────────────────────────────────────────────────"
+            )
+            .unwrap();
+
             for (i, file) in report.summary.problematic_files.iter().enumerate() {
                 let severity_icon = match file.max_severity {
                     IssueSeverity::Critical => "🔴",
                     IssueSeverity::Warning => "🟡",
                     IssueSeverity::Info => "🔵",
                 };
-                writeln!(output, "{}. {} {} ({} issues)", 
-                    i + 1, severity_icon, file.path.display(), file.issue_count).unwrap();
+                writeln!(
+                    output,
+                    "{}. {} {} ({} issues)",
+                    i + 1,
+                    severity_icon,
+                    file.path.display(),
+                    file.issue_count
+                )
+                .unwrap();
             }
             writeln!(output).unwrap();
         }
@@ -1053,11 +1146,15 @@ impl ReportGenerator {
         // Top recommendations
         if self.config.include_recommendations && !report.recommendations.is_empty() {
             writeln!(output, "TOP RECOMMENDATIONS:").unwrap();
-            writeln!(output, "─────────────────────────────────────────────────────────────────────────────").unwrap();
-            
+            writeln!(
+                output,
+                "─────────────────────────────────────────────────────────────────────────────"
+            )
+            .unwrap();
+
             let mut sorted_recommendations = report.recommendations.clone();
             sorted_recommendations.sort_by_key(|r| r.priority);
-            
+
             for rec in sorted_recommendations.iter().take(3) {
                 let priority_text = match rec.priority {
                     1 => "🔴 HIGH",
@@ -1067,9 +1164,9 @@ impl ReportGenerator {
                     5 => "🔵 LOW",
                     _ => "🔵 LOW",
                 };
-                
+
                 writeln!(output, "{}: {}", priority_text, rec.title).unwrap();
-                
+
                 // Wrap description to fit console width
                 let wrapped_desc = wrap_text(&rec.description, 75);
                 for line in wrapped_desc.lines() {
@@ -1077,41 +1174,51 @@ impl ReportGenerator {
                 }
                 writeln!(output).unwrap();
             }
-            
+
             if report.recommendations.len() > 3 {
-                writeln!(output, "... and {} more recommendations", report.recommendations.len() - 3).unwrap();
+                writeln!(
+                    output,
+                    "... and {} more recommendations",
+                    report.recommendations.len() - 3
+                )
+                .unwrap();
                 writeln!(output).unwrap();
             }
         }
 
         // Footer
-        writeln!(output, "─────────────────────────────────────────────────────────────────────────────").unwrap();
+        writeln!(
+            output,
+            "─────────────────────────────────────────────────────────────────────────────"
+        )
+        .unwrap();
         if report.passed() {
             writeln!(output, "✅ Audit completed successfully! No critical issues found.").unwrap();
         } else {
-            writeln!(output, "❌ Audit failed. Please address critical issues before proceeding.").unwrap();
+            writeln!(output, "❌ Audit failed. Please address critical issues before proceeding.")
+                .unwrap();
         }
 
-        writer.write_all(output.as_bytes())
+        writer
+            .write_all(output.as_bytes())
             .map_err(|e| AuditError::ReportGeneration { details: format!("Write error: {}", e) })?;
-        
+
         Ok(())
     }
-    
+
     /// Save a report to a file.
     pub fn save_to_file(&self, report: &AuditReport, file_path: &std::path::Path) -> Result<()> {
         use std::fs::File;
         use std::io::BufWriter;
-        
-        let file = File::create(file_path)
-            .map_err(|e| AuditError::IoError {
-                path: file_path.to_path_buf(),
-                details: format!("Failed to create report file: {}", e),
-            })?;
-        
+
+        let file = File::create(file_path).map_err(|e| AuditError::IoError {
+            path: file_path.to_path_buf(),
+            details: format!("Failed to create report file: {}", e),
+        })?;
+
         let mut writer = BufWriter::new(file);
         self.generate_report(report, &mut writer)?;
-        
+
         Ok(())
     }
 }
@@ -1130,25 +1237,23 @@ struct SimplifiedReport<'a> {
 fn wrap_text(text: &str, width: usize) -> String {
     let mut result = String::new();
     let mut current_line = String::new();
-    
+
     for word in text.split_whitespace() {
-        if current_line.len() + word.len() + 1 > width {
-            if !current_line.is_empty() {
-                result.push_str(&current_line);
-                result.push('\n');
-                current_line.clear();
-            }
+        if current_line.len() + word.len() + 1 > width && !current_line.is_empty() {
+            result.push_str(&current_line);
+            result.push('\n');
+            current_line.clear();
         }
-        
+
         if !current_line.is_empty() {
             current_line.push(' ');
         }
         current_line.push_str(word);
     }
-    
+
     if !current_line.is_empty() {
         result.push_str(&current_line);
     }
-    
+
     result
 }

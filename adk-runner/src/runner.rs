@@ -104,7 +104,7 @@ impl Runner {
             if let Some(memory) = memory_service {
                 ctx = ctx.with_memory(memory);
             }
-            
+
             // Apply run config (streaming mode, etc.)
             ctx = ctx.with_run_config(run_config.clone());
 
@@ -126,7 +126,7 @@ impl Runner {
 
             // Run the agent with instrumentation (ADK-Go style attributes)
             let agent_span = tracing::info_span!(
-                "agent.execute", 
+                "agent.execute",
                 "gcp.vertex.agent.invocation_id" = %invocation_id,
                 "gcp.vertex.agent.session_id" = %session_id,
                 "gcp.vertex.agent.event_id" = %invocation_id, // Use invocation_id as event_id for agent spans

@@ -5,15 +5,15 @@
 //! documentation files.
 
 use crate::error::{AuditError, Result};
-use crate::parser::{ApiReference, ApiItemType};
+use crate::parser::{ApiItemType, ApiReference};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use syn::{
-    Attribute, Item, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemType,
-    ItemConst, ItemStatic, Visibility, Meta, Lit, Expr
+    Attribute, Expr, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStatic, ItemStruct,
+    ItemTrait, ItemType, Lit, Meta, Visibility,
 };
+use tracing::{debug, info, instrument, warn};
 use walkdir::WalkDir;
-use tracing::{debug, info, warn, instrument};
 
 /// Registry of all crates in the workspace with their public APIs.
 #[derive(Debug, Clone)]
@@ -99,10 +99,7 @@ pub struct CodeAnalyzer {
 impl CodeAnalyzer {
     /// Create a new code analyzer for the given workspace.
     pub fn new(workspace_path: PathBuf) -> Self {
-        Self {
-            workspace_path,
-            crate_registry: None,
-        }
+        Self { workspace_path, crate_registry: None }
     }
 
     /// Analyze the entire workspace and build a registry of all crates and their APIs.
@@ -125,8 +122,11 @@ impl CodeAnalyzer {
 
         let registry = CrateRegistry { crates };
         self.crate_registry = Some(registry);
-        
-        info!("Workspace analysis complete. Found {} crates", self.crate_registry.as_ref().unwrap().crates.len());
+
+        info!(
+            "Workspace analysis complete. Found {} crates",
+            self.crate_registry.as_ref().unwrap().crates.len()
+        );
         Ok(self.crate_registry.as_ref().unwrap())
     }
 
@@ -140,10 +140,13 @@ impl CodeAnalyzer {
 
     /// Validate an API reference against the analyzed crates.
     #[instrument(skip(self))]
-    pub async fn validate_api_reference(&mut self, api_ref: &ApiReference) -> Result<ValidationResult> {
+    pub async fn validate_api_reference(
+        &mut self,
+        api_ref: &ApiReference,
+    ) -> Result<ValidationResult> {
         // Get registry first
         let registry = self.get_registry().await?;
-        
+
         debug!("Validating API reference: {}::{}", api_ref.crate_name, api_ref.item_path);
 
         // Check if the crate exists
@@ -152,7 +155,10 @@ impl CodeAnalyzer {
             None => {
                 // Create suggestion without borrowing self
                 let available_crates: Vec<String> = registry.crates.keys().cloned().collect();
-                let suggestion = Self::suggest_similar_crate_names_static(&api_ref.crate_name, &available_crates);
+                let suggestion = Self::suggest_similar_crate_names_static(
+                    &api_ref.crate_name,
+                    &available_crates,
+                );
                 return Ok(ValidationResult {
                     success: false,
                     errors: vec![format!("Crate '{}' not found in workspace", api_ref.crate_name)],
@@ -164,34 +170,35 @@ impl CodeAnalyzer {
         };
 
         // Look for the specific API in the crate
-        let matching_apis: Vec<&PublicApi> = crate_info.public_apis
+        let matching_apis: Vec<&PublicApi> = crate_info
+            .public_apis
             .iter()
             .filter(|api| {
-                api.path.ends_with(&api_ref.item_path) && 
-                api.item_type == api_ref.item_type
+                api.path.ends_with(&api_ref.item_path) && api.item_type == api_ref.item_type
             })
             .collect();
 
         match matching_apis.len() {
             0 => {
-                let suggestion = Self::suggest_similar_api_names_static(&api_ref.item_path, &crate_info.public_apis);
+                let suggestion = Self::suggest_similar_api_names_static(
+                    &api_ref.item_path,
+                    &crate_info.public_apis,
+                );
                 Ok(ValidationResult {
                     success: false,
                     errors: vec![format!(
-                        "API '{}' of type '{:?}' not found in crate '{}'", 
-                        api_ref.item_path, 
-                        api_ref.item_type,
-                        api_ref.crate_name
+                        "API '{}' of type '{:?}' not found in crate '{}'",
+                        api_ref.item_path, api_ref.item_type, api_ref.crate_name
                     )],
                     warnings: vec![],
                     suggestions: vec![suggestion],
                     found_api: None,
                 })
-            },
+            }
             1 => {
                 let found_api = matching_apis[0].clone();
                 let mut warnings = vec![];
-                
+
                 // Check if the API is deprecated
                 if found_api.deprecated {
                     warnings.push(format!("API '{}' is deprecated", api_ref.item_path));
@@ -204,13 +211,12 @@ impl CodeAnalyzer {
                     suggestions: vec![],
                     found_api: Some(found_api),
                 })
-            },
+            }
             _ => Ok(ValidationResult {
                 success: false,
                 errors: vec![format!(
                     "Multiple APIs matching '{}' found in crate '{}'. Please be more specific.",
-                    api_ref.item_path,
-                    api_ref.crate_name
+                    api_ref.item_path, api_ref.crate_name
                 )],
                 warnings: vec![],
                 suggestions: matching_apis.iter().map(|api| api.path.clone()).collect(),
@@ -221,7 +227,10 @@ impl CodeAnalyzer {
 
     /// Find APIs that exist in the codebase but are not documented.
     #[instrument(skip(self, documented_apis))]
-    pub async fn find_undocumented_apis(&mut self, documented_apis: &[ApiReference]) -> Result<Vec<PublicApi>> {
+    pub async fn find_undocumented_apis(
+        &mut self,
+        documented_apis: &[ApiReference],
+    ) -> Result<Vec<PublicApi>> {
         let registry = self.get_registry().await?;
         let mut undocumented = Vec::new();
 
@@ -247,9 +256,13 @@ impl CodeAnalyzer {
 
     /// Validate that a function signature matches the documented signature.
     #[instrument(skip(self))]
-    pub async fn validate_function_signature(&mut self, api_ref: &ApiReference, expected_signature: &str) -> Result<ValidationResult> {
+    pub async fn validate_function_signature(
+        &mut self,
+        api_ref: &ApiReference,
+        expected_signature: &str,
+    ) -> Result<ValidationResult> {
         let validation_result = self.validate_api_reference(api_ref).await?;
-        
+
         if !validation_result.success {
             return Ok(validation_result);
         }
@@ -258,7 +271,7 @@ impl CodeAnalyzer {
             // Compare signatures (simplified comparison)
             let normalized_expected = self.normalize_signature(expected_signature);
             let normalized_found = self.normalize_signature(&found_api.signature);
-            
+
             if normalized_expected == normalized_found {
                 Ok(validation_result)
             } else {
@@ -266,12 +279,13 @@ impl CodeAnalyzer {
                     success: false,
                     errors: vec![format!(
                         "Function signature mismatch for '{}'. Expected: '{}', Found: '{}'",
-                        api_ref.item_path,
-                        expected_signature,
-                        found_api.signature
+                        api_ref.item_path, expected_signature, found_api.signature
                     )],
                     warnings: validation_result.warnings,
-                    suggestions: vec![format!("Update documentation to use: {}", found_api.signature)],
+                    suggestions: vec![format!(
+                        "Update documentation to use: {}",
+                        found_api.signature
+                    )],
                     found_api: validation_result.found_api,
                 })
             }
@@ -282,9 +296,13 @@ impl CodeAnalyzer {
 
     /// Validate that struct fields mentioned in documentation exist.
     #[instrument(skip(self))]
-    pub async fn validate_struct_fields(&mut self, api_ref: &ApiReference, expected_fields: &[String]) -> Result<ValidationResult> {
+    pub async fn validate_struct_fields(
+        &mut self,
+        api_ref: &ApiReference,
+        expected_fields: &[String],
+    ) -> Result<ValidationResult> {
         let validation_result = self.validate_api_reference(api_ref).await?;
-        
+
         if !validation_result.success {
             return Ok(validation_result);
         }
@@ -292,10 +310,8 @@ impl CodeAnalyzer {
         if let Some(found_api) = &validation_result.found_api {
             // Extract field names from the struct signature
             let actual_fields = self.extract_struct_fields(&found_api.signature);
-            let missing_fields: Vec<&String> = expected_fields
-                .iter()
-                .filter(|field| !actual_fields.contains(field))
-                .collect();
+            let missing_fields: Vec<&String> =
+                expected_fields.iter().filter(|field| !actual_fields.contains(field)).collect();
 
             if missing_fields.is_empty() {
                 Ok(validation_result)
@@ -319,9 +335,12 @@ impl CodeAnalyzer {
 
     /// Validate that import statements are valid for the current crate structure.
     #[instrument(skip(self))]
-    pub async fn validate_import_statement(&mut self, import_path: &str) -> Result<ValidationResult> {
+    pub async fn validate_import_statement(
+        &mut self,
+        import_path: &str,
+    ) -> Result<ValidationResult> {
         let registry = self.get_registry().await?;
-        
+
         debug!("Validating import statement: {}", import_path);
 
         // Parse the import path (e.g., "adk_core::Llm" or "crate::module::Type")
@@ -337,7 +356,7 @@ impl CodeAnalyzer {
         }
 
         let crate_name = parts[0].replace('_', "-"); // Convert snake_case to kebab-case for crate names
-        
+
         // Check if the crate exists
         let crate_info = match registry.crates.get(&crate_name) {
             Some(info) => info,
@@ -346,8 +365,10 @@ impl CodeAnalyzer {
                 match registry.crates.get(parts[0]) {
                     Some(info) => info,
                     None => {
-                        let available_crates: Vec<String> = registry.crates.keys().cloned().collect();
-                        let suggestion = Self::suggest_similar_crate_names_static(parts[0], &available_crates);
+                        let available_crates: Vec<String> =
+                            registry.crates.keys().cloned().collect();
+                        let suggestion =
+                            Self::suggest_similar_crate_names_static(parts[0], &available_crates);
                         return Ok(ValidationResult {
                             success: false,
                             errors: vec![format!("Crate '{}' not found in workspace", parts[0])],
@@ -373,13 +394,12 @@ impl CodeAnalyzer {
 
         // Check if the specific item exists in the crate
         let item_path = parts[1..].join("::");
-        let matching_apis: Vec<&PublicApi> = crate_info.public_apis
-            .iter()
-            .filter(|api| api.path.ends_with(&item_path))
-            .collect();
+        let matching_apis: Vec<&PublicApi> =
+            crate_info.public_apis.iter().filter(|api| api.path.ends_with(&item_path)).collect();
 
         if matching_apis.is_empty() {
-            let suggestion = Self::suggest_similar_api_names_static(&item_path, &crate_info.public_apis);
+            let suggestion =
+                Self::suggest_similar_api_names_static(&item_path, &crate_info.public_apis);
             Ok(ValidationResult {
                 success: false,
                 errors: vec![format!("Item '{}' not found in crate '{}'", item_path, crate_name)],
@@ -400,8 +420,15 @@ impl CodeAnalyzer {
 
     /// Validate that method names mentioned in documentation exist on the specified type.
     #[instrument(skip(self))]
-    pub async fn validate_method_exists(&mut self, type_ref: &ApiReference, method_name: &str) -> Result<ValidationResult> {
-        debug!("Validating method '{}' exists on type '{}::{}'", method_name, type_ref.crate_name, type_ref.item_path);
+    pub async fn validate_method_exists(
+        &mut self,
+        type_ref: &ApiReference,
+        method_name: &str,
+    ) -> Result<ValidationResult> {
+        debug!(
+            "Validating method '{}' exists on type '{}::{}'",
+            method_name, type_ref.crate_name, type_ref.item_path
+        );
 
         // First validate that the type exists
         let type_validation = self.validate_api_reference(type_ref).await?;
@@ -415,23 +442,22 @@ impl CodeAnalyzer {
         // Look for methods on this type
         let crate_info = registry.crates.get(&type_ref.crate_name).unwrap();
         let type_name = type_ref.item_path.split("::").last().unwrap_or(&type_ref.item_path);
-        
+
         let method_path = format!("{}::{}", type_ref.item_path, method_name);
-        let matching_methods: Vec<&PublicApi> = crate_info.public_apis
+        let matching_methods: Vec<&PublicApi> = crate_info
+            .public_apis
             .iter()
-            .filter(|api| {
-                api.item_type == ApiItemType::Method && 
-                api.path.ends_with(&method_path)
-            })
+            .filter(|api| api.item_type == ApiItemType::Method && api.path.ends_with(&method_path))
             .collect();
 
         if matching_methods.is_empty() {
             // Look for similar method names on this type
-            let type_methods: Vec<&PublicApi> = crate_info.public_apis
+            let type_methods: Vec<&PublicApi> = crate_info
+                .public_apis
                 .iter()
                 .filter(|api| {
-                    api.item_type == ApiItemType::Method && 
-                    api.path.contains(&format!("{}::", type_name))
+                    api.item_type == ApiItemType::Method
+                        && api.path.contains(&format!("{}::", type_name))
                 })
                 .collect();
 
@@ -442,7 +468,10 @@ impl CodeAnalyzer {
 
             Ok(ValidationResult {
                 success: false,
-                errors: vec![format!("Method '{}' not found on type '{}'", method_name, type_ref.item_path)],
+                errors: vec![format!(
+                    "Method '{}' not found on type '{}'",
+                    method_name, type_ref.item_path
+                )],
                 warnings: vec![],
                 suggestions: if suggestions.is_empty() {
                     vec!["No methods found on this type".to_string()]
@@ -466,10 +495,8 @@ impl CodeAnalyzer {
     fn find_cargo_files(&self) -> Result<Vec<PathBuf>> {
         let mut cargo_files = Vec::new();
 
-        for entry in WalkDir::new(&self.workspace_path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
+        for entry in
+            WalkDir::new(&self.workspace_path).follow_links(true).into_iter().filter_map(|e| e.ok())
         {
             if entry.file_name() == "Cargo.toml" {
                 // Skip target directories and other build artifacts
@@ -489,17 +516,13 @@ impl CodeAnalyzer {
         debug!("Analyzing crate at: {}", cargo_path.display());
 
         // Parse Cargo.toml
-        let cargo_content = std::fs::read_to_string(cargo_path)
-            .map_err(|e| AuditError::IoError {
-                path: cargo_path.to_path_buf(),
-                details: e.to_string(),
-            })?;
+        let cargo_content = std::fs::read_to_string(cargo_path).map_err(|e| {
+            AuditError::IoError { path: cargo_path.to_path_buf(), details: e.to_string() }
+        })?;
 
-        let cargo_toml: toml::Value = toml::from_str(&cargo_content)
-            .map_err(|e| AuditError::TomlError {
-                file_path: cargo_path.to_path_buf(),
-                details: e.to_string(),
-            })?;
+        let cargo_toml: toml::Value = toml::from_str(&cargo_content).map_err(|e| {
+            AuditError::TomlError { file_path: cargo_path.to_path_buf(), details: e.to_string() }
+        })?;
 
         // Extract package information
         let package = match cargo_toml.get("package") {
@@ -511,7 +534,8 @@ impl CodeAnalyzer {
             }
         };
 
-        let name = package.get("name")
+        let name = package
+            .get("name")
             .and_then(|n| n.as_str())
             .ok_or_else(|| AuditError::TomlError {
                 file_path: cargo_path.to_path_buf(),
@@ -519,14 +543,11 @@ impl CodeAnalyzer {
             })?
             .to_string();
 
-        let version = package.get("version")
-            .and_then(|v| v.as_str())
-            .unwrap_or("0.0.0")
-            .to_string();
+        let version =
+            package.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
 
-        let rust_version = package.get("rust-version")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let rust_version =
+            package.get("rust-version").and_then(|v| v.as_str()).map(|s| s.to_string());
 
         // Extract feature flags
         let feature_flags = self.extract_feature_flags(&cargo_toml);
@@ -537,7 +558,7 @@ impl CodeAnalyzer {
         // Find and analyze source files
         let crate_dir = cargo_path.parent().unwrap();
         let src_dir = crate_dir.join("src");
-        
+
         let public_apis = if src_dir.exists() {
             self.analyze_source_files(&src_dir, &name).await?
         } else {
@@ -558,7 +579,8 @@ impl CodeAnalyzer {
 
     /// Extract feature flags from Cargo.toml.
     fn extract_feature_flags(&self, cargo_toml: &toml::Value) -> Vec<String> {
-        cargo_toml.get("features")
+        cargo_toml
+            .get("features")
             .and_then(|f| f.as_table())
             .map(|table| table.keys().cloned().collect())
             .unwrap_or_default()
@@ -595,32 +617,21 @@ impl CodeAnalyzer {
                 features: Vec::new(),
             },
             toml::Value::Table(table) => {
-                let version = table.get("version")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("*")
-                    .to_string();
-                
-                let optional = table.get("optional")
-                    .and_then(|o| o.as_bool())
-                    .unwrap_or(false);
+                let version =
+                    table.get("version").and_then(|v| v.as_str()).unwrap_or("*").to_string();
 
-                let features = table.get("features")
+                let optional = table.get("optional").and_then(|o| o.as_bool()).unwrap_or(false);
+
+                let features = table
+                    .get("features")
                     .and_then(|f| f.as_array())
                     .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str())
-                            .map(|s| s.to_string())
-                            .collect()
+                        arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()).collect()
                     })
                     .unwrap_or_default();
 
-                Dependency {
-                    name: name.to_string(),
-                    version,
-                    optional,
-                    features,
-                }
-            },
+                Dependency { name: name.to_string(), version, optional, features }
+            }
             _ => Dependency {
                 name: name.to_string(),
                 version: "*".to_string(),
@@ -632,14 +643,14 @@ impl CodeAnalyzer {
 
     /// Analyze all Rust source files in a directory.
     #[instrument(skip(self))]
-    async fn analyze_source_files(&self, src_dir: &Path, crate_name: &str) -> Result<Vec<PublicApi>> {
+    async fn analyze_source_files(
+        &self,
+        src_dir: &Path,
+        crate_name: &str,
+    ) -> Result<Vec<PublicApi>> {
         let mut apis = Vec::new();
 
-        for entry in WalkDir::new(src_dir)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in WalkDir::new(src_dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
             if entry.path().extension().and_then(|s| s.to_str()) == Some("rs") {
                 let file_apis = self.analyze_rust_file(entry.path(), crate_name).await?;
                 apis.extend(file_apis);
@@ -651,24 +662,31 @@ impl CodeAnalyzer {
 
     /// Analyze a single Rust source file.
     #[instrument(skip(self))]
-    async fn analyze_rust_file(&self, file_path: &Path, crate_name: &str) -> Result<Vec<PublicApi>> {
+    async fn analyze_rust_file(
+        &self,
+        file_path: &Path,
+        crate_name: &str,
+    ) -> Result<Vec<PublicApi>> {
         debug!("Analyzing Rust file: {}", file_path.display());
 
-        let content = std::fs::read_to_string(file_path)
-            .map_err(|e| AuditError::IoError {
-                path: file_path.to_path_buf(),
-                details: e.to_string(),
-            })?;
+        let content = std::fs::read_to_string(file_path).map_err(|e| AuditError::IoError {
+            path: file_path.to_path_buf(),
+            details: e.to_string(),
+        })?;
 
-        let syntax_tree = syn::parse_file(&content)
-            .map_err(|e| AuditError::SyntaxError {
-                details: format!("Failed to parse {}: {}", file_path.display(), e),
-            })?;
+        let syntax_tree = syn::parse_file(&content).map_err(|e| AuditError::SyntaxError {
+            details: format!("Failed to parse {}: {}", file_path.display(), e),
+        })?;
 
         let mut apis = Vec::new();
         let mut current_module_path = vec![crate_name.to_string()];
 
-        self.extract_apis_from_items(&syntax_tree.items, &mut current_module_path, file_path, &mut apis);
+        self.extract_apis_from_items(
+            &syntax_tree.items,
+            &mut current_module_path,
+            file_path,
+            &mut apis,
+        );
 
         Ok(apis)
     }
@@ -688,43 +706,43 @@ impl CodeAnalyzer {
                         let api = self.create_function_api(item_fn, module_path, file_path);
                         apis.push(api);
                     }
-                },
+                }
                 Item::Struct(item_struct) => {
                     if self.is_public(&item_struct.vis) {
                         let api = self.create_struct_api(item_struct, module_path, file_path);
                         apis.push(api);
                     }
-                },
+                }
                 Item::Enum(item_enum) => {
                     if self.is_public(&item_enum.vis) {
                         let api = self.create_enum_api(item_enum, module_path, file_path);
                         apis.push(api);
                     }
-                },
+                }
                 Item::Trait(item_trait) => {
                     if self.is_public(&item_trait.vis) {
                         let api = self.create_trait_api(item_trait, module_path, file_path);
                         apis.push(api);
                     }
-                },
+                }
                 Item::Type(item_type) => {
                     if self.is_public(&item_type.vis) {
                         let api = self.create_type_api(item_type, module_path, file_path);
                         apis.push(api);
                     }
-                },
+                }
                 Item::Const(item_const) => {
                     if self.is_public(&item_const.vis) {
                         let api = self.create_const_api(item_const, module_path, file_path);
                         apis.push(api);
                     }
-                },
+                }
                 Item::Static(item_static) => {
                     if self.is_public(&item_static.vis) {
                         let api = self.create_static_api(item_static, module_path, file_path);
                         apis.push(api);
                     }
-                },
+                }
                 Item::Mod(item_mod) => {
                     if self.is_public(&item_mod.vis) {
                         // Recursively analyze module contents
@@ -734,11 +752,11 @@ impl CodeAnalyzer {
                         }
                         module_path.pop();
                     }
-                },
+                }
                 Item::Impl(item_impl) => {
                     // Extract methods from impl blocks
                     self.extract_impl_methods(item_impl, module_path, file_path, apis);
-                },
+                }
                 _ => {
                     // Other items (use, extern crate, etc.) are not public APIs
                 }
@@ -752,7 +770,12 @@ impl CodeAnalyzer {
     }
 
     /// Create a PublicApi for a function.
-    fn create_function_api(&self, item_fn: &ItemFn, module_path: &[String], file_path: &Path) -> PublicApi {
+    fn create_function_api(
+        &self,
+        item_fn: &ItemFn,
+        module_path: &[String],
+        file_path: &Path,
+    ) -> PublicApi {
         let path = format!("{}::{}", module_path.join("::"), item_fn.sig.ident);
         let signature = format!("fn {}", quote::quote!(#item_fn.sig));
         let documentation = self.extract_doc_comments(&item_fn.attrs);
@@ -770,7 +793,12 @@ impl CodeAnalyzer {
     }
 
     /// Create a PublicApi for a struct.
-    fn create_struct_api(&self, item_struct: &ItemStruct, module_path: &[String], file_path: &Path) -> PublicApi {
+    fn create_struct_api(
+        &self,
+        item_struct: &ItemStruct,
+        module_path: &[String],
+        file_path: &Path,
+    ) -> PublicApi {
         let path = format!("{}::{}", module_path.join("::"), item_struct.ident);
         let signature = format!("struct {}", quote::quote!(#item_struct));
         let documentation = self.extract_doc_comments(&item_struct.attrs);
@@ -788,7 +816,12 @@ impl CodeAnalyzer {
     }
 
     /// Create a PublicApi for an enum.
-    fn create_enum_api(&self, item_enum: &ItemEnum, module_path: &[String], file_path: &Path) -> PublicApi {
+    fn create_enum_api(
+        &self,
+        item_enum: &ItemEnum,
+        module_path: &[String],
+        file_path: &Path,
+    ) -> PublicApi {
         let path = format!("{}::{}", module_path.join("::"), item_enum.ident);
         let signature = format!("enum {}", quote::quote!(#item_enum));
         let documentation = self.extract_doc_comments(&item_enum.attrs);
@@ -806,7 +839,12 @@ impl CodeAnalyzer {
     }
 
     /// Create a PublicApi for a trait.
-    fn create_trait_api(&self, item_trait: &ItemTrait, module_path: &[String], file_path: &Path) -> PublicApi {
+    fn create_trait_api(
+        &self,
+        item_trait: &ItemTrait,
+        module_path: &[String],
+        file_path: &Path,
+    ) -> PublicApi {
         let path = format!("{}::{}", module_path.join("::"), item_trait.ident);
         let signature = format!("trait {}", quote::quote!(#item_trait));
         let documentation = self.extract_doc_comments(&item_trait.attrs);
@@ -824,7 +862,12 @@ impl CodeAnalyzer {
     }
 
     /// Create a PublicApi for a type alias.
-    fn create_type_api(&self, item_type: &ItemType, module_path: &[String], file_path: &Path) -> PublicApi {
+    fn create_type_api(
+        &self,
+        item_type: &ItemType,
+        module_path: &[String],
+        file_path: &Path,
+    ) -> PublicApi {
         let path = format!("{}::{}", module_path.join("::"), item_type.ident);
         let signature = format!("type {}", quote::quote!(#item_type));
         let documentation = self.extract_doc_comments(&item_type.attrs);
@@ -842,7 +885,12 @@ impl CodeAnalyzer {
     }
 
     /// Create a PublicApi for a constant.
-    fn create_const_api(&self, item_const: &ItemConst, module_path: &[String], file_path: &Path) -> PublicApi {
+    fn create_const_api(
+        &self,
+        item_const: &ItemConst,
+        module_path: &[String],
+        file_path: &Path,
+    ) -> PublicApi {
         let path = format!("{}::{}", module_path.join("::"), item_const.ident);
         let signature = format!("const {}", quote::quote!(#item_const));
         let documentation = self.extract_doc_comments(&item_const.attrs);
@@ -860,7 +908,12 @@ impl CodeAnalyzer {
     }
 
     /// Create a PublicApi for a static.
-    fn create_static_api(&self, item_static: &ItemStatic, module_path: &[String], file_path: &Path) -> PublicApi {
+    fn create_static_api(
+        &self,
+        item_static: &ItemStatic,
+        module_path: &[String],
+        file_path: &Path,
+    ) -> PublicApi {
         let path = format!("{}::{}", module_path.join("::"), item_static.ident);
         let signature = format!("static {}", quote::quote!(#item_static));
         let documentation = self.extract_doc_comments(&item_static.attrs);
@@ -887,18 +940,20 @@ impl CodeAnalyzer {
     ) {
         // Get the type being implemented
         let type_name = match &*item_impl.self_ty {
-            syn::Type::Path(type_path) => {
-                type_path.path.segments.last()
-                    .map(|seg| seg.ident.to_string())
-                    .unwrap_or_else(|| "Unknown".to_string())
-            },
+            syn::Type::Path(type_path) => type_path
+                .path
+                .segments
+                .last()
+                .map(|seg| seg.ident.to_string())
+                .unwrap_or_else(|| "Unknown".to_string()),
             _ => "Unknown".to_string(),
         };
 
         for item in &item_impl.items {
             if let syn::ImplItem::Fn(method) = item {
                 if self.is_public(&method.vis) {
-                    let path = format!("{}::{}::{}", module_path.join("::"), type_name, method.sig.ident);
+                    let path =
+                        format!("{}::{}::{}", module_path.join("::"), type_name, method.sig.ident);
                     let signature = format!("fn {}", quote::quote!(#method.sig));
                     let documentation = self.extract_doc_comments(&method.attrs);
                     let deprecated = self.is_deprecated(&method.attrs);
@@ -933,11 +988,7 @@ impl CodeAnalyzer {
             }
         }
 
-        if doc_lines.is_empty() {
-            None
-        } else {
-            Some(doc_lines.join("\n"))
-        }
+        if doc_lines.is_empty() { None } else { Some(doc_lines.join("\n")) }
     }
 
     /// Check if an item is marked as deprecated.
@@ -948,13 +999,16 @@ impl CodeAnalyzer {
     /// Suggest similar crate names when a crate is not found.
     #[allow(dead_code)]
     fn suggest_similar_crate_names(&self, target: &str, registry: &CrateRegistry) -> String {
-        Self::suggest_similar_crate_names_static(target, &registry.crates.keys().cloned().collect::<Vec<_>>())
+        Self::suggest_similar_crate_names_static(
+            target,
+            &registry.crates.keys().cloned().collect::<Vec<_>>(),
+        )
     }
 
     /// Static version of suggest_similar_crate_names to avoid borrow checker issues.
     fn suggest_similar_crate_names_static(target: &str, available_crates: &[String]) -> String {
         let mut suggestions = Vec::new();
-        
+
         for crate_name in available_crates {
             if crate_name.contains(target) || target.contains(crate_name) {
                 suggestions.push(crate_name.clone());
@@ -977,7 +1031,7 @@ impl CodeAnalyzer {
     /// Static version of suggest_similar_api_names to avoid borrow checker issues.
     fn suggest_similar_api_names_static(target: &str, public_apis: &[PublicApi]) -> String {
         let mut suggestions = Vec::new();
-        
+
         for api in public_apis {
             let api_name = api.path.split("::").last().unwrap_or(&api.path);
             if api_name.contains(target) || target.contains(api_name) {
@@ -994,11 +1048,7 @@ impl CodeAnalyzer {
 
     /// Normalize a function signature for comparison by removing whitespace and formatting.
     fn normalize_signature(&self, signature: &str) -> String {
-        signature
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>()
-            .to_lowercase()
+        signature.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase()
     }
 
     /// Extract field names from a struct signature.
@@ -1006,7 +1056,7 @@ impl CodeAnalyzer {
         // This is a simplified implementation
         // In a real implementation, you'd want to parse the struct more carefully
         let mut fields = Vec::new();
-        
+
         // Look for patterns like "field_name: Type" in the signature
         if let Some(start) = signature.find('{') {
             if let Some(end) = signature.rfind('}') {
@@ -1015,14 +1065,16 @@ impl CodeAnalyzer {
                     let trimmed = line.trim();
                     if let Some(colon_pos) = trimmed.find(':') {
                         let field_name = trimmed[..colon_pos].trim();
-                        if !field_name.is_empty() && field_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        if !field_name.is_empty()
+                            && field_name.chars().all(|c| c.is_alphanumeric() || c == '_')
+                        {
                             fields.push(field_name.to_string());
                         }
                     }
                 }
             }
         }
-        
+
         fields
     }
 }
@@ -1030,8 +1082,8 @@ impl CodeAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_analyzer_creation() {
@@ -1043,27 +1095,35 @@ mod tests {
     #[tokio::test]
     async fn test_find_cargo_files() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create a test workspace structure
         let crate1_dir = temp_dir.path().join("crate1");
         fs::create_dir_all(&crate1_dir).unwrap();
-        fs::write(crate1_dir.join("Cargo.toml"), r#"
+        fs::write(
+            crate1_dir.join("Cargo.toml"),
+            r#"
 [package]
 name = "crate1"
 version = "0.1.0"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let crate2_dir = temp_dir.path().join("crate2");
         fs::create_dir_all(&crate2_dir).unwrap();
-        fs::write(crate2_dir.join("Cargo.toml"), r#"
+        fs::write(
+            crate2_dir.join("Cargo.toml"),
+            r#"
 [package]
 name = "crate2"
 version = "0.1.0"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let analyzer = CodeAnalyzer::new(temp_dir.path().to_path_buf());
         let cargo_files = analyzer.find_cargo_files().unwrap();
-        
+
         assert_eq!(cargo_files.len(), 2);
         assert!(cargo_files.iter().any(|p| p.ends_with("crate1/Cargo.toml")));
         assert!(cargo_files.iter().any(|p| p.ends_with("crate2/Cargo.toml")));
@@ -1072,13 +1132,16 @@ version = "0.1.0"
     #[test]
     fn test_extract_feature_flags() {
         let analyzer = CodeAnalyzer::new(PathBuf::from("."));
-        
-        let cargo_toml: toml::Value = toml::from_str(r#"
+
+        let cargo_toml: toml::Value = toml::from_str(
+            r#"
 [features]
 default = []
 feature1 = []
 feature2 = ["dep1"]
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let flags = analyzer.extract_feature_flags(&cargo_toml);
         assert_eq!(flags.len(), 3);
@@ -1090,7 +1153,7 @@ feature2 = ["dep1"]
     #[test]
     fn test_parse_dependency() {
         let analyzer = CodeAnalyzer::new(PathBuf::from("."));
-        
+
         // Test string version
         let dep1 = analyzer.parse_dependency("serde", &toml::Value::String("1.0".to_string()));
         assert_eq!(dep1.name, "serde");
@@ -1098,12 +1161,15 @@ feature2 = ["dep1"]
         assert!(!dep1.optional);
 
         // Test table version
-        let table: toml::Value = toml::from_str(r#"
+        let table: toml::Value = toml::from_str(
+            r#"
 version = "1.0"
 optional = true
 features = ["derive"]
-"#).unwrap();
-        
+"#,
+        )
+        .unwrap();
+
         let dep2 = analyzer.parse_dependency("serde", &table);
         assert_eq!(dep2.name, "serde");
         assert_eq!(dep2.version, "1.0");

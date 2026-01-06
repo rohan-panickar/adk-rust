@@ -6,7 +6,7 @@
 //!   cd doc-test/events/events_test
 //!   cargo run --bin basic
 
-use adk_core::{Content, Event, EventActions, Part};
+use adk_core::{Content, Event, Part};
 use serde_json::json;
 
 fn main() {

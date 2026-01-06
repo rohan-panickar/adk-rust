@@ -17,7 +17,7 @@ anyhow = "1.0"
 async-trait = "0.1"
 
 [[bin]]
-name = "basic"
+name = "mcp_test_basic"
 path = "src/basic.rs"
 
 [[bin]]

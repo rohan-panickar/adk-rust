@@ -1,7 +1,7 @@
 //! Structured Output - JSON schema for structured responses
 
-use adk_rust::prelude::*;
 use adk_rust::Launcher;
+use adk_rust::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -13,7 +13,9 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     // Agent with JSON schema for structured output
     let extractor = LlmAgentBuilder::new("entity_extractor")
-        .instruction("Extract entities from the given text. Return JSON with people, locations, and dates.")
+        .instruction(
+            "Extract entities from the given text. Return JSON with people, locations, and dates.",
+        )
         .model(Arc::new(model))
         .output_schema(json!({
             "type": "object",
@@ -23,7 +25,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     "items": { "type": "string" }
                 },
                 "locations": {
-                    "type": "array", 
+                    "type": "array",
                     "items": { "type": "string" }
                 },
                 "dates": {

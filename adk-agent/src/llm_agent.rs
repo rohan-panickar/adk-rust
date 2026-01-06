@@ -1,8 +1,9 @@
 use adk_core::{
     AfterAgentCallback, AfterModelCallback, AfterToolCallback, Agent, BeforeAgentCallback,
     BeforeModelCallback, BeforeModelResult, BeforeToolCallback, CallbackContext, Content, Event,
-    EventActions, FunctionResponseData, GlobalInstructionProvider, InstructionProvider, InvocationContext, Llm,
-    LlmRequest, LlmResponse, MemoryEntry, Part, ReadonlyContext, Result, Tool, ToolContext,
+    EventActions, FunctionResponseData, GlobalInstructionProvider, InstructionProvider,
+    InvocationContext, Llm, LlmRequest, LlmResponse, MemoryEntry, Part, ReadonlyContext, Result,
+    Tool, ToolContext,
 };
 use async_stream::stream;
 use async_trait::async_trait;
@@ -665,7 +666,7 @@ impl Agent for LlmAgent {
                 } else {
                     // Record LLM request for tracing
                     let request_json = serde_json::to_string(&request).unwrap_or_default();
-                    
+
                     // Create call_llm span with GCP attributes (works for all model types)
                     let llm_ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
@@ -681,17 +682,17 @@ impl Agent for LlmAgent {
                         "gcp.vertex.agent.llm_response" = tracing::field::Empty  // Placeholder for later recording
                     );
                     let _llm_guard = llm_span.enter();
-                    
+
                     // Check streaming mode from run config
                     use adk_core::StreamingMode;
                     let streaming_mode = ctx.run_config().streaming_mode;
                     let should_stream_to_client = matches!(streaming_mode, StreamingMode::SSE | StreamingMode::Bidi);
-                    
+
                     // Always use streaming internally for LLM calls
                     let mut response_stream = model.generate_content(request, true).await?;
 
                     use futures::StreamExt;
-                    
+
                     // Track last chunk for final event metadata (used in None mode)
                     let mut last_chunk: Option<LlmResponse> = None;
 
@@ -767,7 +768,7 @@ impl Agent for LlmAgent {
 
                             yield Ok(partial_event);
                         }
-                        
+
                         // Store last chunk for final event metadata
                         last_chunk = Some(chunk.clone());
 
@@ -776,7 +777,7 @@ impl Agent for LlmAgent {
                             break;
                         }
                     }
-                    
+
                     // For None mode: yield single final event with accumulated content
                     if !should_stream_to_client {
                         let mut final_event = Event::with_id(&llm_event_id, &invocation_id);
@@ -786,7 +787,7 @@ impl Agent for LlmAgent {
                         final_event.llm_response.content = accumulated_content.clone();
                         final_event.llm_response.partial = false;
                         final_event.llm_response.turn_complete = true;
-                        
+
                         // Copy metadata from last chunk
                         if let Some(ref last) = last_chunk {
                             final_event.llm_response.finish_reason = last.finish_reason;
@@ -813,7 +814,7 @@ impl Agent for LlmAgent {
 
                         yield Ok(final_event);
                     }
-                    
+
                     // Record LLM response to span before guard drops
                     if let Some(ref content) = accumulated_content {
                         let response_json = serde_json::to_string(content).unwrap_or_default();
@@ -880,7 +881,7 @@ impl Agent for LlmAgent {
                         let response_json = serde_json::to_string(content).unwrap_or_default();
                         tracing::Span::current().record("gcp.vertex.agent.llm_response", &response_json);
                     }
-                    
+
                     tracing::info!(agent.name = %agent_name, "Agent execution complete");
                     break;
                 }

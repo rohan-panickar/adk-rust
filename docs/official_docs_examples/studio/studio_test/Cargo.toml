@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "basic"
+name = "studio_test_basic"
 path = "src/basic.rs"
 
 [dependencies]

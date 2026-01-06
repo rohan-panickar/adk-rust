@@ -19,7 +19,7 @@
 //!
 //! ```rust,ignore
 //! let router = LlmConditionalAgent::new("router", model)
-//!     .instruction("Classify as 'technical', 'general', or 'creative'. 
+//!     .instruction("Classify as 'technical', 'general', or 'creative'.
 //!                   Respond with ONLY the category name.")
 //!     .route("technical", Arc::new(tech_agent))
 //!     .route("general", Arc::new(general_agent))
@@ -141,7 +141,7 @@ impl LlmConditionalAgentBuilder {
 
 impl LlmConditionalAgent {
     /// Create a new builder for LlmConditionalAgent.
-    pub fn new(name: impl Into<String>, model: Arc<dyn Llm>) -> LlmConditionalAgentBuilder {
+    pub fn builder(name: impl Into<String>, model: Arc<dyn Llm>) -> LlmConditionalAgentBuilder {
         LlmConditionalAgentBuilder::new(name, model)
     }
 }

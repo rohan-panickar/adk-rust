@@ -3,7 +3,7 @@
 //! This module provides functionality to validate version references in documentation
 //! against actual workspace versions, ensuring consistency across all documentation files.
 
-use crate::{AuditError, Result, VersionReference, VersionType, FeatureMention};
+use crate::{AuditError, FeatureMention, Result, VersionReference, VersionType};
 use regex::Regex;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -138,10 +138,7 @@ impl VersionValidator {
         let workspace_info = Self::analyze_workspace(workspace_path).await?;
         let patterns = VersionPatterns::new()?;
 
-        Ok(Self {
-            workspace_info,
-            patterns,
-        })
+        Ok(Self { workspace_info, patterns })
     }
 
     /// Creates a version validator with custom workspace information.
@@ -149,11 +146,8 @@ impl VersionValidator {
     /// This is useful for testing or when workspace information is already available.
     pub fn with_workspace_info(workspace_info: WorkspaceVersionInfo) -> Result<Self> {
         let patterns = VersionPatterns::new()?;
-        
-        Ok(Self {
-            workspace_info,
-            patterns,
-        })
+
+        Ok(Self { workspace_info, patterns })
     }
 
     /// Validates a version reference against workspace information.
@@ -210,7 +204,9 @@ impl VersionValidator {
         documented_version: &str,
         config: &VersionValidationConfig,
     ) -> Result<VersionValidationResult> {
-        if let Some(workspace_version) = self.workspace_info.dependency_versions.get(dependency_name) {
+        if let Some(workspace_version) =
+            self.workspace_info.dependency_versions.get(dependency_name)
+        {
             self.compare_versions(
                 documented_version,
                 workspace_version,
@@ -308,7 +304,10 @@ impl VersionValidator {
             return VersionValidationResult {
                 is_valid: false,
                 expected_version: None,
-                message: format!("Cannot validate feature '{}': crate '{}' not found in workspace", feature_name, crate_name),
+                message: format!(
+                    "Cannot validate feature '{}': crate '{}' not found in workspace",
+                    feature_name, crate_name
+                ),
                 severity: ValidationSeverity::Warning,
                 suggestion: self.suggest_similar_crate_name(crate_name),
             };
@@ -329,7 +328,10 @@ impl VersionValidator {
                 VersionValidationResult {
                     is_valid: false,
                     expected_version: None,
-                    message: format!("Feature '{}' not found in crate '{}'", feature_name, crate_name),
+                    message: format!(
+                        "Feature '{}' not found in crate '{}'",
+                        feature_name, crate_name
+                    ),
                     severity: ValidationSeverity::Warning,
                     suggestion,
                 }
@@ -355,10 +357,7 @@ impl VersionValidator {
     ///
     /// A vector of validation results corresponding to each input crate name.
     pub fn validate_crate_names(&self, crate_names: &[String]) -> Vec<VersionValidationResult> {
-        crate_names
-            .iter()
-            .map(|crate_name| self.validate_crate_exists(crate_name))
-            .collect()
+        crate_names.iter().map(|crate_name| self.validate_crate_exists(crate_name)).collect()
     }
 
     /// Validates feature flag references from documentation.
@@ -426,16 +425,14 @@ impl VersionValidator {
     ///
     /// This method provides intelligent suggestions based on the type of version
     /// reference and available workspace information.
-    pub fn suggest_correct_version(
-        &self,
-        version_ref: &VersionReference,
-    ) -> Option<String> {
+    pub fn suggest_correct_version(&self, version_ref: &VersionReference) -> Option<String> {
         match version_ref.version_type {
             VersionType::RustVersion => Some(self.workspace_info.rust_version.clone()),
             VersionType::WorkspaceVersion => Some(self.workspace_info.workspace_version.clone()),
             VersionType::CrateVersion => {
                 // Try to extract crate name from context
-                if let Some(crate_name) = self.extract_crate_name_from_context(&version_ref.context) {
+                if let Some(crate_name) = self.extract_crate_name_from_context(&version_ref.context)
+                {
                     self.workspace_info.crate_versions.get(&crate_name).cloned()
                 } else {
                     None
@@ -451,7 +448,7 @@ impl VersionValidator {
     /// Suggests a similar crate name when a crate is not found.
     fn suggest_similar_crate_name(&self, target: &str) -> Option<String> {
         let crate_names: Vec<&String> = self.workspace_info.crate_versions.keys().collect();
-        
+
         // Look for exact substring matches first
         for crate_name in &crate_names {
             if crate_name.contains(target) || target.contains(crate_name.as_str()) {
@@ -462,7 +459,7 @@ impl VersionValidator {
         // Look for similar names using edit distance
         let mut best_match = None;
         let mut best_distance = usize::MAX;
-        
+
         for crate_name in &crate_names {
             let distance = self.edit_distance(target, crate_name);
             if distance < best_distance && distance <= 3 {
@@ -474,7 +471,10 @@ impl VersionValidator {
         if let Some(match_name) = best_match {
             Some(format!("Did you mean '{}'?", match_name))
         } else if !crate_names.is_empty() {
-            Some(format!("Available crates: {}", crate_names.iter().take(5).map(|s| s.as_str()).collect::<Vec<_>>().join(", ")))
+            Some(format!(
+                "Available crates: {}",
+                crate_names.iter().take(5).map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+            ))
         } else {
             None
         }
@@ -493,7 +493,7 @@ impl VersionValidator {
             // Look for similar names using edit distance
             let mut best_match = None;
             let mut best_distance = usize::MAX;
-            
+
             for feature in features {
                 let distance = self.edit_distance(target, feature);
                 if distance < best_distance && distance <= 2 {
@@ -505,7 +505,11 @@ impl VersionValidator {
             if let Some(match_name) = best_match {
                 Some(format!("Did you mean '{}'?", match_name))
             } else if !features.is_empty() {
-                Some(format!("Available features in '{}': {}", crate_name, features.iter().take(5).cloned().collect::<Vec<_>>().join(", ")))
+                Some(format!(
+                    "Available features in '{}': {}",
+                    crate_name,
+                    features.iter().take(5).cloned().collect::<Vec<_>>().join(", ")
+                ))
             } else {
                 None
             }
@@ -517,7 +521,7 @@ impl VersionValidator {
     /// Suggests a similar feature name across all workspace crates.
     fn suggest_similar_feature_in_workspace(&self, target: &str) -> Option<String> {
         let mut all_features = Vec::new();
-        
+
         for (crate_name, features) in &self.workspace_info.workspace_features {
             for feature in features {
                 all_features.push((crate_name, feature));
@@ -534,7 +538,7 @@ impl VersionValidator {
         // Look for similar names using edit distance
         let mut best_match = None;
         let mut best_distance = usize::MAX;
-        
+
         for (crate_name, feature) in &all_features {
             let distance = self.edit_distance(target, feature);
             if distance < best_distance && distance <= 2 {
@@ -561,7 +565,7 @@ impl VersionValidator {
     fn edit_distance(&self, s1: &str, s2: &str) -> usize {
         let len1 = s1.len();
         let len2 = s2.len();
-        
+
         if len1 == 0 {
             return len2;
         }
@@ -586,13 +590,13 @@ impl VersionValidator {
         for i in 1..=len1 {
             for j in 1..=len2 {
                 let cost = if s1_chars[i - 1] == s2_chars[j - 1] { 0 } else { 1 };
-                
+
                 matrix[i][j] = std::cmp::min(
                     std::cmp::min(
-                        matrix[i - 1][j] + 1,      // deletion
-                        matrix[i][j - 1] + 1       // insertion
+                        matrix[i - 1][j] + 1, // deletion
+                        matrix[i][j - 1] + 1, // insertion
                     ),
-                    matrix[i - 1][j - 1] + cost    // substitution
+                    matrix[i - 1][j - 1] + cost, // substitution
                 );
             }
         }
@@ -603,18 +607,14 @@ impl VersionValidator {
     /// Analyzes the workspace to extract version information.
     async fn analyze_workspace(workspace_path: &Path) -> Result<WorkspaceVersionInfo> {
         let workspace_toml_path = workspace_path.join("Cargo.toml");
-        let workspace_content = tokio::fs::read_to_string(&workspace_toml_path)
-            .await
-            .map_err(|e| AuditError::IoError {
-                path: workspace_toml_path.clone(),
-                details: e.to_string(),
+        let workspace_content =
+            tokio::fs::read_to_string(&workspace_toml_path).await.map_err(|e| {
+                AuditError::IoError { path: workspace_toml_path.clone(), details: e.to_string() }
             })?;
 
-        let workspace_toml: Value = toml::from_str(&workspace_content)
-            .map_err(|e| AuditError::TomlError {
-                file_path: workspace_toml_path,
-                details: e.to_string(),
-            })?;
+        let workspace_toml: Value = toml::from_str(&workspace_content).map_err(|e| {
+            AuditError::TomlError { file_path: workspace_toml_path, details: e.to_string() }
+        })?;
 
         // Extract workspace version
         let workspace_version = workspace_toml
@@ -649,12 +649,12 @@ impl VersionValidator {
                     let crate_path = workspace_path.join(member_path);
                     if let Ok(crate_info) = Self::analyze_crate(&crate_path).await {
                         crate_versions.insert(crate_info.name.clone(), crate_info.version);
-                        
+
                         // Collect dependencies
                         for dep in crate_info.dependencies {
                             dependency_versions.insert(dep.name, dep.version);
                         }
-                        
+
                         // Collect features
                         if !crate_info.features.is_empty() {
                             workspace_features.insert(crate_info.name, crate_info.features);
@@ -676,18 +676,14 @@ impl VersionValidator {
     /// Analyzes a single crate to extract its version and dependency information.
     async fn analyze_crate(crate_path: &Path) -> Result<CrateAnalysisResult> {
         let cargo_toml_path = crate_path.join("Cargo.toml");
-        let content = tokio::fs::read_to_string(&cargo_toml_path)
-            .await
-            .map_err(|e| AuditError::IoError {
-                path: cargo_toml_path.clone(),
-                details: e.to_string(),
-            })?;
+        let content = tokio::fs::read_to_string(&cargo_toml_path).await.map_err(|e| {
+            AuditError::IoError { path: cargo_toml_path.clone(), details: e.to_string() }
+        })?;
 
-        let cargo_toml: Value = toml::from_str(&content)
-            .map_err(|e| AuditError::TomlError {
-                file_path: cargo_toml_path,
-                details: e.to_string(),
-            })?;
+        let cargo_toml: Value = toml::from_str(&content).map_err(|e| AuditError::TomlError {
+            file_path: cargo_toml_path,
+            details: e.to_string(),
+        })?;
 
         // Extract crate name and version
         let name = cargo_toml
@@ -709,10 +705,7 @@ impl VersionValidator {
         if let Some(deps) = cargo_toml.get("dependencies").and_then(|d| d.as_table()) {
             for (dep_name, dep_spec) in deps {
                 if let Some(version) = Self::extract_dependency_version(dep_spec) {
-                    dependencies.push(DependencyInfo {
-                        name: dep_name.clone(),
-                        version,
-                    });
+                    dependencies.push(DependencyInfo { name: dep_name.clone(), version });
                 }
             }
         }
@@ -723,12 +716,7 @@ impl VersionValidator {
             features.extend(feature_table.keys().cloned());
         }
 
-        Ok(CrateAnalysisResult {
-            name,
-            version,
-            dependencies,
-            features,
-        })
+        Ok(CrateAnalysisResult { name, version, dependencies, features })
     }
 
     /// Extracts version string from a dependency specification.
@@ -794,7 +782,9 @@ impl VersionValidator {
             expected_version: None,
             message: "Unable to verify crate version - crate name not found in context".to_string(),
             severity: ValidationSeverity::Info,
-            suggestion: Some("Ensure crate name is clearly specified in the documentation".to_string()),
+            suggestion: Some(
+                "Ensure crate name is clearly specified in the documentation".to_string(),
+            ),
         })
     }
 
@@ -843,11 +833,8 @@ impl VersionValidator {
         }
 
         // Check if versions are compatible based on tolerance
-        let compatible = self.is_version_compatible(
-            found_version,
-            expected_version,
-            &config.version_tolerance,
-        )?;
+        let compatible =
+            self.is_version_compatible(found_version, expected_version, &config.version_tolerance)?;
 
         if compatible {
             Ok(VersionValidationResult {
@@ -914,24 +901,27 @@ impl VersionPatterns {
                     pattern: "semver".to_string(),
                     details: e.to_string(),
                 })?,
-            
-            version_req: Regex::new(r"^[~^>=<]*\d+(?:\.\d+)?(?:\.\d+)?")
-                .map_err(|e| AuditError::RegexError {
+
+            version_req: Regex::new(r"^[~^>=<]*\d+(?:\.\d+)?(?:\.\d+)?").map_err(|e| {
+                AuditError::RegexError {
                     pattern: "version_req".to_string(),
                     details: e.to_string(),
-                })?,
-            
-            git_version: Regex::new(r#"git\s*=\s*"([^"]+)""#)
-                .map_err(|e| AuditError::RegexError {
+                }
+            })?,
+
+            git_version: Regex::new(r#"git\s*=\s*"([^"]+)""#).map_err(|e| {
+                AuditError::RegexError {
                     pattern: "git_version".to_string(),
                     details: e.to_string(),
-                })?,
-            
-            path_dependency: Regex::new(r#"path\s*=\s*"([^"]+)""#)
-                .map_err(|e| AuditError::RegexError {
+                }
+            })?,
+
+            path_dependency: Regex::new(r#"path\s*=\s*"([^"]+)""#).map_err(|e| {
+                AuditError::RegexError {
                     pattern: "path_dependency".to_string(),
                     details: e.to_string(),
-                })?,
+                }
+            })?,
         })
     }
 }
@@ -1068,19 +1058,33 @@ mod tests {
         let validator = create_test_validator();
 
         // Test exact compatibility
-        assert!(validator.is_version_compatible("1.0.0", "1.0.0", &VersionTolerance::Exact).unwrap());
-        assert!(!validator.is_version_compatible("1.0.0", "1.0.1", &VersionTolerance::Exact).unwrap());
+        assert!(
+            validator.is_version_compatible("1.0.0", "1.0.0", &VersionTolerance::Exact).unwrap()
+        );
+        assert!(
+            !validator.is_version_compatible("1.0.0", "1.0.1", &VersionTolerance::Exact).unwrap()
+        );
 
         // Test patch compatibility
-        assert!(validator.is_version_compatible("1.0.0", "1.0.1", &VersionTolerance::Patch).unwrap());
-        assert!(!validator.is_version_compatible("1.0.0", "1.1.0", &VersionTolerance::Patch).unwrap());
+        assert!(
+            validator.is_version_compatible("1.0.0", "1.0.1", &VersionTolerance::Patch).unwrap()
+        );
+        assert!(
+            !validator.is_version_compatible("1.0.0", "1.1.0", &VersionTolerance::Patch).unwrap()
+        );
 
         // Test minor compatibility
-        assert!(validator.is_version_compatible("1.0.0", "1.1.0", &VersionTolerance::Minor).unwrap());
-        assert!(!validator.is_version_compatible("1.0.0", "2.0.0", &VersionTolerance::Minor).unwrap());
+        assert!(
+            validator.is_version_compatible("1.0.0", "1.1.0", &VersionTolerance::Minor).unwrap()
+        );
+        assert!(
+            !validator.is_version_compatible("1.0.0", "2.0.0", &VersionTolerance::Minor).unwrap()
+        );
 
         // Test major compatibility
-        assert!(validator.is_version_compatible("1.0.0", "2.0.0", &VersionTolerance::Major).unwrap());
+        assert!(
+            validator.is_version_compatible("1.0.0", "2.0.0", &VersionTolerance::Major).unwrap()
+        );
     }
 
     #[test]
@@ -1089,16 +1093,19 @@ mod tests {
         let config = VersionValidationConfig::default();
 
         // Valid dependency version
-        let result = validator.validate_dependency_compatibility("serde", "1.0.195", &config).unwrap();
+        let result =
+            validator.validate_dependency_compatibility("serde", "1.0.195", &config).unwrap();
         assert!(result.is_valid);
 
         // Invalid dependency version (different minor version)
-        let result = validator.validate_dependency_compatibility("serde", "1.1.0", &config).unwrap();
+        let result =
+            validator.validate_dependency_compatibility("serde", "1.1.0", &config).unwrap();
         assert!(!result.is_valid);
         assert_eq!(result.expected_version, Some("1.0.195".to_string()));
 
         // Unknown dependency
-        let result = validator.validate_dependency_compatibility("unknown", "1.0.0", &config).unwrap();
+        let result =
+            validator.validate_dependency_compatibility("unknown", "1.0.0", &config).unwrap();
         assert!(!result.is_valid);
         assert_eq!(result.severity, ValidationSeverity::Warning);
     }
@@ -1146,10 +1153,7 @@ mod tests {
             Some("adk-model".to_string())
         );
 
-        assert_eq!(
-            validator.extract_crate_name_from_context("No crate name here"),
-            None
-        );
+        assert_eq!(validator.extract_crate_name_from_context("No crate name here"), None);
     }
 
     #[test]
@@ -1217,17 +1221,14 @@ mod tests {
     #[test]
     fn test_batch_crate_validation() {
         let validator = create_test_validator();
-        
-        let crate_names = vec![
-            "adk-core".to_string(),
-            "adk-model".to_string(),
-            "nonexistent".to_string(),
-        ];
+
+        let crate_names =
+            vec!["adk-core".to_string(), "adk-model".to_string(), "nonexistent".to_string()];
 
         let results = validator.validate_crate_names(&crate_names);
         assert_eq!(results.len(), 3);
-        assert!(results[0].is_valid);  // adk-core exists
-        assert!(results[1].is_valid);  // adk-model exists
+        assert!(results[0].is_valid); // adk-core exists
+        assert!(results[1].is_valid); // adk-model exists
         assert!(!results[2].is_valid); // nonexistent doesn't exist
     }
 
@@ -1328,7 +1329,8 @@ mod tests {
             context: "rust-version = \"2.0.0\"".to_string(),
         };
 
-        let result = validator.validate_version_reference(&major_diff_ref, &lenient_config).unwrap();
+        let result =
+            validator.validate_version_reference(&major_diff_ref, &lenient_config).unwrap();
         // Invalid because major version difference, but warning instead of critical
         assert!(!result.is_valid);
         assert_eq!(result.severity, ValidationSeverity::Warning);

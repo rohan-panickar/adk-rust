@@ -1,18 +1,18 @@
 use adk_doc_audit::{
     AuditCli, AuditCommand, AuditConfig, AuditError, AuditOrchestrator, IssueSeverity, Result,
-    reporter::ReportGenerator
+    reporter::ReportGenerator,
 };
 use std::path::{Path, PathBuf};
 use std::process;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
     // Initialize tracing
     let result = run().await;
-    
+
     match result {
         Ok(exit_code) => process::exit(exit_code),
         Err(e) => {
@@ -24,18 +24,19 @@ async fn main() {
 
 async fn run() -> Result<i32> {
     let cli = AuditCli::parse_args();
-    
+
     // Initialize logging based on verbosity
     init_logging(cli.verbose, cli.quiet);
-    
+
     info!("Starting adk-doc-audit v{}", adk_doc_audit::VERSION);
-    
+
     match &cli.command {
         AuditCommand::Audit { .. } => {
             let config = cli.to_config()?;
             let (no_fail, max_issues, ci_mode) = cli.get_ci_options().unwrap_or((false, 0, false));
             let single_crate_options = cli.get_single_crate_options();
-            run_audit_command(config, &cli, no_fail, max_issues, ci_mode, single_crate_options).await
+            run_audit_command(config, &cli, no_fail, max_issues, ci_mode, single_crate_options)
+                .await
         }
         AuditCommand::Crate { .. } => {
             let config = cli.to_config()?;
@@ -73,19 +74,19 @@ fn init_logging(verbose: bool, quiet: bool) {
     } else {
         tracing::Level::INFO
     };
-    
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
                 .with_target(false)
                 .with_level(true)
-                .with_filter(tracing_subscriber::filter::LevelFilter::from_level(level))
+                .with_filter(tracing_subscriber::filter::LevelFilter::from_level(level)),
         )
         .init();
 }
 
 async fn run_audit_command(
-    config: AuditConfig, 
+    config: AuditConfig,
     cli: &AuditCli,
     no_fail: bool,
     max_issues: usize,
@@ -98,23 +99,20 @@ async fn run_audit_command(
     } else {
         info!("Running full audit on workspace: {}", config.workspace_path.display());
     }
-    
+
     info!("Documentation path: {}", config.docs_path.display());
     debug!("Configuration: {:?}", config);
     debug!("CI/CD options: no_fail={}, max_issues={}, ci_mode={}", no_fail, max_issues, ci_mode);
-    
+
     // Create orchestrator and run audit
     let mut orchestrator = AuditOrchestrator::new(config.clone()).await?;
     let report = orchestrator.run_full_audit().await?;
-    
+
     // Apply max_issues limit if specified
     let total_issues = report.summary.total_issues;
-    let reported_issues = if max_issues > 0 && total_issues > max_issues {
-        max_issues
-    } else {
-        total_issues
-    };
-    
+    let reported_issues =
+        if max_issues > 0 && total_issues > max_issues { max_issues } else { total_issues };
+
     // Output results based on format and CI mode
     if ci_mode {
         // GitHub Actions compatible output
@@ -124,7 +122,7 @@ async fn run_audit_command(
         println!("severity_threshold={:?}", config.severity_threshold);
         println!("fail_on_critical={}", config.fail_on_critical);
         println!("::endgroup::");
-        
+
         println!("::group::Audit Results");
         println!("critical_issues={}", report.summary.critical_issues);
         println!("warning_issues={}", report.summary.warning_issues);
@@ -134,22 +132,27 @@ async fn run_audit_command(
         println!("files_processed={}", report.summary.total_files);
         println!("files_with_issues={}", report.summary.files_with_issues);
         println!("coverage_percentage={:.1}", report.summary.coverage_percentage);
-        
+
         if report.summary.critical_issues > 0 {
-            println!("::error::Found {} critical documentation issues", report.summary.critical_issues);
+            println!(
+                "::error::Found {} critical documentation issues",
+                report.summary.critical_issues
+            );
         }
         if report.summary.warning_issues > 0 {
-            println!("::warning::Found {} warning documentation issues", report.summary.warning_issues);
+            println!(
+                "::warning::Found {} warning documentation issues",
+                report.summary.warning_issues
+            );
         }
-        
+
         println!("::endgroup::");
-        
+
         // Set output variables for GitHub Actions
         println!("::set-output name=critical_issues::{}", report.summary.critical_issues);
         println!("::set-output name=warning_issues::{}", report.summary.warning_issues);
         println!("::set-output name=info_issues::{}", report.summary.info_issues);
         println!("::set-output name=total_issues::{}", total_issues);
-        
     } else if !config.quiet {
         println!();
         println!("Documentation Audit Results:");
@@ -163,11 +166,14 @@ async fn run_audit_command(
         println!("  Warning:  {}", report.summary.warning_issues);
         println!("  Info:     {}", report.summary.info_issues);
         println!("  Total:    {}", total_issues);
-        
+
         if max_issues > 0 && total_issues > max_issues {
-            println!("  (Showing {} of {} total issues due to --max-issues limit)", reported_issues, total_issues);
+            println!(
+                "  (Showing {} of {} total issues due to --max-issues limit)",
+                reported_issues, total_issues
+            );
         }
-        
+
         // Show some sample issues if any exist
         if !report.issues.is_empty() {
             println!();
@@ -179,20 +185,21 @@ async fn run_audit_command(
                     IssueSeverity::Warning => "⚠️",
                     IssueSeverity::Info => "ℹ️",
                 };
-                
-                println!("  {} {} ({}:{})", 
+
+                println!(
+                    "  {} {} ({}:{})",
                     severity_icon,
                     issue.message,
                     issue.file_path.display(),
                     issue.line_number.map(|n| n.to_string()).unwrap_or_else(|| "?".to_string())
                 );
             }
-            
+
             if report.issues.len() > sample_count {
                 println!("  ... and {} more issues", report.issues.len() - sample_count);
             }
         }
-        
+
         // Show recommendations if any
         if !report.recommendations.is_empty() {
             println!();
@@ -205,13 +212,13 @@ async fn run_audit_command(
             }
         }
     }
-    
+
     // Save report to file if requested or if format requires it
     let output_path = cli.get_output_path_with_default();
     if let Some(output_file) = output_path {
         let format = cli.get_output_format().into();
         let generator = ReportGenerator::new(format);
-        
+
         match generator.save_to_file(&report, &output_file) {
             Ok(()) => {
                 info!("Report saved to: {}", output_file.display());
@@ -229,7 +236,7 @@ async fn run_audit_command(
             }
         }
     }
-    
+
     // CI/CD integration: Return appropriate exit codes
     if no_fail {
         info!("No-fail mode enabled, returning success regardless of issues");
@@ -239,11 +246,14 @@ async fn run_audit_command(
         }
         return Ok(0);
     }
-    
+
     if report.summary.critical_issues > 0 && config.fail_on_critical {
         error!("Critical issues found and fail_on_critical is enabled");
         if ci_mode {
-            println!("::error::Audit failed due to {} critical issues", report.summary.critical_issues);
+            println!(
+                "::error::Audit failed due to {} critical issues",
+                report.summary.critical_issues
+            );
         } else if !config.quiet {
             println!();
             println!("❌ Audit failed: {} critical issues found", report.summary.critical_issues);
@@ -251,45 +261,65 @@ async fn run_audit_command(
         }
         return Ok(1); // Exit code 1 for CI/CD failure
     }
-    
+
     // Check severity threshold
     let total_issues_above_threshold = match config.severity_threshold {
         IssueSeverity::Critical => report.summary.critical_issues,
         IssueSeverity::Warning => report.summary.critical_issues + report.summary.warning_issues,
-        IssueSeverity::Info => report.summary.critical_issues + report.summary.warning_issues + report.summary.info_issues,
+        IssueSeverity::Info => {
+            report.summary.critical_issues
+                + report.summary.warning_issues
+                + report.summary.info_issues
+        }
     };
-    
+
     if total_issues_above_threshold > 0 {
-        warn!("Found {} issues at or above {:?} severity", total_issues_above_threshold, config.severity_threshold);
+        warn!(
+            "Found {} issues at or above {:?} severity",
+            total_issues_above_threshold, config.severity_threshold
+        );
         if ci_mode {
-            println!("::notice::Audit completed with {} issues at or above {:?} severity", 
-                     total_issues_above_threshold, config.severity_threshold);
+            println!(
+                "::notice::Audit completed with {} issues at or above {:?} severity",
+                total_issues_above_threshold, config.severity_threshold
+            );
         } else if !config.quiet {
             println!();
-            println!("⚠️  Audit completed with {} issues at or above {:?} severity", 
-                     total_issues_above_threshold, config.severity_threshold);
+            println!(
+                "⚠️  Audit completed with {} issues at or above {:?} severity",
+                total_issues_above_threshold, config.severity_threshold
+            );
         }
     } else {
         info!("No issues found at or above {:?} severity", config.severity_threshold);
         if ci_mode {
-            println!("::notice::Audit passed - no issues found at or above {:?} severity", config.severity_threshold);
+            println!(
+                "::notice::Audit passed - no issues found at or above {:?} severity",
+                config.severity_threshold
+            );
         } else if !config.quiet {
             println!();
-            println!("✅ Audit passed: No issues found at or above {:?} severity", config.severity_threshold);
+            println!(
+                "✅ Audit passed: No issues found at or above {:?} severity",
+                config.severity_threshold
+            );
         }
     }
-    
+
     Ok(0)
 }
 
-async fn run_incremental_command(config: AuditConfig, changed_files: &[std::path::PathBuf]) -> Result<i32> {
+async fn run_incremental_command(
+    config: AuditConfig,
+    changed_files: &[std::path::PathBuf],
+) -> Result<i32> {
     info!("Running incremental audit on {} files", changed_files.len());
     debug!("Configuration: {:?}", config);
-    
+
     // Create orchestrator and run incremental audit
     let mut orchestrator = AuditOrchestrator::new(config.clone()).await?;
     let report = orchestrator.run_incremental_audit(changed_files).await?;
-    
+
     if !config.quiet {
         println!();
         println!("Incremental Documentation Audit Results:");
@@ -302,7 +332,7 @@ async fn run_incremental_command(config: AuditConfig, changed_files: &[std::path
         println!("  Warning:  {}", report.summary.warning_issues);
         println!("  Info:     {}", report.summary.info_issues);
         println!("  Total:    {}", report.summary.total_issues);
-        
+
         // Show changed files that were processed
         println!();
         println!("Changed files processed:");
@@ -318,7 +348,7 @@ async fn run_incremental_command(config: AuditConfig, changed_files: &[std::path
             };
             println!("  {} - {}", file.display(), status);
         }
-        
+
         // Show sample issues if any exist
         if !report.issues.is_empty() {
             println!();
@@ -329,8 +359,9 @@ async fn run_incremental_command(config: AuditConfig, changed_files: &[std::path
                     IssueSeverity::Warning => "⚠️",
                     IssueSeverity::Info => "ℹ️",
                 };
-                
-                println!("  {} {} ({}:{})", 
+
+                println!(
+                    "  {} {} ({}:{})",
                     severity_icon,
                     issue.message,
                     issue.file_path.display(),
@@ -339,17 +370,20 @@ async fn run_incremental_command(config: AuditConfig, changed_files: &[std::path
             }
         }
     }
-    
+
     // Return appropriate exit code based on issues found
     if report.summary.critical_issues > 0 && config.fail_on_critical {
         error!("Critical issues found in incremental audit");
         if !config.quiet {
             println!();
-            println!("❌ Incremental audit failed: {} critical issues found", report.summary.critical_issues);
+            println!(
+                "❌ Incremental audit failed: {} critical issues found",
+                report.summary.critical_issues
+            );
         }
         return Ok(1);
     }
-    
+
     if !config.quiet {
         if report.summary.total_issues == 0 {
             println!();
@@ -359,14 +393,14 @@ async fn run_incremental_command(config: AuditConfig, changed_files: &[std::path
             println!("⚠️  Incremental audit completed with {} issues", report.summary.total_issues);
         }
     }
-    
+
     Ok(0)
 }
 
 async fn run_validate_command(config: AuditConfig, file_path: &Path) -> Result<i32> {
     info!("Validating file: {}", file_path.display());
     debug!("Configuration: {:?}", config);
-    
+
     // Validate that the file exists
     if !file_path.exists() {
         error!("File does not exist: {}", file_path.display());
@@ -375,10 +409,10 @@ async fn run_validate_command(config: AuditConfig, file_path: &Path) -> Result<i
         }
         return Ok(1);
     }
-    
+
     // Create orchestrator and validate single file
     let mut orchestrator = AuditOrchestrator::new(config.clone()).await?;
-    
+
     match orchestrator.validate_file(file_path).await {
         Ok(result) => {
             if !config.quiet {
@@ -389,7 +423,7 @@ async fn run_validate_command(config: AuditConfig, file_path: &Path) -> Result<i
                 println!("Status: {}", if result.passed { "✅ Passed" } else { "❌ Failed" });
                 println!("Processing time: {:?}", Duration::from_millis(result.audit_duration_ms));
                 println!("Issues found: {}", result.issues.len());
-                
+
                 if !result.issues.is_empty() {
                     println!();
                     println!("Issues:");
@@ -399,28 +433,33 @@ async fn run_validate_command(config: AuditConfig, file_path: &Path) -> Result<i
                             IssueSeverity::Warning => "⚠️",
                             IssueSeverity::Info => "ℹ️",
                         };
-                        
-                        println!("  {} {} (line {})", 
+
+                        println!(
+                            "  {} {} (line {})",
                             severity_icon,
                             issue.message,
-                            issue.line_number.map(|n| n.to_string()).unwrap_or_else(|| "?".to_string())
+                            issue
+                                .line_number
+                                .map(|n| n.to_string())
+                                .unwrap_or_else(|| "?".to_string())
                         );
-                        
+
                         if let Some(suggestion) = &issue.suggestion {
                             println!("    💡 Suggestion: {}", suggestion);
                         }
                     }
                 }
             }
-            
+
             // Return appropriate exit code
             if !result.passed && config.fail_on_critical {
-                let has_critical = result.issues.iter().any(|i| i.severity == IssueSeverity::Critical);
+                let has_critical =
+                    result.issues.iter().any(|i| i.severity == IssueSeverity::Critical);
                 if has_critical {
                     return Ok(1);
                 }
             }
-            
+
             Ok(0)
         }
         Err(e) => {
@@ -435,7 +474,7 @@ async fn run_validate_command(config: AuditConfig, file_path: &Path) -> Result<i
 
 async fn run_init_command(config: AuditConfig, config_path: &std::path::PathBuf) -> Result<i32> {
     info!("Initializing configuration at: {}", config_path.display());
-    
+
     // Check if config file already exists
     if config_path.exists() {
         warn!("Configuration file already exists: {}", config_path.display());
@@ -445,22 +484,21 @@ async fn run_init_command(config: AuditConfig, config_path: &std::path::PathBuf)
         }
         return Ok(1);
     }
-    
+
     // Create parent directory if it doesn't exist
     if let Some(parent) = config_path.parent() {
         if !parent.exists() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| AuditError::IoError {
-                    path: parent.to_path_buf(),
-                    details: e.to_string(),
-                })?;
+            std::fs::create_dir_all(parent).map_err(|e| AuditError::IoError {
+                path: parent.to_path_buf(),
+                details: e.to_string(),
+            })?;
             debug!("Created parent directory: {}", parent.display());
         }
     }
-    
+
     // Save the current configuration to the specified path
     config.save_to_file(config_path)?;
-    
+
     if !config.quiet {
         println!("Configuration file created at: {}", config_path.display());
         println!("You can edit this file to customize audit settings.");
@@ -468,7 +506,7 @@ async fn run_init_command(config: AuditConfig, config_path: &std::path::PathBuf)
         println!("Example usage:");
         println!("  adk-doc-audit --config {} audit", config_path.display());
     }
-    
+
     info!("Configuration initialization completed successfully");
     Ok(0)
 }
@@ -476,11 +514,11 @@ async fn run_init_command(config: AuditConfig, config_path: &std::path::PathBuf)
 async fn run_stats_command(config: AuditConfig, limit: usize) -> Result<i32> {
     info!("Showing audit statistics (limit: {})", limit);
     debug!("Configuration: {:?}", config);
-    
+
     // TODO: Implement stats functionality when database is available
-    
+
     warn!("Stats functionality not yet implemented - database component pending");
-    
+
     if !config.quiet {
         println!("Audit statistics configuration:");
         println!("  Workspace: {}", config.workspace_path.display());
@@ -493,7 +531,7 @@ async fn run_stats_command(config: AuditConfig, limit: usize) -> Result<i32> {
         println!("  - Trend analysis");
         println!("  - Most problematic files");
     }
-    
+
     // Check if database file exists
     let db_path = config.get_database_path();
     if db_path.exists() {
@@ -501,7 +539,7 @@ async fn run_stats_command(config: AuditConfig, limit: usize) -> Result<i32> {
     } else {
         debug!("Database file does not exist yet: {}", db_path.display());
     }
-    
+
     Ok(0)
 }
 
@@ -511,7 +549,7 @@ async fn run_crate_audit_command(
     crate_name: &str,
 ) -> Result<i32> {
     info!("Running audit for single crate: {}", crate_name);
-    
+
     // Find the crate path by name
     let crate_dir = config.workspace_path.join(crate_name);
     if !crate_dir.exists() {
@@ -522,17 +560,21 @@ async fn run_crate_audit_command(
             config.workspace_path = prefixed_dir;
         } else {
             return Err(AuditError::ConfigurationError {
-                message: format!("Crate '{}' not found in workspace. Tried '{}' and '{}'", 
-                               crate_name, crate_dir.display(), prefixed_dir.display())
+                message: format!(
+                    "Crate '{}' not found in workspace. Tried '{}' and '{}'",
+                    crate_name,
+                    crate_dir.display(),
+                    prefixed_dir.display()
+                ),
             });
         }
     } else {
         config.workspace_path = crate_dir;
     }
-    
+
     // Set documentation path for the crate
     config.docs_path = config.workspace_path.join("docs");
-    
+
     // Check if the single crate has documentation
     if !config.docs_path.exists() {
         // Try alternative documentation locations
@@ -541,7 +583,7 @@ async fn run_crate_audit_command(
             config.workspace_path.join("doc"),
             config.workspace_path.join("documentation"),
         ];
-        
+
         let mut found_docs = false;
         for alt_path in &alt_docs {
             if alt_path.exists() {
@@ -556,21 +598,25 @@ async fn run_crate_audit_command(
                 break;
             }
         }
-        
+
         if !found_docs {
-            warn!("No documentation found for crate '{}' at: {}", crate_name, config.workspace_path.display());
+            warn!(
+                "No documentation found for crate '{}' at: {}",
+                crate_name,
+                config.workspace_path.display()
+            );
             warn!("Tried: docs/, README.md, doc/, documentation/");
             return Ok(0); // Exit gracefully if no docs found
         }
     }
-    
+
     info!("Crate path: {}", config.workspace_path.display());
     info!("Documentation path: {}", config.docs_path.display());
-    
+
     // Create orchestrator and run audit
     let mut orchestrator = AuditOrchestrator::new(config.clone()).await?;
     let report = orchestrator.run_full_audit().await?;
-    
+
     // Output results
     if !config.quiet {
         println!();
@@ -586,7 +632,7 @@ async fn run_crate_audit_command(
         println!("  Warning:  {}", report.summary.warning_issues);
         println!("  Info:     {}", report.summary.info_issues);
         println!("  Total:    {}", report.summary.total_issues);
-        
+
         // Show sample issues if any exist
         if !report.issues.is_empty() {
             println!();
@@ -597,8 +643,9 @@ async fn run_crate_audit_command(
                     IssueSeverity::Warning => "⚠️",
                     IssueSeverity::Info => "ℹ️",
                 };
-                
-                println!("  {} {} ({}:{})", 
+
+                println!(
+                    "  {} {} ({}:{})",
                     severity_icon,
                     issue.message,
                     issue.file_path.display(),
@@ -606,7 +653,7 @@ async fn run_crate_audit_command(
                 );
             }
         }
-        
+
         // Show recommendations if any
         if !report.recommendations.is_empty() {
             println!();
@@ -619,13 +666,13 @@ async fn run_crate_audit_command(
             }
         }
     }
-    
+
     // Save report to file if requested or if format requires it
     let output_path = cli.get_output_path_with_default();
     if let Some(output_file) = output_path {
         let format = cli.get_output_format().into();
         let generator = ReportGenerator::new(format);
-        
+
         match generator.save_to_file(&report, &output_file) {
             Ok(()) => {
                 info!("Report saved to: {}", output_file.display());
@@ -643,28 +690,32 @@ async fn run_crate_audit_command(
             }
         }
     }
-    
+
     // Return appropriate exit code
     if report.summary.critical_issues > 0 && config.fail_on_critical {
         error!("Critical issues found in crate '{}'", crate_name);
         if !config.quiet {
             println!();
-            println!("❌ Audit failed: {} critical issues found in crate '{}'", 
-                     report.summary.critical_issues, crate_name);
+            println!(
+                "❌ Audit failed: {} critical issues found in crate '{}'",
+                report.summary.critical_issues, crate_name
+            );
         }
         return Ok(1);
     }
-    
+
     if !config.quiet {
         if report.summary.total_issues == 0 {
             println!();
             println!("✅ Audit passed: No issues found in crate '{}'", crate_name);
         } else {
             println!();
-            println!("⚠️  Audit completed with {} issues in crate '{}'", 
-                     report.summary.total_issues, crate_name);
+            println!(
+                "⚠️  Audit completed with {} issues in crate '{}'",
+                report.summary.total_issues, crate_name
+            );
         }
     }
-    
+
     Ok(0)
 }

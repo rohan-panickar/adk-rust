@@ -7,8 +7,8 @@
 //!   cargo run --bin state_scopes
 
 use adk_session::{
-    CreateRequest, GetRequest, InMemorySessionService, SessionService, KEY_PREFIX_APP,
-    KEY_PREFIX_USER,
+    CreateRequest, GetRequest, InMemorySessionService, KEY_PREFIX_APP, KEY_PREFIX_USER,
+    SessionService,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -38,10 +38,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("   Session 1 state:");
     println!("   - app:theme = {:?}", session1.state().get("app:theme"));
-    println!(
-        "   - user:language = {:?}",
-        session1.state().get("user:language")
-    );
+    println!("   - user:language = {:?}", session1.state().get("user:language"));
     println!("   - context = {:?}", session1.state().get("context"));
 
     // 2. Create second session for same user (inherits app and user state)
@@ -60,10 +57,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("   Session 2 state (inherits app/user state):");
     println!("   - app:theme = {:?}", session2.state().get("app:theme"));
-    println!(
-        "   - user:language = {:?}",
-        session2.state().get("user:language")
-    );
+    println!("   - user:language = {:?}", session2.state().get("user:language"));
     println!("   - context = {:?}", session2.state().get("context"));
 
     // 3. Create session for different user (inherits only app state)
@@ -83,10 +77,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("   Bob's session state (inherits only app state):");
     println!("   - app:theme = {:?}", session3.state().get("app:theme"));
-    println!(
-        "   - user:language = {:?}",
-        session3.state().get("user:language")
-    );
+    println!("   - user:language = {:?}", session3.state().get("user:language"));
     println!("   - context = {:?}", session3.state().get("context"));
 
     // 4. Verify state isolation
@@ -103,36 +94,21 @@ async fn main() -> anyhow::Result<()> {
         })
         .await?;
 
-    assert_eq!(
-        session1_refetch.state().get("context"),
-        Some(json!("session1_context"))
-    );
-    assert_eq!(
-        session2.state().get("context"),
-        Some(json!("session2_context"))
-    );
-    assert_eq!(
-        session3.state().get("context"),
-        Some(json!("bob_context"))
-    );
+    assert_eq!(session1_refetch.state().get("context"), Some(json!("session1_context")));
+    assert_eq!(session2.state().get("context"), Some(json!("session2_context")));
+    assert_eq!(session3.state().get("context"), Some(json!("bob_context")));
 
     println!("   ✓ Session contexts are isolated");
 
     // App state is shared
-    assert_eq!(
-        session1_refetch.state().get("app:theme"),
-        Some(json!("dark"))
-    );
+    assert_eq!(session1_refetch.state().get("app:theme"), Some(json!("dark")));
     assert_eq!(session2.state().get("app:theme"), Some(json!("dark")));
     assert_eq!(session3.state().get("app:theme"), Some(json!("dark")));
 
     println!("   ✓ App state is shared across all sessions");
 
     // User state is shared per user
-    assert_eq!(
-        session1_refetch.state().get("user:language"),
-        Some(json!("en"))
-    );
+    assert_eq!(session1_refetch.state().get("user:language"), Some(json!("en")));
     assert_eq!(session2.state().get("user:language"), Some(json!("en")));
     assert_eq!(session3.state().get("user:language"), Some(json!("fr")));
 

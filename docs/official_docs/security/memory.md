@@ -10,7 +10,7 @@ The memory system provides persistent, searchable storage for agent conversation
 
 ```toml
 [dependencies]
-adk-memory = "{{version}}"
+adk-memory = "0.2.0"
 ```
 
 ## Core Concepts

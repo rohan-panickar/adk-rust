@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [[bin]]
-name = "basic"
+name = "telemetry_test_basic"
 path = "src/basic.rs"
 
 [[bin]]

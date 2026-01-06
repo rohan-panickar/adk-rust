@@ -34,7 +34,7 @@ pub async fn get_trace_by_event_id(
         if let Some(attributes) = exporter.get_trace_by_event_id(&event_id) {
             return Ok(Json(attributes));
         }
-        
+
         // If not found, search through all spans for matching session event ID
         let trace_dict = exporter.get_trace_dict();
         for (_, attributes) in trace_dict.iter() {
@@ -44,7 +44,7 @@ pub async fn get_trace_by_event_id(
             }
         }
     }
-    
+
     Err(StatusCode::NOT_FOUND)
 }
 
@@ -53,7 +53,7 @@ pub async fn get_trace_by_event_id(
 fn convert_to_span_data(attributes: &HashMap<String, String>) -> serde_json::Value {
     let start_time: u64 = attributes.get("start_time").and_then(|s| s.parse().ok()).unwrap_or(0);
     let end_time: u64 = attributes.get("end_time").and_then(|s| s.parse().ok()).unwrap_or(0);
-    
+
     // Build JSON object - omit parent_span_id entirely to prevent nesting
     let mut obj = serde_json::json!({
         "name": attributes.get("span_name").map_or("unknown", |v| v.as_str()),
@@ -64,7 +64,7 @@ fn convert_to_span_data(attributes: &HashMap<String, String>) -> serde_json::Val
         "attributes": attributes,
         "invoc_id": attributes.get("gcp.vertex.agent.invocation_id").map_or("", |v| v.as_str())
     });
-    
+
     // Add LLM request/response if present (for UI display)
     if let Some(llm_req) = attributes.get("gcp.vertex.agent.llm_request") {
         obj["gcp.vertex.agent.llm_request"] = serde_json::Value::String(llm_req.clone());
@@ -72,7 +72,7 @@ fn convert_to_span_data(attributes: &HashMap<String, String>) -> serde_json::Val
     if let Some(llm_resp) = attributes.get("gcp.vertex.agent.llm_response") {
         obj["gcp.vertex.agent.llm_response"] = serde_json::Value::String(llm_resp.clone());
     }
-    
+
     obj
 }
 
@@ -83,12 +83,10 @@ pub async fn get_session_traces(
 ) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
     if let Some(exporter) = &controller.config.span_exporter {
         let traces = exporter.get_session_trace(&session_id);
-        let span_data: Vec<serde_json::Value> = traces.iter()
-            .map(convert_to_span_data)
-            .collect();
+        let span_data: Vec<serde_json::Value> = traces.iter().map(convert_to_span_data).collect();
         return Ok(Json(span_data));
     }
-    
+
     Ok(Json(Vec::new()))
 }
 
@@ -118,16 +116,15 @@ pub async fn get_event(
     // Try to find trace data for this event_id
     if let Some(exporter) = &controller.config.span_exporter {
         let traces = exporter.get_session_trace(&session_id);
-        
+
         // Find a trace with matching event_id
         for attrs in traces {
             if let Some(stored_event_id) = attrs.get("gcp.vertex.agent.event_id") {
                 if stored_event_id == &event_id {
                     // Found matching trace - return event-like structure
-                    let invocation_id = attrs.get("gcp.vertex.agent.invocation_id")
-                        .cloned()
-                        .unwrap_or_default();
-                    
+                    let invocation_id =
+                        attrs.get("gcp.vertex.agent.invocation_id").cloned().unwrap_or_default();
+
                     return Ok(Json(serde_json::json!({
                         "id": event_id,
                         "invocationId": invocation_id,
@@ -141,7 +138,7 @@ pub async fn get_event(
             }
         }
     }
-    
+
     // Event not found - return a minimal stub to prevent UI errors
     Ok(Json(serde_json::json!({
         "id": event_id,

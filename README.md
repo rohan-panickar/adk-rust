@@ -24,7 +24,7 @@ ADK-Rust provides a comprehensive framework for building AI agents in Rust, feat
 ## ADK-Rust Studio
 
 [![adk-studio](https://img.shields.io/crates/v/adk-studio.svg)](https://crates.io/crates/adk-studio)
-![New](https://img.shields.io/badge/new-v{{version}}-brightgreen)
+![New](https://img.shields.io/badge/new-v0.2.0-brightgreen)
 
 A new visual development environment for building AI agents with drag-and-drop, powered by ADK-Rust:
 
@@ -52,14 +52,14 @@ Requires Rust 1.85 or later (Rust 2024 edition). Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-adk-rust = "{{version}}"
+adk-rust = "0.2.0"
 
 # Or individual crates
-adk-core = "{{version}}"
-adk-agent = "{{version}}"
-adk-model = "{{version}}"  # Add features for providers: features = ["openai", "anthropic"]
-adk-tool = "{{version}}"
-adk-runner = "{{version}}"
+adk-core = "0.2.0"
+adk-agent = "0.2.0"
+adk-model = "0.2.0"  # Add features for providers: features = ["openai", "anthropic"]
+adk-tool = "0.2.0"
+adk-runner = "0.2.0"
 ```
 
 Set your API key:
@@ -734,25 +734,25 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 # All-in-one crate
-adk-rust = "{{version}}"
+adk-rust = "0.2.0"
 
 # Or individual crates for finer control
-adk-core = "{{version}}"
-adk-agent = "{{version}}"
-adk-model = { version = "{{version}}", features = ["openai", "anthropic"] }  # Enable providers
-adk-tool = "{{version}}"
-adk-runner = "{{version}}"
+adk-core = "0.2.0"
+adk-agent = "0.2.0"
+adk-model = { version = "0.2.0", features = ["openai", "anthropic"] }  # Enable providers
+adk-tool = "0.2.0"
+adk-runner = "0.2.0"
 
 # Optional dependencies
-adk-session = { version = "{{version}}", optional = true }
-adk-artifact = { version = "{{version}}", optional = true }
-adk-memory = { version = "{{version}}", optional = true }
-adk-server = { version = "{{version}}", optional = true }
-adk-cli = { version = "{{version}}", optional = true }
-adk-realtime = { version = "{{version}}", features = ["openai"], optional = true }
-adk-graph = { version = "{{version}}", features = ["sqlite"], optional = true }
-adk-browser = { version = "{{version}}", optional = true }
-adk-eval = { version = "{{version}}", optional = true }
+adk-session = { version = "0.2.0", optional = true }
+adk-artifact = { version = "0.2.0", optional = true }
+adk-memory = { version = "0.2.0", optional = true }
+adk-server = { version = "0.2.0", optional = true }
+adk-cli = { version = "0.2.0", optional = true }
+adk-realtime = { version = "0.2.0", features = ["openai"], optional = true }
+adk-graph = { version = "0.2.0", features = ["sqlite"], optional = true }
+adk-browser = { version = "0.2.0", optional = true }
+adk-eval = { version = "0.2.0", optional = true }
 ```
 
 ## Examples
@@ -861,7 +861,7 @@ Contributions welcome! Please open an issue or pull request on GitHub.
 
 ## Roadmap
 
-**Implemented** (v{{version}}):
+**Implemented** (v0.2.0):
 - Core framework and agent types
 - Multi-provider LLM support (Gemini, OpenAI, Anthropic, DeepSeek, Groq, Ollama)
 - **Native local inference** (adk-mistralrs) with ISQ quantization, LoRA adapters, vision/speech/diffusion

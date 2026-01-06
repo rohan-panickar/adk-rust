@@ -5,8 +5,8 @@
 //! version inconsistencies, compilation errors, and diff-style updates.
 
 use crate::{
-    Result, ApiReference, ApiItemType, CompilationError, ErrorType,
-    PublicApi, VersionReference, VersionType, CrateInfo
+    ApiItemType, ApiReference, CompilationError, CrateInfo, ErrorType, PublicApi, Result,
+    VersionReference, VersionType,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -100,13 +100,9 @@ impl SuggestionEngine {
     ///
     /// A new `SuggestionEngine` instance.
     pub fn new(crate_registry: HashMap<String, CrateInfo>, workspace_version: String) -> Self {
-        Self {
-            crate_registry,
-            workspace_version,
-            suggestion_cache: HashMap::new(),
-        }
+        Self { crate_registry, workspace_version, suggestion_cache: HashMap::new() }
     }
-    
+
     /// Creates a new suggestion engine with empty registry (for orchestrator use).
     pub fn new_empty() -> Self {
         Self {
@@ -162,11 +158,7 @@ impl SuggestionEngine {
                 for (api, confidence) in similar_apis {
                     if confidence >= config.min_confidence {
                         let suggestion = self.create_api_correction_suggestion(
-                            api_ref,
-                            api,
-                            file_path,
-                            confidence,
-                            config,
+                            api_ref, api, file_path, confidence, config,
                         )?;
                         suggestions.push(suggestion);
                     }
@@ -174,25 +166,35 @@ impl SuggestionEngine {
             }
 
             // Check for deprecated APIs and suggest replacements
-            if let Some(deprecated_replacement) = self.find_deprecated_replacement(crate_info, api_ref) {
-                let suggestion = Suggestion {
-                    suggestion_type: SuggestionType::DeprecatedApiReplacement,
-                    description: format!("Replace deprecated API '{}' with '{}'", 
-                                       api_ref.item_path, deprecated_replacement.path),
-                    original_text: api_ref.item_path.clone(),
-                    suggested_text: deprecated_replacement.path.clone(),
-                    file_path: file_path.to_path_buf(),
-                    line_number: Some(api_ref.line_number),
-                    column_number: None,
-                    confidence: 0.9,
-                    context: Some(format!("The API '{}' has been deprecated. Use '{}' instead.", 
-                                        api_ref.item_path, deprecated_replacement.path)),
-                    diff: if config.generate_diffs {
-                        Some(self.generate_simple_diff(&api_ref.item_path, &deprecated_replacement.path))
-                    } else {
-                        None
-                    },
-                };
+            if let Some(deprecated_replacement) =
+                self.find_deprecated_replacement(crate_info, api_ref)
+            {
+                let suggestion =
+                    Suggestion {
+                        suggestion_type: SuggestionType::DeprecatedApiReplacement,
+                        description: format!(
+                            "Replace deprecated API '{}' with '{}'",
+                            api_ref.item_path, deprecated_replacement.path
+                        ),
+                        original_text: api_ref.item_path.clone(),
+                        suggested_text: deprecated_replacement.path.clone(),
+                        file_path: file_path.to_path_buf(),
+                        line_number: Some(api_ref.line_number),
+                        column_number: None,
+                        confidence: 0.9,
+                        context: Some(format!(
+                            "The API '{}' has been deprecated. Use '{}' instead.",
+                            api_ref.item_path, deprecated_replacement.path
+                        )),
+                        diff: if config.generate_diffs {
+                            Some(self.generate_simple_diff(
+                                &api_ref.item_path,
+                                &deprecated_replacement.path,
+                            ))
+                        } else {
+                            None
+                        },
+                    };
                 suggestions.push(suggestion);
             }
         } else {
@@ -206,8 +208,10 @@ impl SuggestionEngine {
                 line_number: None,
                 column_number: None,
                 confidence: 0.8,
-                context: Some(format!("The crate '{}' is not found in dependencies. Add it to Cargo.toml.", 
-                                    api_ref.crate_name)),
+                context: Some(format!(
+                    "The crate '{}' is not found in dependencies. Add it to Cargo.toml.",
+                    api_ref.crate_name
+                )),
                 diff: None,
             };
             suggestions.push(suggestion);
@@ -268,8 +272,10 @@ impl SuggestionEngine {
         if version_ref.version != correct_version {
             let suggestion = Suggestion {
                 suggestion_type: SuggestionType::VersionUpdate,
-                description: format!("Update {} version from '{}' to '{}'", 
-                                   crate_name, version_ref.version, correct_version),
+                description: format!(
+                    "Update {} version from '{}' to '{}'",
+                    crate_name, version_ref.version, correct_version
+                ),
                 original_text: version_ref.version.clone(),
                 suggested_text: correct_version.clone(),
                 file_path: file_path.to_path_buf(),
@@ -277,8 +283,10 @@ impl SuggestionEngine {
                 column_number: None,
                 confidence: 0.95,
                 context: if config.include_context {
-                    Some(format!("Version '{}' is outdated. Current version is '{}'.", 
-                               version_ref.version, correct_version))
+                    Some(format!(
+                        "Version '{}' is outdated. Current version is '{}'.",
+                        version_ref.version, correct_version
+                    ))
                 } else {
                     None
                 },
@@ -328,7 +336,10 @@ impl SuggestionEngine {
                             column_number: error.column,
                             confidence: 0.8,
                             context: if config.include_context {
-                                Some(format!("Import '{}' to resolve the unresolved reference.", import_suggestion))
+                                Some(format!(
+                                    "Import '{}' to resolve the unresolved reference.",
+                                    import_suggestion
+                                ))
                             } else {
                                 None
                             },
@@ -371,7 +382,10 @@ impl SuggestionEngine {
                             column_number: error.column,
                             confidence: 0.75,
                             context: if config.include_context {
-                                Some("Async code requires proper runtime setup and await usage.".to_string())
+                                Some(
+                                    "Async code requires proper runtime setup and await usage."
+                                        .to_string(),
+                                )
                             } else {
                                 None
                             },
@@ -381,7 +395,9 @@ impl SuggestionEngine {
                     }
                 }
                 ErrorType::DeprecatedApi => {
-                    if let Some(replacement) = self.suggest_deprecated_api_replacement(&error.message) {
+                    if let Some(replacement) =
+                        self.suggest_deprecated_api_replacement(&error.message)
+                    {
                         let suggestion = Suggestion {
                             suggestion_type: SuggestionType::DeprecatedApiReplacement,
                             description: format!("Replace deprecated API with: {}", replacement),
@@ -392,7 +408,10 @@ impl SuggestionEngine {
                             column_number: error.column,
                             confidence: 0.9,
                             context: if config.include_context {
-                                Some("This API has been deprecated. Use the suggested replacement.".to_string())
+                                Some(
+                                    "This API has been deprecated. Use the suggested replacement."
+                                        .to_string(),
+                                )
                             } else {
                                 None
                             },
@@ -403,7 +422,8 @@ impl SuggestionEngine {
                 }
                 _ => {
                     // Generic compilation fix suggestions
-                    if let Some(generic_fix) = self.suggest_generic_compilation_fix(&error.message) {
+                    if let Some(generic_fix) = self.suggest_generic_compilation_fix(&error.message)
+                    {
                         let suggestion = Suggestion {
                             suggestion_type: SuggestionType::CompilationFix,
                             description: format!("Compilation fix: {}", generic_fix),
@@ -450,7 +470,7 @@ impl SuggestionEngine {
         file_path: &Path,
     ) -> Result<String> {
         let mut diff_output = String::new();
-        
+
         diff_output.push_str(&format!("--- {}\n", file_path.display()));
         diff_output.push_str(&format!("+++ {}\n", file_path.display()));
 
@@ -463,7 +483,8 @@ impl SuggestionEngine {
                 if line_num > 0 && line_num <= modified_lines.len() {
                     let line_index = line_num - 1;
                     let original_line = modified_lines[line_index];
-                    let modified_line = original_line.replace(&suggestion.original_text, &suggestion.suggested_text);
+                    let modified_line = original_line
+                        .replace(&suggestion.original_text, &suggestion.suggested_text);
                     modified_lines[line_index] = Box::leak(modified_line.into_boxed_str());
                 }
             }
@@ -484,18 +505,29 @@ impl SuggestionEngine {
     // Private helper methods
 
     /// Finds an exact API match in the crate registry.
-    fn find_exact_api_match<'a>(&self, crate_info: &'a CrateInfo, api_ref: &ApiReference) -> Option<&'a PublicApi> {
-        crate_info.public_apis.iter()
-            .find(|api| api.path == api_ref.item_path && self.api_types_match(&api.item_type, &api_ref.item_type))
+    fn find_exact_api_match<'a>(
+        &self,
+        crate_info: &'a CrateInfo,
+        api_ref: &ApiReference,
+    ) -> Option<&'a PublicApi> {
+        crate_info.public_apis.iter().find(|api| {
+            api.path == api_ref.item_path
+                && self.api_types_match(&api.item_type, &api_ref.item_type)
+        })
     }
 
     /// Finds similar APIs using fuzzy matching.
-    fn find_similar_apis<'a>(&self, crate_info: &'a CrateInfo, api_ref: &ApiReference) -> Vec<(&'a PublicApi, f64)> {
+    fn find_similar_apis<'a>(
+        &self,
+        crate_info: &'a CrateInfo,
+        api_ref: &ApiReference,
+    ) -> Vec<(&'a PublicApi, f64)> {
         let mut similar_apis = Vec::new();
 
         for api in &crate_info.public_apis {
             let similarity = self.calculate_similarity(&api_ref.item_path, &api.path);
-            if similarity > 0.6 { // Threshold for similarity
+            if similarity > 0.6 {
+                // Threshold for similarity
                 similar_apis.push((api, similarity));
             }
         }
@@ -506,10 +538,15 @@ impl SuggestionEngine {
     }
 
     /// Finds replacement for deprecated API.
-    fn find_deprecated_replacement<'a>(&self, crate_info: &'a CrateInfo, api_ref: &ApiReference) -> Option<&'a PublicApi> {
+    fn find_deprecated_replacement<'a>(
+        &self,
+        crate_info: &'a CrateInfo,
+        api_ref: &ApiReference,
+    ) -> Option<&'a PublicApi> {
         // Look for non-deprecated APIs with similar names
-        crate_info.public_apis.iter()
-            .find(|api| !api.deprecated && self.calculate_similarity(&api_ref.item_path, &api.path) > 0.8)
+        crate_info.public_apis.iter().find(|api| {
+            !api.deprecated && self.calculate_similarity(&api_ref.item_path, &api.path) > 0.8
+        })
     }
 
     /// Creates an API correction suggestion.
@@ -523,8 +560,10 @@ impl SuggestionEngine {
     ) -> Result<Suggestion> {
         Ok(Suggestion {
             suggestion_type: SuggestionType::ApiSignatureCorrection,
-            description: format!("Correct API signature from '{}' to '{}'", 
-                               api_ref.item_path, correct_api.path),
+            description: format!(
+                "Correct API signature from '{}' to '{}'",
+                api_ref.item_path, correct_api.path
+            ),
             original_text: api_ref.item_path.clone(),
             suggested_text: correct_api.path.clone(),
             file_path: file_path.to_path_buf(),
@@ -553,18 +592,18 @@ impl SuggestionEngine {
     fn calculate_similarity(&self, s1: &str, s2: &str) -> f64 {
         let len1 = s1.len();
         let len2 = s2.len();
-        
+
         if len1 == 0 && len2 == 0 {
             return 1.0;
         }
-        
+
         if len1 == 0 || len2 == 0 {
             return 0.0;
         }
 
         let distance = self.levenshtein_distance(s1, s2);
         let max_len = len1.max(len2);
-        
+
         1.0 - (distance as f64 / max_len as f64)
     }
 
@@ -656,7 +695,8 @@ impl SuggestionEngine {
             suggestions.push("Add .await to async function calls".to_string());
         }
         if error_message.contains("runtime") {
-            suggestions.push("Set up tokio runtime with #[tokio::main] or Runtime::new()".to_string());
+            suggestions
+                .push("Set up tokio runtime with #[tokio::main] or Runtime::new()".to_string());
         }
 
         suggestions
@@ -708,7 +748,7 @@ impl SuggestionEngine {
             // Determine the best documentation file for this API
             let suggested_file = self.determine_documentation_file(api, docs_path)?;
             let suggested_section = self.determine_documentation_section(api);
-            
+
             let suggestion = Suggestion {
                 suggestion_type: SuggestionType::StructureImprovement,
                 description: format!("Document '{}' in {}", api.path, suggested_file.display()),
@@ -719,8 +759,10 @@ impl SuggestionEngine {
                 column_number: None,
                 confidence: 0.8,
                 context: if config.include_context {
-                    Some(format!("Add documentation for {} in the {} section", 
-                               api.path, suggested_section))
+                    Some(format!(
+                        "Add documentation for {} in the {} section",
+                        api.path, suggested_section
+                    ))
                 } else {
                     None
                 },
@@ -780,7 +822,10 @@ impl SuggestionEngine {
                     column_number: None,
                     confidence: 0.9,
                     context: if config.include_context {
-                        Some(format!("{} is essential for comprehensive documentation", description))
+                        Some(format!(
+                            "{} is essential for comprehensive documentation",
+                            description
+                        ))
                     } else {
                         None
                     },
@@ -813,7 +858,8 @@ impl SuggestionEngine {
         }
 
         // Suggest organizing documentation by feature/crate
-        let crate_organization_suggestions = self.suggest_crate_based_organization(docs_path, config)?;
+        let crate_organization_suggestions =
+            self.suggest_crate_based_organization(docs_path, config)?;
         suggestions.extend(crate_organization_suggestions);
 
         Ok(suggestions)
@@ -862,7 +908,8 @@ impl SuggestionEngine {
                         suggestion_type: SuggestionType::StructureImprovement,
                         description: format!("Create {}", description),
                         original_text: String::new(),
-                        suggested_text: self.generate_crate_file_template(crate_name, filename, crate_info),
+                        suggested_text: self
+                            .generate_crate_file_template(crate_name, filename, crate_info),
                         file_path,
                         line_number: None,
                         column_number: None,
@@ -888,7 +935,7 @@ impl SuggestionEngine {
     fn determine_documentation_file(&self, api: &PublicApi, docs_path: &Path) -> Result<PathBuf> {
         // Extract crate name from API path
         let crate_name = self.extract_crate_name_from_api(&api.path);
-        
+
         // Check if crate-specific documentation exists
         let crate_docs_dir = docs_path.join(&crate_name);
         if crate_docs_dir.exists() {
@@ -927,7 +974,7 @@ impl SuggestionEngine {
     /// Generates a documentation template for an API.
     fn generate_documentation_template(&self, api: &PublicApi) -> String {
         let section = self.determine_documentation_section(api);
-        
+
         format!(
             r#"## {}
 
@@ -966,8 +1013,7 @@ impl SuggestionEngine {
     /// Generates a template for a documentation file.
     fn generate_file_template(&self, filename: &str) -> String {
         match filename {
-            "getting-started.md" => {
-                r#"# Getting Started
+            "getting-started.md" => r#"# Getting Started
 
 ## Installation
 
@@ -986,10 +1032,9 @@ adk-rust = "0.1.0"
 
 - [API Reference](api-reference.md)
 - [Examples](examples.md)
-"#.to_string()
-            }
-            "api-reference.md" => {
-                r#"# API Reference
+"#
+            .to_string(),
+            "api-reference.md" => r#"# API Reference
 
 ## Overview
 
@@ -1010,10 +1055,9 @@ This document provides a comprehensive reference for all public APIs.
 ## Functions
 
 [List functions here]
-"#.to_string()
-            }
-            "examples.md" => {
-                r#"# Examples and Tutorials
+"#
+            .to_string(),
+            "examples.md" => r#"# Examples and Tutorials
 
 ## Basic Examples
 
@@ -1035,10 +1079,9 @@ This document provides a comprehensive reference for all public APIs.
 
 - [Tutorial 1](tutorials/tutorial-1.md)
 - [Tutorial 2](tutorials/tutorial-2.md)
-"#.to_string()
-            }
-            "migration-guide.md" => {
-                r#"# Migration Guide
+"#
+            .to_string(),
+            "migration-guide.md" => r#"# Migration Guide
 
 ## Migrating from Previous Versions
 
@@ -1053,10 +1096,9 @@ This document provides a comprehensive reference for all public APIs.
 ## Deprecated APIs
 
 [List deprecated APIs and their replacements here]
-"#.to_string()
-            }
-            "troubleshooting.md" => {
-                r#"# Troubleshooting
+"#
+            .to_string(),
+            "troubleshooting.md" => r#"# Troubleshooting
 
 ## Common Issues
 
@@ -1076,10 +1118,9 @@ This document provides a comprehensive reference for all public APIs.
 
 - [GitHub Issues](https://github.com/zavora-ai/adk-rust/issues)
 - [Discussions](https://github.com/zavora-ai/adk-rust/discussions)
-"#.to_string()
-            }
-            "changelog.md" => {
-                r#"# Changelog
+"#
+            .to_string(),
+            "changelog.md" => r#"# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -1105,9 +1146,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - [Security improvements]
-"#.to_string()
-            }
-            _ => format!("# {}\n\n[Add content here]\n", filename.replace(".md", "").replace("-", " ").to_uppercase())
+"#
+            .to_string(),
+            _ => format!(
+                "# {}\n\n[Add content here]\n",
+                filename.replace(".md", "").replace("-", " ").to_uppercase()
+            ),
         }
     }
 
@@ -1130,7 +1174,7 @@ Welcome to the ADK-Rust documentation!
 
 ## Crates
 
-"#
+"#,
         );
 
         // Add crate-specific documentation links
@@ -1156,14 +1200,19 @@ Welcome to the ADK-Rust documentation!
 
 - [Contributing Guidelines](../CONTRIBUTING.md)
 - [Development Setup](development.md)
-"#
+"#,
         );
 
         Ok(index_content)
     }
 
     /// Generates a template for crate-specific documentation files.
-    fn generate_crate_file_template(&self, crate_name: &str, filename: &str, crate_info: &CrateInfo) -> String {
+    fn generate_crate_file_template(
+        &self,
+        crate_name: &str,
+        filename: &str,
+        crate_info: &CrateInfo,
+    ) -> String {
         match filename {
             "README.md" => {
                 format!(
@@ -1205,7 +1254,9 @@ See [examples.md](examples.md) for detailed usage examples.
                     crate_name,
                     crate_name,
                     crate_info.version,
-                    crate_info.feature_flags.iter()
+                    crate_info
+                        .feature_flags
+                        .iter()
                         .map(|f| format!("- `{}`", f))
                         .collect::<Vec<_>>()
                         .join("\n"),
@@ -1214,13 +1265,13 @@ See [examples.md](examples.md) for detailed usage examples.
             }
             "api.md" => {
                 let mut api_content = format!("# {} API Reference\n\n", crate_name);
-                
+
                 // Group APIs by type
                 let mut traits = Vec::new();
                 let mut structs = Vec::new();
                 let mut functions = Vec::new();
                 let mut enums = Vec::new();
-                
+
                 for api in &crate_info.public_apis {
                     match api.item_type {
                         ApiItemType::Trait => traits.push(api),
@@ -1230,7 +1281,7 @@ See [examples.md](examples.md) for detailed usage examples.
                         _ => {}
                     }
                 }
-                
+
                 if !traits.is_empty() {
                     api_content.push_str("## Traits\n\n");
                     for trait_api in traits {
@@ -1241,18 +1292,19 @@ See [examples.md](examples.md) for detailed usage examples.
                         }
                     }
                 }
-                
+
                 if !structs.is_empty() {
                     api_content.push_str("## Structs\n\n");
                     for struct_api in structs {
                         api_content.push_str(&format!("### `{}`\n\n", struct_api.path));
-                        api_content.push_str(&format!("```rust\n{}\n```\n\n", struct_api.signature));
+                        api_content
+                            .push_str(&format!("```rust\n{}\n```\n\n", struct_api.signature));
                         if let Some(doc) = &struct_api.documentation {
                             api_content.push_str(&format!("{}\n\n", doc));
                         }
                     }
                 }
-                
+
                 if !functions.is_empty() {
                     api_content.push_str("## Functions\n\n");
                     for func_api in functions {
@@ -1263,7 +1315,7 @@ See [examples.md](examples.md) for detailed usage examples.
                         }
                     }
                 }
-                
+
                 api_content
             }
             "examples.md" => {
@@ -1297,7 +1349,9 @@ use {}::*;
                     crate_name.replace("-", "_")
                 )
             }
-            _ => format!("# {} {}\n\n[Add content here]\n", crate_name, filename.replace(".md", ""))
+            _ => {
+                format!("# {} {}\n\n[Add content here]\n", crate_name, filename.replace(".md", ""))
+            }
         }
     }
 
@@ -1315,7 +1369,7 @@ use {}::*;
                 return crate_name.clone();
             }
         }
-        
+
         // Fall back to extracting from path
         if let Some(first_part) = api_path.split("::").next() {
             first_part.replace("_", "-")
@@ -1337,10 +1391,181 @@ impl Default for SuggestionConfig {
     }
 }
 
+impl SuggestionEngine {
+    /// Generate suggestions for a specific category of issues.
+    pub async fn generate_suggestions_for_category(
+        &self,
+        category: crate::reporter::IssueCategory,
+        issues: &[&crate::reporter::AuditIssue],
+        _crate_registry: &crate::analyzer::CrateRegistry,
+    ) -> Result<Vec<crate::reporter::Recommendation>> {
+        use crate::reporter::{IssueCategory, Recommendation, RecommendationType};
+
+        let mut recommendations = Vec::new();
+        let _config = SuggestionConfig::default();
+
+        match category {
+            IssueCategory::ApiMismatch => {
+                for issue in issues {
+                    let recommendation = Recommendation {
+                        id: format!("api-fix-{}", issue.file_path.display()),
+                        recommendation_type: RecommendationType::FixIssue,
+                        priority: 1, // High priority
+                        title: "Fix API Reference".to_string(),
+                        description: format!(
+                            "Update API reference in {}",
+                            issue.file_path.display()
+                        ),
+                        affected_files: vec![issue.file_path.clone()],
+                        estimated_effort_hours: Some(0.5),
+                        resolves_issues: vec![format!(
+                            "api-mismatch-{}",
+                            issue.line_number.unwrap_or(0)
+                        )],
+                    };
+                    recommendations.push(recommendation);
+                }
+            }
+            IssueCategory::VersionInconsistency => {
+                let recommendation = Recommendation {
+                    id: format!("version-update-{}", issues.len()),
+                    recommendation_type: RecommendationType::UpdateContent,
+                    priority: 2, // Medium priority
+                    title: "Update Version References".to_string(),
+                    description: format!(
+                        "Update {} version references to current workspace version",
+                        issues.len()
+                    ),
+                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
+                    estimated_effort_hours: Some(0.25 * issues.len() as f32),
+                    resolves_issues: issues
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format!("version-{}", i))
+                        .collect(),
+                };
+                recommendations.push(recommendation);
+            }
+            IssueCategory::CompilationError => {
+                let recommendation = Recommendation {
+                    id: format!("compilation-fix-{}", issues.len()),
+                    recommendation_type: RecommendationType::ImproveExamples,
+                    priority: 1, // High priority
+                    title: "Fix Compilation Errors".to_string(),
+                    description: format!(
+                        "Fix {} compilation errors in code examples",
+                        issues.len()
+                    ),
+                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
+                    estimated_effort_hours: Some(1.0 * issues.len() as f32),
+                    resolves_issues: issues
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format!("compile-{}", i))
+                        .collect(),
+                };
+                recommendations.push(recommendation);
+            }
+            IssueCategory::BrokenLink => {
+                let recommendation = Recommendation {
+                    id: format!("link-fix-{}", issues.len()),
+                    recommendation_type: RecommendationType::FixIssue,
+                    priority: 2, // Medium priority
+                    title: "Fix Broken Links".to_string(),
+                    description: format!("Fix {} broken internal links", issues.len()),
+                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
+                    estimated_effort_hours: Some(0.1 * issues.len() as f32),
+                    resolves_issues: issues
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format!("link-{}", i))
+                        .collect(),
+                };
+                recommendations.push(recommendation);
+            }
+            IssueCategory::MissingDocumentation => {
+                let recommendation = Recommendation {
+                    id: format!("doc-addition-{}", issues.len()),
+                    recommendation_type: RecommendationType::AddDocumentation,
+                    priority: 3, // Low priority
+                    title: "Add Missing Documentation".to_string(),
+                    description: format!("Document {} undocumented features", issues.len()),
+                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
+                    estimated_effort_hours: Some(2.0 * issues.len() as f32),
+                    resolves_issues: issues
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format!("missing-doc-{}", i))
+                        .collect(),
+                };
+                recommendations.push(recommendation);
+            }
+            IssueCategory::DeprecatedApi => {
+                let recommendation = Recommendation {
+                    id: format!("deprecated-fix-{}", issues.len()),
+                    recommendation_type: RecommendationType::UpdateContent,
+                    priority: 2, // Medium priority
+                    title: "Update Deprecated API References".to_string(),
+                    description: format!("Update {} deprecated API references", issues.len()),
+                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
+                    estimated_effort_hours: Some(0.5 * issues.len() as f32),
+                    resolves_issues: issues
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format!("deprecated-{}", i))
+                        .collect(),
+                };
+                recommendations.push(recommendation);
+            }
+            IssueCategory::ProcessingError => {
+                let recommendation = Recommendation {
+                    id: format!("processing-fix-{}", issues.len()),
+                    recommendation_type: RecommendationType::FixIssue,
+                    priority: 1, // High priority
+                    title: "Fix Processing Errors".to_string(),
+                    description: format!("Resolve {} file processing errors", issues.len()),
+                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
+                    estimated_effort_hours: Some(1.0 * issues.len() as f32),
+                    resolves_issues: issues
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format!("processing-{}", i))
+                        .collect(),
+                };
+                recommendations.push(recommendation);
+            }
+            _ => {
+                // Generic recommendation for other categories
+                let recommendation = Recommendation {
+                    id: format!("generic-fix-{}", issues.len()),
+                    recommendation_type: RecommendationType::FixIssue,
+                    priority: 2, // Medium priority
+                    title: format!("Address {} Issues", category.description()),
+                    description: format!(
+                        "Review and fix {} issues of type: {}",
+                        issues.len(),
+                        category.description()
+                    ),
+                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
+                    estimated_effort_hours: Some(1.0 * issues.len() as f32),
+                    resolves_issues: issues
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format!("generic-{}", i))
+                        .collect(),
+                };
+                recommendations.push(recommendation);
+            }
+        }
+
+        Ok(recommendations)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PublicApi, Dependency};
+    use crate::{Dependency, PublicApi};
 
     fn create_test_crate_info() -> CrateInfo {
         CrateInfo {
@@ -1377,14 +1602,12 @@ mod tests {
                 },
             ],
             feature_flags: vec!["default".to_string()],
-            dependencies: vec![
-                Dependency {
-                    name: "tokio".to_string(),
-                    version: "1.0".to_string(),
-                    features: vec!["full".to_string()],
-                    optional: false,
-                },
-            ],
+            dependencies: vec![Dependency {
+                name: "tokio".to_string(),
+                version: "1.0".to_string(),
+                features: vec!["full".to_string()],
+                optional: false,
+            }],
             rust_version: Some("1.85.0".to_string()),
         }
     }
@@ -1392,7 +1615,7 @@ mod tests {
     fn create_test_engine() -> SuggestionEngine {
         let mut registry = HashMap::new();
         registry.insert("adk-core".to_string(), create_test_crate_info());
-        
+
         SuggestionEngine::new(registry, "0.1.0".to_string())
     }
 
@@ -1407,7 +1630,7 @@ mod tests {
     fn test_api_signature_correction() {
         let engine = create_test_engine();
         let config = SuggestionConfig::default();
-        
+
         let api_ref = ApiReference {
             crate_name: "adk-core".to_string(),
             item_path: "Agent".to_string(),
@@ -1416,11 +1639,9 @@ mod tests {
             context: "use adk_core::Agent;".to_string(),
         };
 
-        let suggestions = engine.suggest_api_signature_corrections(
-            &api_ref,
-            Path::new("test.md"),
-            &config,
-        ).unwrap();
+        let suggestions = engine
+            .suggest_api_signature_corrections(&api_ref, Path::new("test.md"), &config)
+            .unwrap();
 
         assert!(!suggestions.is_empty());
         assert_eq!(suggestions[0].suggestion_type, SuggestionType::ApiSignatureCorrection);
@@ -1431,7 +1652,7 @@ mod tests {
     fn test_version_correction() {
         let engine = create_test_engine();
         let config = SuggestionConfig::default();
-        
+
         let version_ref = VersionReference {
             version: "0.0.1".to_string(), // Outdated version
             version_type: VersionType::CrateVersion,
@@ -1439,12 +1660,14 @@ mod tests {
             context: "adk-core = \"0.0.1\"".to_string(),
         };
 
-        let suggestions = engine.suggest_version_corrections(
-            &version_ref,
-            "adk-core", // Pass crate name separately
-            Path::new("test.md"),
-            &config,
-        ).unwrap();
+        let suggestions = engine
+            .suggest_version_corrections(
+                &version_ref,
+                "adk-core", // Pass crate name separately
+                Path::new("test.md"),
+                &config,
+            )
+            .unwrap();
 
         assert!(!suggestions.is_empty());
         assert_eq!(suggestions[0].suggestion_type, SuggestionType::VersionUpdate);
@@ -1455,23 +1678,18 @@ mod tests {
     fn test_compilation_fix_suggestions() {
         let engine = create_test_engine();
         let config = SuggestionConfig::default();
-        
-        let errors = vec![
-            CompilationError {
-                message: "cannot find adk_core in scope".to_string(),
-                line: Some(1),
-                column: Some(5),
-                error_type: ErrorType::UnresolvedImport,
-                suggestion: None,
-                code_snippet: None,
-            }
-        ];
 
-        let suggestions = engine.suggest_compilation_fixes(
-            &errors,
-            Path::new("test.rs"),
-            &config,
-        ).unwrap();
+        let errors = vec![CompilationError {
+            message: "cannot find adk_core in scope".to_string(),
+            line: Some(1),
+            column: Some(5),
+            error_type: ErrorType::UnresolvedImport,
+            suggestion: None,
+            code_snippet: None,
+        }];
+
+        let suggestions =
+            engine.suggest_compilation_fixes(&errors, Path::new("test.rs"), &config).unwrap();
 
         assert!(!suggestions.is_empty());
         assert_eq!(suggestions[0].suggestion_type, SuggestionType::ImportFix);
@@ -1481,7 +1699,7 @@ mod tests {
     #[test]
     fn test_similarity_calculation() {
         let engine = create_test_engine();
-        
+
         assert_eq!(engine.calculate_similarity("Agent", "Agent"), 1.0);
         assert!(engine.calculate_similarity("Agent", "Agnt") > 0.6);
         assert!(engine.calculate_similarity("Agent", "LlmAgent") > 0.4);
@@ -1491,7 +1709,7 @@ mod tests {
     #[test]
     fn test_levenshtein_distance() {
         let engine = create_test_engine();
-        
+
         assert_eq!(engine.levenshtein_distance("", ""), 0);
         assert_eq!(engine.levenshtein_distance("abc", "abc"), 0);
         assert_eq!(engine.levenshtein_distance("abc", "ab"), 1);
@@ -1501,39 +1719,33 @@ mod tests {
     #[test]
     fn test_import_fix_suggestions() {
         let engine = create_test_engine();
-        
+
         assert_eq!(
             engine.suggest_import_fix("cannot find adk_core"),
             Some("use adk_core::*;".to_string())
         );
-        assert_eq!(
-            engine.suggest_import_fix("cannot find tokio"),
-            Some("use tokio;".to_string())
-        );
-        assert_eq!(
-            engine.suggest_import_fix("cannot find unknown_crate"),
-            None
-        );
+        assert_eq!(engine.suggest_import_fix("cannot find tokio"), Some("use tokio;".to_string()));
+        assert_eq!(engine.suggest_import_fix("cannot find unknown_crate"), None);
     }
 
     #[test]
     fn test_dependency_addition_suggestions() {
         let engine = create_test_engine();
-        
-        assert!(engine.suggest_dependency_addition("missing adk_core")
-                      .unwrap().contains("adk-core"));
-        assert!(engine.suggest_dependency_addition("missing tokio")
-                      .unwrap().contains("tokio"));
+
+        assert!(
+            engine.suggest_dependency_addition("missing adk_core").unwrap().contains("adk-core")
+        );
+        assert!(engine.suggest_dependency_addition("missing tokio").unwrap().contains("tokio"));
         assert_eq!(engine.suggest_dependency_addition("missing unknown"), None);
     }
 
     #[test]
     fn test_async_pattern_fix_suggestions() {
         let engine = create_test_engine();
-        
+
         let suggestions = engine.suggest_async_pattern_fixes("async fn main not supported");
         assert!(suggestions.iter().any(|s| s.contains("tokio::main")));
-        
+
         let suggestions = engine.suggest_async_pattern_fixes("missing await");
         assert!(suggestions.iter().any(|s| s.contains("await")));
     }
@@ -1541,7 +1753,7 @@ mod tests {
     #[test]
     fn test_diff_generation() {
         let engine = create_test_engine();
-        
+
         let diff = engine.generate_simple_diff("old_text", "new_text");
         assert!(diff.contains("-old_text"));
         assert!(diff.contains("+new_text"));
@@ -1550,7 +1762,7 @@ mod tests {
     #[test]
     fn test_suggestion_config_defaults() {
         let config = SuggestionConfig::default();
-        
+
         assert_eq!(config.min_confidence, 0.7);
         assert_eq!(config.max_suggestions_per_issue, 5);
         assert!(config.generate_diffs);
@@ -1562,7 +1774,7 @@ mod tests {
     fn test_deprecated_api_detection() {
         let engine = create_test_engine();
         let config = SuggestionConfig::default();
-        
+
         let api_ref = ApiReference {
             crate_name: "adk-core".to_string(),
             item_path: "OldAgent".to_string(),
@@ -1571,18 +1783,19 @@ mod tests {
             context: "use adk_core::OldAgent;".to_string(),
         };
 
-        let suggestions = engine.suggest_api_signature_corrections(
-            &api_ref,
-            Path::new("test.md"),
-            &config,
-        ).unwrap();
+        let suggestions = engine
+            .suggest_api_signature_corrections(&api_ref, Path::new("test.md"), &config)
+            .unwrap();
 
         // Should find exact match first (even if deprecated), then suggest replacement
         assert!(!suggestions.is_empty());
         // The deprecated API should be found as an exact match, and then a replacement should be suggested
-        let has_deprecated_replacement = suggestions.iter().any(|s| s.suggestion_type == SuggestionType::DeprecatedApiReplacement);
-        let has_exact_match = suggestions.iter().any(|s| s.suggestion_type == SuggestionType::ApiSignatureCorrection);
-        
+        let has_deprecated_replacement = suggestions
+            .iter()
+            .any(|s| s.suggestion_type == SuggestionType::DeprecatedApiReplacement);
+        let has_exact_match =
+            suggestions.iter().any(|s| s.suggestion_type == SuggestionType::ApiSignatureCorrection);
+
         // Should have either an exact match or a deprecated replacement
         assert!(has_deprecated_replacement || has_exact_match);
     }
@@ -1591,7 +1804,7 @@ mod tests {
     fn test_fuzzy_matching() {
         let engine = create_test_engine();
         let config = SuggestionConfig::default();
-        
+
         let api_ref = ApiReference {
             crate_name: "adk-core".to_string(),
             item_path: "Agnt".to_string(), // Typo in "Agent"
@@ -1600,11 +1813,9 @@ mod tests {
             context: "use adk_core::Agnt;".to_string(),
         };
 
-        let suggestions = engine.suggest_api_signature_corrections(
-            &api_ref,
-            Path::new("test.md"),
-            &config,
-        ).unwrap();
+        let suggestions = engine
+            .suggest_api_signature_corrections(&api_ref, Path::new("test.md"), &config)
+            .unwrap();
 
         assert!(!suggestions.is_empty());
         assert!(suggestions[0].suggested_text.contains("Agent"));
@@ -1615,28 +1826,23 @@ mod tests {
     fn test_documentation_placement_suggestions() {
         let engine = create_test_engine();
         let config = SuggestionConfig::default();
-        
-        let undocumented_apis = vec![
-            PublicApi {
-                path: "NewAgent".to_string(),
-                signature: "pub struct NewAgent".to_string(),
-                item_type: ApiItemType::Struct,
-                documentation: None,
-                deprecated: false,
-                source_file: PathBuf::from("src/lib.rs"),
-                line_number: 40,
-            }
-        ];
+
+        let undocumented_apis = vec![PublicApi {
+            path: "NewAgent".to_string(),
+            signature: "pub struct NewAgent".to_string(),
+            item_type: ApiItemType::Struct,
+            documentation: None,
+            deprecated: false,
+            source_file: PathBuf::from("src/lib.rs"),
+            line_number: 40,
+        }];
 
         let workspace_path = Path::new("/tmp/workspace");
         let docs_path = Path::new("/tmp/docs");
 
-        let suggestions = engine.suggest_documentation_placement(
-            &undocumented_apis,
-            workspace_path,
-            docs_path,
-            &config,
-        ).unwrap();
+        let suggestions = engine
+            .suggest_documentation_placement(&undocumented_apis, workspace_path, docs_path, &config)
+            .unwrap();
 
         assert!(!suggestions.is_empty());
         assert_eq!(suggestions[0].suggestion_type, SuggestionType::StructureImprovement);
@@ -1647,7 +1853,7 @@ mod tests {
     fn test_structure_improvement_suggestions() {
         let engine = create_test_engine();
         let config = SuggestionConfig::default();
-        
+
         let docs_path = Path::new("/tmp/nonexistent_docs");
 
         let suggestions = engine.suggest_structure_improvements(docs_path, &config).unwrap();
@@ -1661,7 +1867,7 @@ mod tests {
     #[test]
     fn test_crate_name_extraction() {
         let engine = create_test_engine();
-        
+
         assert_eq!(engine.extract_crate_name_from_api("adk_core::Agent"), "adk-core");
         assert_eq!(engine.extract_crate_name_from_api("Agent"), "Agent"); // No conversion for single names
         assert_eq!(engine.extract_crate_name_from_api("some_module::SomeStruct"), "some-module");
@@ -1670,7 +1876,7 @@ mod tests {
     #[test]
     fn test_documentation_section_determination() {
         let engine = create_test_engine();
-        
+
         let trait_api = PublicApi {
             path: "TestTrait".to_string(),
             signature: "pub trait TestTrait".to_string(),
@@ -1680,9 +1886,9 @@ mod tests {
             source_file: PathBuf::from("src/lib.rs"),
             line_number: 50,
         };
-        
+
         assert_eq!(engine.determine_documentation_section(&trait_api), "Traits");
-        
+
         let struct_api = PublicApi {
             path: "TestStruct".to_string(),
             signature: "pub struct TestStruct".to_string(),
@@ -1692,14 +1898,14 @@ mod tests {
             source_file: PathBuf::from("src/lib.rs"),
             line_number: 60,
         };
-        
+
         assert_eq!(engine.determine_documentation_section(&struct_api), "Structs");
     }
 
     #[test]
     fn test_documentation_template_generation() {
         let engine = create_test_engine();
-        
+
         let api = PublicApi {
             path: "TestStruct".to_string(),
             signature: "pub struct TestStruct { field: String }".to_string(),
@@ -1709,9 +1915,9 @@ mod tests {
             source_file: PathBuf::from("src/lib.rs"),
             line_number: 70,
         };
-        
+
         let template = engine.generate_documentation_template(&api);
-        
+
         assert!(template.contains("## Structs"));
         assert!(template.contains("### `TestStruct`"));
         assert!(template.contains("A test structure"));
@@ -1721,15 +1927,15 @@ mod tests {
     #[test]
     fn test_file_template_generation() {
         let engine = create_test_engine();
-        
+
         let getting_started = engine.generate_file_template("getting-started.md");
         assert!(getting_started.contains("# Getting Started"));
         assert!(getting_started.contains("## Installation"));
-        
+
         let api_ref = engine.generate_file_template("api-reference.md");
         assert!(api_ref.contains("# API Reference"));
         assert!(api_ref.contains("## Traits"));
-        
+
         let examples = engine.generate_file_template("examples.md");
         assert!(examples.contains("# Examples and Tutorials"));
         assert!(examples.contains("## Basic Examples"));
@@ -1739,12 +1945,12 @@ mod tests {
     fn test_crate_file_template_generation() {
         let engine = create_test_engine();
         let crate_info = create_test_crate_info();
-        
+
         let readme = engine.generate_crate_file_template("adk-core", "README.md", &crate_info);
         assert!(readme.contains("# adk-core"));
         assert!(readme.contains("## Installation"));
         assert!(readme.contains("adk-core = \"0.1.0\""));
-        
+
         let api_doc = engine.generate_crate_file_template("adk-core", "api.md", &crate_info);
         assert!(api_doc.contains("# adk-core API Reference"));
         assert!(api_doc.contains("## Traits"));
@@ -1755,140 +1961,13 @@ mod tests {
     fn test_index_template_generation() {
         let engine = create_test_engine();
         let docs_path = Path::new("/tmp/docs");
-        
+
         let index = engine.generate_index_template(docs_path).unwrap();
-        
+
         assert!(index.contains("# ADK-Rust Documentation"));
         assert!(index.contains("## Getting Started"));
         assert!(index.contains("## Crates"));
         // The crate names should be listed even if directories don't exist
         assert!(index.contains("adk-core") || index.contains("- [adk-core]"));
-    }
-}
-
-impl SuggestionEngine {
-    /// Generate suggestions for a specific category of issues.
-    pub async fn generate_suggestions_for_category(
-        &self,
-        category: crate::reporter::IssueCategory,
-        issues: &[&crate::reporter::AuditIssue],
-        _crate_registry: &crate::analyzer::CrateRegistry,
-    ) -> Result<Vec<crate::reporter::Recommendation>> {
-        use crate::reporter::{IssueCategory, Recommendation, RecommendationType};
-        
-        let mut recommendations = Vec::new();
-        let _config = SuggestionConfig::default();
-        
-        match category {
-            IssueCategory::ApiMismatch => {
-                for issue in issues {
-                    let recommendation = Recommendation {
-                        id: format!("api-fix-{}", issue.file_path.display()),
-                        recommendation_type: RecommendationType::FixIssue,
-                        priority: 1, // High priority
-                        title: "Fix API Reference".to_string(),
-                        description: format!("Update API reference in {}", issue.file_path.display()),
-                        affected_files: vec![issue.file_path.clone()],
-                        estimated_effort_hours: Some(0.5),
-                        resolves_issues: vec![format!("api-mismatch-{}", issue.line_number.unwrap_or(0))],
-                    };
-                    recommendations.push(recommendation);
-                }
-            }
-            IssueCategory::VersionInconsistency => {
-                let recommendation = Recommendation {
-                    id: format!("version-update-{}", issues.len()),
-                    recommendation_type: RecommendationType::UpdateContent,
-                    priority: 2, // Medium priority
-                    title: "Update Version References".to_string(),
-                    description: format!("Update {} version references to current workspace version", issues.len()),
-                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
-                    estimated_effort_hours: Some(0.25 * issues.len() as f32),
-                    resolves_issues: issues.iter().enumerate().map(|(i, _)| format!("version-{}", i)).collect(),
-                };
-                recommendations.push(recommendation);
-            }
-            IssueCategory::CompilationError => {
-                let recommendation = Recommendation {
-                    id: format!("compilation-fix-{}", issues.len()),
-                    recommendation_type: RecommendationType::ImproveExamples,
-                    priority: 1, // High priority
-                    title: "Fix Compilation Errors".to_string(),
-                    description: format!("Fix {} compilation errors in code examples", issues.len()),
-                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
-                    estimated_effort_hours: Some(1.0 * issues.len() as f32),
-                    resolves_issues: issues.iter().enumerate().map(|(i, _)| format!("compile-{}", i)).collect(),
-                };
-                recommendations.push(recommendation);
-            }
-            IssueCategory::BrokenLink => {
-                let recommendation = Recommendation {
-                    id: format!("link-fix-{}", issues.len()),
-                    recommendation_type: RecommendationType::FixIssue,
-                    priority: 2, // Medium priority
-                    title: "Fix Broken Links".to_string(),
-                    description: format!("Fix {} broken internal links", issues.len()),
-                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
-                    estimated_effort_hours: Some(0.1 * issues.len() as f32),
-                    resolves_issues: issues.iter().enumerate().map(|(i, _)| format!("link-{}", i)).collect(),
-                };
-                recommendations.push(recommendation);
-            }
-            IssueCategory::MissingDocumentation => {
-                let recommendation = Recommendation {
-                    id: format!("doc-addition-{}", issues.len()),
-                    recommendation_type: RecommendationType::AddDocumentation,
-                    priority: 3, // Low priority
-                    title: "Add Missing Documentation".to_string(),
-                    description: format!("Document {} undocumented features", issues.len()),
-                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
-                    estimated_effort_hours: Some(2.0 * issues.len() as f32),
-                    resolves_issues: issues.iter().enumerate().map(|(i, _)| format!("missing-doc-{}", i)).collect(),
-                };
-                recommendations.push(recommendation);
-            }
-            IssueCategory::DeprecatedApi => {
-                let recommendation = Recommendation {
-                    id: format!("deprecated-fix-{}", issues.len()),
-                    recommendation_type: RecommendationType::UpdateContent,
-                    priority: 2, // Medium priority
-                    title: "Update Deprecated API References".to_string(),
-                    description: format!("Update {} deprecated API references", issues.len()),
-                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
-                    estimated_effort_hours: Some(0.5 * issues.len() as f32),
-                    resolves_issues: issues.iter().enumerate().map(|(i, _)| format!("deprecated-{}", i)).collect(),
-                };
-                recommendations.push(recommendation);
-            }
-            IssueCategory::ProcessingError => {
-                let recommendation = Recommendation {
-                    id: format!("processing-fix-{}", issues.len()),
-                    recommendation_type: RecommendationType::FixIssue,
-                    priority: 1, // High priority
-                    title: "Fix Processing Errors".to_string(),
-                    description: format!("Resolve {} file processing errors", issues.len()),
-                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
-                    estimated_effort_hours: Some(1.0 * issues.len() as f32),
-                    resolves_issues: issues.iter().enumerate().map(|(i, _)| format!("processing-{}", i)).collect(),
-                };
-                recommendations.push(recommendation);
-            }
-            _ => {
-                // Generic recommendation for other categories
-                let recommendation = Recommendation {
-                    id: format!("generic-fix-{}", issues.len()),
-                    recommendation_type: RecommendationType::FixIssue,
-                    priority: 2, // Medium priority
-                    title: format!("Address {} Issues", category.description()),
-                    description: format!("Review and fix {} issues of type: {}", issues.len(), category.description()),
-                    affected_files: issues.iter().map(|i| i.file_path.clone()).collect(),
-                    estimated_effort_hours: Some(1.0 * issues.len() as f32),
-                    resolves_issues: issues.iter().enumerate().map(|(i, _)| format!("generic-{}", i)).collect(),
-                };
-                recommendations.push(recommendation);
-            }
-        }
-        
-        Ok(recommendations)
     }
 }

@@ -1,5 +1,5 @@
 use adk_studio::{AppState, FileStorage, api_routes, embedded};
-use axum::{Router, routing::get, extract::Path as AxumPath};
+use axum::{Router, extract::Path as AxumPath, routing::get};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use tower_http::{
@@ -73,9 +73,8 @@ async fn main() -> anyhow::Result<()> {
     } else {
         // Serve embedded static files (default)
         // Use a nested router for static files to avoid route conflicts
-        let static_router = Router::new()
-            .route("/", get(serve_root))
-            .route("/*path", get(serve_static));
+        let static_router =
+            Router::new().route("/", get(serve_root)).route("/*path", get(serve_static));
         app = app.merge(static_router);
         tracing::info!("📦 Serving embedded static files");
     }

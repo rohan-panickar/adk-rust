@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 //! Image Analysis Example
 //!
 //! Demonstrates using BeforeModelCallback to inject an image artifact
@@ -34,10 +35,7 @@ async fn main() -> anyhow::Result<()> {
             user_id: "user".to_string(),
             session_id: "init".to_string(),
             file_name: "user:photo.jpg".to_string(),
-            part: Part::InlineData {
-                data: image_bytes,
-                mime_type: "image/jpeg".to_string(),
-            },
+            part: Part::InlineData { data: image_bytes, mime_type: "image/jpeg".to_string() },
             version: None,
         })
         .await?;
@@ -79,12 +77,8 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Ask questions about the image (e.g., 'What do you see?', 'Describe the colors')\n");
 
-    adk_cli::console::run_console(
-        Arc::new(agent),
-        "image_demo".to_string(),
-        "user".to_string(),
-    )
-    .await?;
+    adk_cli::console::run_console(Arc::new(agent), "image_demo".to_string(), "user".to_string())
+        .await?;
 
     Ok(())
 }

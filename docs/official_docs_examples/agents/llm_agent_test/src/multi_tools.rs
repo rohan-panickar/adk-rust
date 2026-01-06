@@ -1,7 +1,7 @@
 //! Multi Tools - Agent with weather and calculator tools
 
-use adk_rust::prelude::*;
 use adk_rust::Launcher;
+use adk_rust::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -33,7 +33,13 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 "add" => a + b,
                 "subtract" => a - b,
                 "multiply" => a * b,
-                "divide" => if b != 0.0 { a / b } else { 0.0 },
+                "divide" => {
+                    if b != 0.0 {
+                        a / b
+                    } else {
+                        0.0
+                    }
+                }
                 _ => 0.0,
             };
             Ok(json!({ "result": result }))
@@ -42,9 +48,11 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     // Build agent with weather and calculator tools
     let agent = LlmAgentBuilder::new("multi_tool_agent")
-        .instruction("You are a helpful assistant. Use tools when needed: \
+        .instruction(
+            "You are a helpful assistant. Use tools when needed: \
                      - get_weather for weather questions \
-                     - calculate for math")
+                     - calculate for math",
+        )
         .model(Arc::new(model))
         .tool(Arc::new(weather_tool))
         .tool(Arc::new(calculator))

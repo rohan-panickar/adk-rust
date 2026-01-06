@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    http::{header, Response, StatusCode},
+    http::{Response, StatusCode, header},
 };
 use rust_embed::Embed;
 
@@ -36,10 +36,7 @@ pub fn serve_embedded(path: String) -> Response<Body> {
                         .unwrap();
                 }
             }
-            Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from("Not Found"))
-                .unwrap()
+            Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("Not Found")).unwrap()
         }
     }
 }

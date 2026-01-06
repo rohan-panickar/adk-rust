@@ -340,8 +340,8 @@ Human-readable output with colored indicators:
    💡 Suggestion: Use 'GeminiModel::with_config' instead
 
 ⚠️  docs/examples.md:15
-   [Warning] Version reference '0.1.8' doesn't match workspace version '0.1.9'
-   💡 Suggestion: Update to version '0.1.9'
+   [Warning] Version reference '0.1.8' doesn't match workspace version '0.2.0'
+   💡 Suggestion: Update to version '0.2.0'
 ```
 
 ### JSON Output

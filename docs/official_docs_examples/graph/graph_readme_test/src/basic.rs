@@ -1,18 +1,18 @@
 //! Validates adk-graph README examples compile correctly
 
-use adk_graph::{
-    edge::{END, START, Router},
-    node::{AgentNode, ExecutionConfig, NodeOutput},
-    agent::GraphAgent,
-    graph::StateGraph,
-    state::State,
-    checkpoint::MemoryCheckpointer,
-};
 use adk_agent::LlmAgentBuilder;
 use adk_core::Content;
+use adk_graph::{
+    agent::GraphAgent,
+    checkpoint::MemoryCheckpointer,
+    edge::{END, Router, START},
+    graph::StateGraph,
+    node::{AgentNode, ExecutionConfig, NodeOutput},
+    state::State,
+};
 use serde_json::json;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // Validate: GraphAgent builder pattern
 fn _graph_agent_builder() {
@@ -30,7 +30,7 @@ fn _graph_agent_builder() {
 // Validate: AgentNode with mappers
 fn _agent_node_example() {
     let agent = LlmAgentBuilder::new("test").build().unwrap();
-    
+
     let _node = AgentNode::new(Arc::new(agent))
         .with_input_mapper(|state| {
             let text = state.get("input").and_then(|v| v.as_str()).unwrap_or("");
@@ -40,10 +40,8 @@ fn _agent_node_example() {
             let mut updates = HashMap::new();
             for event in events {
                 if let Some(content) = event.content() {
-                    let text: String = content.parts.iter()
-                        .filter_map(|p| p.text())
-                        .collect::<Vec<_>>()
-                        .join("");
+                    let text: String =
+                        content.parts.iter().filter_map(|p| p.text()).collect::<Vec<_>>().join("");
                     if !text.is_empty() {
                         updates.insert("output".to_string(), json!(text));
                     }
@@ -59,9 +57,7 @@ fn _state_graph_example() {
         .add_node_fn("classifier", |_ctx| async move {
             Ok(NodeOutput::new().with_update("sentiment", json!("positive")))
         })
-        .add_node_fn("handler", |_ctx| async move {
-            Ok(NodeOutput::new())
-        })
+        .add_node_fn("handler", |_ctx| async move { Ok(NodeOutput::new()) })
         .add_edge(START, "classifier")
         .add_conditional_edges(
             "classifier",
@@ -81,9 +77,8 @@ fn _execution_config_example() {
 
 // Validate: NodeOutput methods
 fn _node_output_example() {
-    let _output = NodeOutput::new()
-        .with_update("key", json!("value"));
-    
+    let _output = NodeOutput::new().with_update("key", json!("value"));
+
     let _interrupt = NodeOutput::interrupt("Human approval required");
     let _interrupt_data = NodeOutput::interrupt_with_data("Paused", json!({"reason": "review"}));
 }

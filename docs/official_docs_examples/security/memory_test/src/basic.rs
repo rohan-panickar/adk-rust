@@ -1,7 +1,7 @@
 //! Memory doc-test - validates memory.md documentation
 
-use adk_memory::{InMemoryMemoryService, MemoryService, MemoryEntry, SearchRequest};
 use adk_core::Content;
+use adk_memory::{InMemoryMemoryService, MemoryEntry, MemoryService, SearchRequest};
 use chrono::Utc;
 
 #[tokio::main]
@@ -71,12 +71,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let response = memory.search(request).await?;
     assert_eq!(response.memories.len(), 1);
-    
+
     // Verify it's user-a's memory
-    let text: String = response.memories[0].content.parts
-        .iter()
-        .filter_map(|p| p.text())
-        .collect();
+    let text: String = response.memories[0].content.parts.iter().filter_map(|p| p.text()).collect();
     assert!(text.contains("User A"));
     println!("✓ Memory isolation by user works");
 
@@ -84,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let request = SearchRequest {
         query: "Rust".to_string(),
         user_id: "user-123".to_string(),
-        app_name: "different_app".to_string(),  // Different app
+        app_name: "different_app".to_string(), // Different app
     };
     let response = memory.search(request).await?;
     assert!(response.memories.is_empty());

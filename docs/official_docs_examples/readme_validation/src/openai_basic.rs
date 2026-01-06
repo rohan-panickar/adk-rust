@@ -1,7 +1,7 @@
 //! README OpenAI Example - Validates OpenAIClient + OpenAIConfig pattern
 
-use adk_rust::prelude::*;
 use adk_rust::Launcher;
+use adk_rust::prelude::*;
 
 #[tokio::main]
 async fn main() -> AnyhowResult<()> {

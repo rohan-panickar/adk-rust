@@ -7,8 +7,8 @@
 //!   cargo run --bin spans
 
 use adk_telemetry::{
-    add_context_attributes, agent_run_span, callback_span, info, init_telemetry, model_call_span,
-    tool_execute_span, Span,
+    Span, add_context_attributes, agent_run_span, callback_span, info, init_telemetry,
+    model_call_span, tool_execute_span,
 };
 
 #[tokio::main]
