@@ -2,12 +2,23 @@
 
 Thank you for your interest in contributing to ADK-Rust! This document provides guidelines and instructions for contributing.
 
+## Branches
+
+- **`main`** - Stable releases, published to crates.io
+- **`develop`** - Nightly builds, latest features (may be unstable)
+
+**Workflow:**
+1. Create feature branches from `develop`
+2. Submit PRs to `develop`
+3. Periodically, `develop` is merged to `main` for stable releases
+
 ## Quick Start
 
 ```bash
 # Clone and build
 git clone https://github.com/zavora-ai/adk-rust.git
 cd adk-rust
+git checkout develop  # For latest features
 cargo build
 
 # Run tests

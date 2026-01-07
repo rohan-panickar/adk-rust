@@ -125,6 +125,11 @@ adk-tool = "0.2.0"
 adk-runner = "0.2.0"
 ```
 
+**Nightly (latest features):**
+```toml
+adk-rust = { git = "https://github.com/zavora-ai/adk-rust", branch = "develop" }
+```
+
 Set your API key:
 
 ```bash
