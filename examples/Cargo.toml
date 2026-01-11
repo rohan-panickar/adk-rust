@@ -482,6 +482,9 @@ name = "mistralrs_diffusion"
 path = "mistralrs_diffusion/main.rs"
 required-features = ["mistralrs"]
 
+# Note: ralph is now a separate crate at examples/ralph/
+# Run with: cargo run -p ralph
+
 [features]
 default = []
 openai = ["adk-model/openai"]
@@ -534,3 +537,7 @@ rmcp = { version = "0.9", features = ["client", "transport-child-process"] }
 rustyline = "15"
 image = "0.25"
 clap = { version = "4.0", features = ["derive"] }
+
+[dev-dependencies]
+proptest = "1.0"
+tokio-test = "0.4"
