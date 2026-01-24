@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Project, ProjectMeta, AgentSchema, ToolConfig } from '../types/project';
-import type { LayoutDirection } from '../types/layout';
+import type { LayoutDirection, LayoutMode } from '../types/layout';
 import { api } from '../api/client';
 
 interface StudioState {
@@ -12,7 +12,12 @@ interface StudioState {
   currentProject: Project | null;
   selectedNodeId: string | null;
   selectedToolId: string | null;
+  
+  // Layout state
+  layoutMode: LayoutMode;
   layoutDirection: LayoutDirection;
+  snapToGrid: boolean;
+  gridSize: number;
   
   // Actions
   fetchProjects: () => Promise<void>;
@@ -39,7 +44,10 @@ interface StudioState {
   updateToolConfig: (toolId: string, config: ToolConfig) => void;
   
   // Layout actions
+  setLayoutMode: (mode: LayoutMode) => void;
   setLayoutDirection: (dir: LayoutDirection) => void;
+  setSnapToGrid: (snap: boolean) => void;
+  setGridSize: (size: number) => void;
 }
 
 export const useStore = create<StudioState>((set, get) => ({
@@ -48,7 +56,12 @@ export const useStore = create<StudioState>((set, get) => ({
   currentProject: null,
   selectedNodeId: null,
   selectedToolId: null,
+  
+  // Layout state with defaults
+  layoutMode: 'free',
   layoutDirection: 'TB',
+  snapToGrid: true,
+  gridSize: 20,
 
   fetchProjects: async () => {
     set({ loadingProjects: true });
@@ -68,13 +81,30 @@ export const useStore = create<StudioState>((set, get) => ({
 
   openProject: async (id) => {
     const project = await api.projects.get(id);
-    set({ currentProject: project, selectedNodeId: null });
+    // Restore layout settings from project if available
+    const layoutMode = project.settings?.layoutMode || 'free';
+    const layoutDirection = project.settings?.layoutDirection || 'TB';
+    set({ 
+      currentProject: project, 
+      selectedNodeId: null,
+      layoutMode,
+      layoutDirection,
+    });
   },
 
   saveProject: async () => {
-    const { currentProject } = get();
+    const { currentProject, layoutMode, layoutDirection } = get();
     if (!currentProject) return;
-    await api.projects.update(currentProject.id, currentProject);
+    // Include layout settings in project before saving
+    const projectToSave = {
+      ...currentProject,
+      settings: {
+        ...currentProject.settings,
+        layoutMode,
+        layoutDirection,
+      },
+    };
+    await api.projects.update(currentProject.id, projectToSave);
   },
 
   closeProject: () => set({ currentProject: null, selectedNodeId: null }),
@@ -312,5 +342,11 @@ export const useStore = create<StudioState>((set, get) => ({
     setTimeout(() => get().saveProject(), 0);
   },
 
+  setLayoutMode: (mode) => set({ layoutMode: mode }),
+
   setLayoutDirection: (dir) => set({ layoutDirection: dir }),
+
+  setSnapToGrid: (snap) => set({ snapToGrid: snap }),
+
+  setGridSize: (size) => set({ gridSize: size }),
 }));

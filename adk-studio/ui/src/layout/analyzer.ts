@@ -1,12 +1,12 @@
 import type { Node, Edge } from '@xyflow/react';
-import type { LayoutMode } from '../types/layout';
+import type { GraphPattern } from '../types/layout';
 
 export interface GraphAnalysis {
   nodeCount: number;
   edgeCount: number;
   maxDepth: number;
   hasRouter: boolean;
-  dominantPattern: LayoutMode;
+  dominantPattern: GraphPattern;
   entryPoints: string[];
   exitPoints: string[];
 }
@@ -29,7 +29,7 @@ export function analyzeGraph(nodes: Node[], edges: Edge[]): GraphAnalysis {
   const hasRouter = nodes.some(n => n.type === 'router');
   const isLinear = edges.length === nodes.length - 1 && entryPoints.length === 1;
 
-  let dominantPattern: LayoutMode = 'freeform';
+  let dominantPattern: GraphPattern = 'freeform';
   if (isLinear && !hasRouter) dominantPattern = 'pipeline';
   else if (hasRouter) dominantPattern = 'tree';
 

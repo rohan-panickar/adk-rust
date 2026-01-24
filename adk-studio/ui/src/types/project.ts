@@ -15,6 +15,10 @@ export interface Project {
 export interface ProjectSettings {
   default_model: string;
   env_vars: Record<string, string>;
+  // Layout settings (v2.0)
+  layoutMode?: 'free' | 'fixed';
+  layoutDirection?: 'TB' | 'LR' | 'BT' | 'RL';
+  showDataFlowOverlay?: boolean;
 }
 
 export interface AgentSchema {

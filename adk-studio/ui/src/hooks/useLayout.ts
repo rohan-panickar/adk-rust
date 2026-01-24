@@ -1,20 +1,38 @@
 import { useCallback } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import dagre from 'dagre';
-import type { LayoutDirection } from '../types/layout';
+import type { LayoutDirection, LayoutMode } from '../types/layout';
 import { useStore } from '../store';
 
+/**
+ * Hook for managing canvas layout.
+ * Supports both free-form and fixed (auto-layout) modes.
+ * 
+ * In free mode: Nodes can be placed anywhere, manual positioning
+ * In fixed mode: Nodes are auto-arranged using Dagre layout
+ */
 export function useLayout() {
   const { getNodes, getEdges, setNodes, fitView } = useReactFlow();
+  
+  // Layout state from store
+  const layoutMode = useStore(s => s.layoutMode);
   const layoutDirection = useStore(s => s.layoutDirection);
-  const setLayoutDirection = useStore(s => s.setLayoutDirection);
+  const snapToGrid = useStore(s => s.snapToGrid);
+  const gridSize = useStore(s => s.gridSize);
   const selectedNodeId = useStore(s => s.selectedNodeId);
+  
+  // Layout actions from store
+  const setLayoutMode = useStore(s => s.setLayoutMode);
+  const setLayoutDirection = useStore(s => s.setLayoutDirection);
+  const setSnapToGrid = useStore(s => s.setSnapToGrid);
+  const setGridSize = useStore(s => s.setGridSize);
 
   // Padding accounts for side panel (~320px) when node is selected
   const getPadding = useCallback(() => {
     return selectedNodeId ? { top: 0.1, left: 0.1, bottom: 0.1, right: 0.35 } : 0.1;
   }, [selectedNodeId]);
 
+  // Apply Dagre auto-layout
   const doLayout = useCallback((direction: LayoutDirection) => {
     const nodes = getNodes();
     const edges = getEdges();
@@ -36,19 +54,73 @@ export function useLayout() {
     setTimeout(() => fitView({ padding: getPadding(), maxZoom: 0.9 }), 50);
   }, [getNodes, getEdges, setNodes, fitView, getPadding]);
 
-  // Toggle layout direction
-  const toggleLayout = useCallback(() => {
+  // Toggle layout direction (TB <-> LR)
+  const toggleDirection = useCallback(() => {
     const newDirection: LayoutDirection = layoutDirection === 'LR' ? 'TB' : 'LR';
     setLayoutDirection(newDirection);
-    doLayout(newDirection);
-  }, [layoutDirection, setLayoutDirection, doLayout]);
+    // Auto-apply layout when in fixed mode
+    if (layoutMode === 'fixed') {
+      doLayout(newDirection);
+    }
+  }, [layoutDirection, layoutMode, setLayoutDirection, doLayout]);
+
+  // Toggle layout mode (free <-> fixed)
+  const toggleMode = useCallback(() => {
+    const newMode: LayoutMode = layoutMode === 'free' ? 'fixed' : 'free';
+    setLayoutMode(newMode);
+    // Apply layout when switching to fixed mode
+    if (newMode === 'fixed') {
+      doLayout(layoutDirection);
+    }
+  }, [layoutMode, layoutDirection, setLayoutMode, doLayout]);
+
+  // Legacy: Toggle layout (direction) - for backward compatibility
+  const toggleLayout = useCallback(() => {
+    toggleDirection();
+  }, [toggleDirection]);
 
   // Apply layout without toggling (uses current direction)
   const applyLayout = useCallback(() => {
     doLayout(layoutDirection);
   }, [doLayout, layoutDirection]);
 
-  const fitToView = useCallback(() => fitView({ padding: getPadding(), duration: 300, maxZoom: 0.9 }), [fitView, getPadding]);
+  // Fit all nodes in view
+  const fitToView = useCallback(() => {
+    fitView({ padding: getPadding(), duration: 300, maxZoom: 0.9 });
+  }, [fitView, getPadding]);
 
-  return { applyLayout, toggleLayout, fitToView, layoutDirection };
+  // Snap position to grid
+  const snapPosition = useCallback((x: number, y: number): { x: number; y: number } => {
+    if (!snapToGrid) return { x, y };
+    return {
+      x: Math.round(x / gridSize) * gridSize,
+      y: Math.round(y / gridSize) * gridSize,
+    };
+  }, [snapToGrid, gridSize]);
+
+  return {
+    // State
+    layoutMode,
+    layoutDirection,
+    snapToGrid,
+    gridSize,
+    
+    // Mode actions
+    setLayoutMode,
+    toggleMode,
+    
+    // Direction actions
+    setLayoutDirection,
+    toggleDirection,
+    toggleLayout, // Legacy alias for toggleDirection
+    
+    // Grid actions
+    setSnapToGrid,
+    setGridSize,
+    snapPosition,
+    
+    // Layout actions
+    applyLayout,
+    fitToView,
+  };
 }

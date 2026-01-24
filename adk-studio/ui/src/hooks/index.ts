@@ -1,8 +1,11 @@
 export { useAgentActions } from './useAgentActions';
+export { useBuild } from './useBuild';
 export { useCanvasNodes } from './useCanvasNodes';
+export { useCanvasState } from './useCanvasState';
 export { useExecution } from './useExecution';
 export { useKeyboardShortcuts } from './useKeyboardShortcuts';
 export { useLayout } from './useLayout';
 export { useNodeActions } from './useNodeActions';
 export { useSSE } from './useSSE';
+export { useTheme, useThemeTokens } from './useTheme';
 export { useWebSocket } from './useWebSocket';

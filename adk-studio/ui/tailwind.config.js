@@ -4,12 +4,35 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Theme-aware colors using CSS variables
         studio: {
-          bg: '#1a1a2e',
-          panel: '#16213e',
-          accent: '#0f3460',
+          bg: 'var(--bg-primary)',
+          panel: 'var(--surface-panel)',
+          card: 'var(--surface-card)',
+          accent: 'var(--accent-primary)',
           highlight: '#e94560',
+          border: 'var(--border-default)',
         },
+        // Text colors
+        'theme-primary': 'var(--text-primary)',
+        'theme-secondary': 'var(--text-secondary)',
+        'theme-muted': 'var(--text-muted)',
+      },
+      backgroundColor: {
+        'theme-primary': 'var(--bg-primary)',
+        'theme-secondary': 'var(--bg-secondary)',
+        'theme-canvas': 'var(--bg-canvas)',
+        'theme-card': 'var(--surface-card)',
+        'theme-panel': 'var(--surface-panel)',
+      },
+      borderColor: {
+        'theme-default': 'var(--border-default)',
+        'theme-focus': 'var(--border-focus)',
+      },
+      textColor: {
+        'theme-primary': 'var(--text-primary)',
+        'theme-secondary': 'var(--text-secondary)',
+        'theme-muted': 'var(--text-muted)',
       },
     },
   },
