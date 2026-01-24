@@ -45,6 +45,11 @@ name = "mcp"
 path = "mcp/main.rs"
 
 [[example]]
+name = "mcp_http"
+path = "mcp_http/main.rs"
+required-features = ["http-transport"]
+
+[[example]]
 name = "a2a"
 path = "a2a/main.rs"
 
@@ -508,6 +513,7 @@ required-features = ["mistralrs"]
 [features]
 default = []
 openai = ["adk-model/openai"]
+http-transport = ["adk-tool/http-transport"]
 anthropic = ["adk-model/anthropic"]
 deepseek = ["adk-model/deepseek"]
 ollama = ["adk-model/ollama"]

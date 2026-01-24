@@ -23,3 +23,7 @@ path = "src/basic.rs"
 [[bin]]
 name = "filtered"
 path = "src/filtered.rs"
+
+[[bin]]
+name = "task_support"
+path = "src/task_support.rs"
