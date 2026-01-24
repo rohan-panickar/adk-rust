@@ -5,9 +5,12 @@ import { useViewport } from '@xyflow/react';
 interface CanvasToolbarProps {
   onAutoLayout: () => void;
   onFitView: () => void;
+  /** v2.0: Data flow overlay toggle */
+  showDataFlowOverlay?: boolean;
+  onToggleDataFlowOverlay?: () => void;
 }
 
-export function CanvasToolbar({ onAutoLayout, onFitView }: CanvasToolbarProps) {
+export function CanvasToolbar({ onAutoLayout, onFitView, showDataFlowOverlay, onToggleDataFlowOverlay }: CanvasToolbarProps) {
   const { 
     layoutMode, 
     layoutDirection, 
@@ -91,6 +94,19 @@ export function CanvasToolbar({ onAutoLayout, onFitView }: CanvasToolbarProps) {
       >
         <span>⊞</span> Layout
       </button>
+      
+      {/* Data Flow Overlay Toggle (v2.0) */}
+      {/* @see Requirements 3.4: Toggle to show/hide data flow overlays */}
+      {onToggleDataFlowOverlay && (
+        <button
+          onClick={onToggleDataFlowOverlay}
+          className={`px-3 py-1.5 border rounded text-sm flex items-center gap-2 ${showDataFlowOverlay ? activeButtonClass : buttonClass}`}
+          title={`Data Flow Overlay: ${showDataFlowOverlay ? 'On' : 'Off'}\nShows state keys flowing between nodes during execution`}
+        >
+          <span>🔀</span>
+          {showDataFlowOverlay ? 'Flow On' : 'Flow Off'}
+        </button>
+      )}
       
       {/* Fit to View Button */}
       <button

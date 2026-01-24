@@ -1,4 +1,7 @@
 export { ThoughtBubble } from './ThoughtBubble';
+export type { ThoughtBubbleProps, ThoughtBubbleType, ThoughtBubblePosition } from './ThoughtBubble';
+export { ThoughtBubbleManager } from './ThoughtBubbleManager';
+export type { ThoughtBubbleData, ThoughtBubbleManagerProps } from './ThoughtBubbleManager';
 export { NewProjectModal } from './NewProjectModal';
 export { CodeModal } from './CodeModal';
 export { BuildModal } from './BuildModal';

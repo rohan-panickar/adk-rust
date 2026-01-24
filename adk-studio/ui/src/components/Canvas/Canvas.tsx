@@ -18,6 +18,7 @@ import { useAgentActions } from '../../hooks/useAgentActions';
 import { useCanvasState } from '../../hooks/useCanvasState';
 import { useBuild } from '../../hooks/useBuild';
 import { useTheme } from '../../hooks/useTheme';
+import { useExecutionPath } from '../../hooks/useExecutionPath';
 import type { FunctionToolConfig, AgentSchema, ToolConfig } from '../../types/project';
 import { TEMPLATES } from '../MenuBar/templates';
 
@@ -45,6 +46,9 @@ export function Canvas() {
     addAgent,
     snapToGrid,
     gridSize,
+    // v2.0: Data flow overlay state
+    showDataFlowOverlay,
+    setShowDataFlowOverlay,
   } = useStore();
 
   // Canvas UI state
@@ -69,6 +73,31 @@ export function Canvas() {
   const [iteration, setIteration] = useState(0);
   const [thoughts, setThoughts] = useState<Record<string, string>>({});
   
+  // Execution path tracking (v2.0) - must be before callbacks that use it
+  // @see Requirements 10.3, 10.5: Execution path highlighting
+  const executionPath = useExecutionPath();
+  
+  // v2.0: Wrapper for flow phase that also updates execution path
+  // @see Requirements 10.3, 10.5: Execution path highlighting
+  const handleFlowPhase = useCallback((phase: FlowPhase) => {
+    setFlowPhase(phase);
+    if (phase === 'input') {
+      // Starting new execution
+      executionPath.startExecution();
+    } else if (phase === 'idle' && executionPath.isExecuting) {
+      // Execution completed
+      executionPath.completeExecution();
+    }
+  }, [executionPath]);
+  
+  // v2.0: Wrapper for active agent that also updates execution path
+  const handleActiveAgent = useCallback((agent: string | null) => {
+    setActiveAgent(agent);
+    if (agent && executionPath.isExecuting && !executionPath.path.includes(agent)) {
+      executionPath.moveToNode(agent);
+    }
+  }, [executionPath]);
+  
   // Modal state
   const [showCodeEditor, setShowCodeEditor] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
@@ -82,16 +111,55 @@ export function Canvas() {
   // State Inspector visibility (v2.0)
   const [showStateInspector, setShowStateInspector] = useState(true);
   
-  // Handler for receiving snapshots from TestConsole
+  // Data Flow Overlay state (v2.0)
+  // @see Requirements 3.1-3.9: Data flow overlays
+  // Note: showDataFlowOverlay is now managed by the store for persistence
+  const [stateKeys, setStateKeys] = useState<Map<string, string[]>>(new Map());
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
+  
+  // Handler for state key hover (for highlighting related edges)
+  // @see Requirements 3.8: Highlight all edges using same key on hover
+  const handleKeyHover = useCallback((key: string | null) => {
+    setHighlightedKey(key);
+  }, []);
+  
+  // Handler for toggling data flow overlay
+  // @see Requirements 3.4: Toggle to show/hide data flow overlays
+  const handleToggleDataFlowOverlay = useCallback(() => {
+    setShowDataFlowOverlay(!showDataFlowOverlay);
+  }, [showDataFlowOverlay, setShowDataFlowOverlay]);
+  
+  // Handler for receiving snapshots and state keys from TestConsole
   const handleSnapshotsChange = useCallback((
     newSnapshots: import('../../types/execution').StateSnapshot[], 
     newIndex: number, 
-    scrubTo: (index: number) => void
+    scrubTo: (index: number) => void,
+    newStateKeys?: Map<string, string[]>
   ) => {
     setSnapshots(newSnapshots);
     setCurrentSnapshotIndex(newIndex);
     setScrubToFn(() => scrubTo);
-  }, []);
+    if (newStateKeys) {
+      setStateKeys(newStateKeys);
+    }
+    
+    // v2.0: Update execution path based on snapshots
+    // @see Requirements 10.3, 10.5: Execution path highlighting
+    if (newSnapshots.length > 0) {
+      // Reset and rebuild path from snapshots
+      executionPath.resetPath();
+      executionPath.startExecution();
+      newSnapshots.forEach(s => {
+        executionPath.moveToNode(s.nodeId);
+      });
+      
+      // If we're at the last snapshot and it's complete, mark execution as done
+      const lastSnapshot = newSnapshots[newSnapshots.length - 1];
+      if (lastSnapshot && lastSnapshot.status === 'success' && newIndex === newSnapshots.length - 1) {
+        // Don't complete yet - wait for actual completion
+      }
+    }
+  }, [executionPath]);
 
   // Current and previous snapshots for StateInspector (v2.0)
   // @see Requirements 4.5, 5.4: Update inspector when timeline position changes
@@ -118,7 +186,21 @@ export function Canvas() {
   }, [scrubToFn]);
 
   // Canvas hooks
-  const { nodes, edges, onNodesChange, onEdgesChange } = useCanvasNodes(currentProject, { activeAgent, iteration, flowPhase, thoughts });
+  const { nodes, edges, onNodesChange, onEdgesChange } = useCanvasNodes(currentProject, { 
+    activeAgent, 
+    iteration, 
+    flowPhase, 
+    thoughts,
+    // v2.0: Data flow overlay support
+    stateKeys,
+    showDataFlowOverlay,
+    highlightedKey,
+    onKeyHover: handleKeyHover,
+    // v2.0: Execution path highlighting
+    // @see Requirements 10.3, 10.5
+    executionPath: executionPath.path,
+    isExecuting: executionPath.isExecuting,
+  });
   const { applyLayout, toggleLayout, fitToView } = useLayout();
   const { createAgent, duplicateAgent, removeAgent } = useAgentActions();
 
@@ -329,7 +411,12 @@ export function Canvas() {
               />
             )}
           </ReactFlow>
-          <CanvasToolbar onAutoLayout={toggleLayout} onFitView={fitToView} />
+          <CanvasToolbar 
+            onAutoLayout={toggleLayout} 
+            onFitView={fitToView}
+            showDataFlowOverlay={showDataFlowOverlay}
+            onToggleDataFlowOverlay={handleToggleDataFlowOverlay}
+          />
         </div>
 
         {/* Right Sidebar - Properties Panel */}
@@ -388,8 +475,8 @@ export function Canvas() {
       {showConsole && hasAgents && builtBinaryPath && (
         <div className="h-64">
           <TestConsole 
-            onFlowPhase={setFlowPhase} 
-            onActiveAgent={setActiveAgent} 
+            onFlowPhase={handleFlowPhase} 
+            onActiveAgent={handleActiveAgent} 
             onIteration={setIteration} 
             onThought={handleThought} 
             binaryPath={builtBinaryPath}

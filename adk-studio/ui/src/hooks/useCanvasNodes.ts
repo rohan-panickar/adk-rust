@@ -8,12 +8,35 @@ interface ExecutionState {
   iteration: number;
   flowPhase: 'idle' | 'input' | 'output';
   thoughts?: Record<string, string>;
+  /** v2.0: State keys from SSE events for data flow overlays (nodeId -> keys) */
+  stateKeys?: Map<string, string[]>;
+  /** v2.0: Whether to show data flow overlay */
+  showDataFlowOverlay?: boolean;
+  /** v2.0: Currently highlighted state key (for hover highlighting) */
+  highlightedKey?: string | null;
+  /** v2.0: Callback when a state key is hovered */
+  onKeyHover?: (key: string | null) => void;
+  /** v2.0: Execution path for highlighting (ordered list of node IDs) */
+  executionPath?: string[];
+  /** v2.0: Whether execution is in progress */
+  isExecuting?: boolean;
 }
 
 export function useCanvasNodes(project: Project | null, execution: ExecutionState) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const { activeAgent, iteration, flowPhase, thoughts = {} } = execution;
+  const { 
+    activeAgent, 
+    iteration, 
+    flowPhase, 
+    thoughts = {}, 
+    stateKeys, 
+    showDataFlowOverlay, 
+    highlightedKey, 
+    onKeyHover,
+    executionPath = [],
+    isExecuting = false,
+  } = execution;
   const layoutDirection = useStore(s => s.layoutDirection);
   const isHorizontal = layoutDirection === 'LR' || layoutDirection === 'RL';
   
@@ -67,16 +90,31 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
     setNodes(newNodes);
   }, [project, setNodes]);
 
-  // Update execution state (isActive, iteration, thoughts) WITHOUT changing positions
+  // Update execution state (isActive, iteration, thoughts, execution path) WITHOUT changing positions
   useEffect(() => {
     if (!project) return;
     setNodes(nds => nds.map(n => {
-      if (n.id === 'START' || n.id === 'END') return n;
+      if (n.id === 'START' || n.id === 'END') {
+        // v2.0: Add execution path highlighting for START/END nodes
+        const isInPath = executionPath.includes(n.id);
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            isInExecutionPath: isInPath,
+          },
+          className: isInPath ? 'node-execution-path' : undefined,
+        };
+      }
       const agent = project.agents[n.id];
       if (!agent) return n;
       
       const isActive = activeAgent === n.id || (activeAgent && agent.sub_agents?.includes(activeAgent));
       const activeSub = activeAgent && agent.sub_agents?.includes(activeAgent) ? activeAgent : undefined;
+      
+      // v2.0: Check if node is in execution path
+      // @see Requirement 10.5: Highlight execution path from start to current node
+      const isInPath = executionPath.includes(n.id);
       
       return {
         ...n,
@@ -86,27 +124,52 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
           activeSubAgent: activeSub,
           currentIteration: agent.type === 'loop' ? iteration : undefined,
           thought: n.type === 'llm' ? thoughts[n.id] : undefined,
+          isInExecutionPath: isInPath,
         },
+        // Add CSS class for execution path styling
+        className: isActive ? 'node-active' : (isInPath ? 'node-execution-path' : undefined),
       };
     }));
-  }, [project, activeAgent, iteration, thoughts, setNodes]);
+  }, [project, activeAgent, iteration, thoughts, executionPath, setNodes]);
 
   // Rebuild edges when project edges or layout direction changes
   useEffect(() => {
     if (!project) return;
     setEdges(project.workflow.edges.map((e: WorkflowEdge, i: number) => {
       const animated = (activeAgent && e.to === activeAgent) || (flowPhase === 'input' && e.from === 'START') || (flowPhase === 'output' && e.to === 'END');
+      
+      // v2.0: Get state keys for this edge from the source node
+      // @see Requirements 3.3: State keys from runtime execution events
+      const edgeStateKeys = stateKeys?.get(e.from) || [];
+      
+      // v2.0: Check if edge is in execution path
+      // @see Requirement 10.3, 10.5: Highlight execution path
+      const sourceIndex = executionPath.indexOf(e.from);
+      const targetIndex = executionPath.indexOf(e.to);
+      const isInPath = sourceIndex !== -1 && targetIndex !== -1 && targetIndex === sourceIndex + 1;
+      const isAnimatedPath = isExecuting && animated;
+      
       return { 
         id: `e${i}-${layoutDirection}`,
         source: e.from, 
         target: e.to, 
-        type: 'animated', 
-        data: { animated },
+        // Use dataflow edge type when overlay is enabled, otherwise animated
+        type: showDataFlowOverlay ? 'dataflow' : 'animated', 
+        data: { 
+          animated: animated || isAnimatedPath,
+          // v2.0: Data flow overlay data
+          stateKeys: edgeStateKeys,
+          showOverlay: showDataFlowOverlay,
+          highlightedKey,
+          onKeyHover,
+          // v2.0: Execution path data
+          isExecutionPath: isInPath && !isAnimatedPath,
+        },
         sourceHandle: isHorizontal ? 'right' : 'bottom',
         targetHandle: isHorizontal ? 'left' : 'top',
       };
     }));
-  }, [project?.workflow.edges, flowPhase, activeAgent, setEdges, layoutDirection, isHorizontal]);
+  }, [project?.workflow.edges, flowPhase, activeAgent, setEdges, layoutDirection, isHorizontal, stateKeys, showDataFlowOverlay, highlightedKey, onKeyHover, executionPath, isExecuting]);
 
   return { nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange };
 }

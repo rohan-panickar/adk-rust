@@ -4,6 +4,9 @@
 /* Import node styles */
 @import './styles/nodes.css';
 
+/* Import data flow overlay styles */
+@import './styles/data-flow.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

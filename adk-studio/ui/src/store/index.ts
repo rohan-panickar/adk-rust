@@ -19,6 +19,9 @@ interface StudioState {
   snapToGrid: boolean;
   gridSize: number;
   
+  // Data flow overlay state (v2.0)
+  showDataFlowOverlay: boolean;
+  
   // Actions
   fetchProjects: () => Promise<void>;
   createProject: (name: string, description?: string) => Promise<Project>;
@@ -48,6 +51,9 @@ interface StudioState {
   setLayoutDirection: (dir: LayoutDirection) => void;
   setSnapToGrid: (snap: boolean) => void;
   setGridSize: (size: number) => void;
+  
+  // Data flow overlay actions (v2.0)
+  setShowDataFlowOverlay: (show: boolean) => void;
 }
 
 export const useStore = create<StudioState>((set, get) => ({
@@ -62,6 +68,9 @@ export const useStore = create<StudioState>((set, get) => ({
   layoutDirection: 'TB',
   snapToGrid: true,
   gridSize: 20,
+  
+  // Data flow overlay state (v2.0)
+  showDataFlowOverlay: false,
 
   fetchProjects: async () => {
     set({ loadingProjects: true });
@@ -84,24 +93,27 @@ export const useStore = create<StudioState>((set, get) => ({
     // Restore layout settings from project if available
     const layoutMode = project.settings?.layoutMode || 'free';
     const layoutDirection = project.settings?.layoutDirection || 'TB';
+    const showDataFlowOverlay = project.settings?.showDataFlowOverlay || false;
     set({ 
       currentProject: project, 
       selectedNodeId: null,
       layoutMode,
       layoutDirection,
+      showDataFlowOverlay,
     });
   },
 
   saveProject: async () => {
-    const { currentProject, layoutMode, layoutDirection } = get();
+    const { currentProject, layoutMode, layoutDirection, showDataFlowOverlay } = get();
     if (!currentProject) return;
-    // Include layout settings in project before saving
+    // Include layout settings and data flow overlay preference in project before saving
     const projectToSave = {
       ...currentProject,
       settings: {
         ...currentProject.settings,
         layoutMode,
         layoutDirection,
+        showDataFlowOverlay,
       },
     };
     await api.projects.update(currentProject.id, projectToSave);
@@ -349,4 +361,12 @@ export const useStore = create<StudioState>((set, get) => ({
   setSnapToGrid: (snap) => set({ snapToGrid: snap }),
 
   setGridSize: (size) => set({ gridSize: size }),
+
+  // Data flow overlay actions (v2.0)
+  // @see Requirements 3.4: Store preference in project settings
+  setShowDataFlowOverlay: (show) => {
+    set({ showDataFlowOverlay: show });
+    // Auto-save after state update
+    setTimeout(() => get().saveProject(), 0);
+  },
 }));

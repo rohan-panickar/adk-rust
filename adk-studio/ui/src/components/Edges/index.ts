@@ -32,4 +32,6 @@ export type EdgeTypeKey = keyof typeof edgeTypes;
 
 // Re-export individual components for direct imports
 export { AnimatedEdge } from './AnimatedEdge';
+export type { AnimatedEdgeData } from './AnimatedEdge';
 export { DataFlowEdge } from './DataFlowEdge';
+export type { DataFlowEdgeData } from './DataFlowEdge';

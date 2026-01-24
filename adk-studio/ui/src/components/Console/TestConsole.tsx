@@ -19,8 +19,13 @@ interface Props {
   onIteration?: (iter: number) => void;
   onThought?: (agent: string, thought: string | null) => void;
   binaryPath?: string | null;
-  /** v2.0: Callback to pass snapshots to parent for Timeline */
-  onSnapshotsChange?: (snapshots: StateSnapshot[], currentIndex: number, scrubTo: (index: number) => void) => void;
+  /** v2.0: Callback to pass snapshots and state keys to parent for Timeline and Data Flow Overlays */
+  onSnapshotsChange?: (
+    snapshots: StateSnapshot[], 
+    currentIndex: number, 
+    scrubTo: (index: number) => void,
+    stateKeys?: Map<string, string[]>
+  ) => void;
 }
 
 export function TestConsole({ onFlowPhase, onActiveAgent, onIteration, onThought, binaryPath, onSnapshotsChange }: Props) {
@@ -28,16 +33,16 @@ export function TestConsole({ onFlowPhase, onActiveAgent, onIteration, onThought
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('chat');
-  const { send, cancel, isStreaming, streamingText, currentAgent, toolCalls, events, sessionId, newSession, iteration, snapshots, currentSnapshotIndex, scrubTo } = useSSE(currentProject?.id ?? null, binaryPath);
+  const { send, cancel, isStreaming, streamingText, currentAgent, toolCalls, events, sessionId, newSession, iteration, snapshots, currentSnapshotIndex, scrubTo, stateKeys } = useSSE(currentProject?.id ?? null, binaryPath);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const sendingRef = useRef(false);
   const lastAgentRef = useRef<string | null>(null);
 
-  // v2.0: Pass snapshots to parent for Timeline
+  // v2.0: Pass snapshots and state keys to parent for Timeline and Data Flow Overlays
   useEffect(() => {
-    onSnapshotsChange?.(snapshots, currentSnapshotIndex, scrubTo);
-  }, [snapshots, currentSnapshotIndex, scrubTo, onSnapshotsChange]);
+    onSnapshotsChange?.(snapshots, currentSnapshotIndex, scrubTo, stateKeys);
+  }, [snapshots, currentSnapshotIndex, scrubTo, stateKeys, onSnapshotsChange]);
 
   useEffect(() => {
     onIteration?.(iteration);

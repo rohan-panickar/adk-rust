@@ -34,9 +34,37 @@
 }
 
 /* Active/running state */
+/* @see Requirement 10.3: Green glow effect on active node */
+/* @see Requirement 10.5: Highlight execution path */
 .node-base.node-active {
   border-color: var(--accent-success) !important;
-  box-shadow: 0 0 20px rgba(56, 161, 105, 0.5), var(--shadow-lg);
+  box-shadow: 
+    0 0 20px rgba(56, 161, 105, 0.5),
+    0 0 40px rgba(56, 161, 105, 0.3),
+    var(--shadow-lg);
+  animation: activeGlow 2s ease-in-out infinite;
+}
+
+/* Green glow animation for active nodes */
+@keyframes activeGlow {
+  0%, 100% {
+    box-shadow: 
+      0 0 20px rgba(56, 161, 105, 0.5),
+      0 0 40px rgba(56, 161, 105, 0.3),
+      var(--shadow-lg);
+  }
+  50% {
+    box-shadow: 
+      0 0 30px rgba(56, 161, 105, 0.7),
+      0 0 60px rgba(56, 161, 105, 0.4),
+      var(--shadow-lg);
+  }
+}
+
+/* Execution path node (completed but part of current path) */
+.node-base.node-execution-path {
+  border-color: var(--accent-success) !important;
+  box-shadow: 0 0 10px rgba(56, 161, 105, 0.3), var(--shadow-md);
 }
 
 /* ============================================

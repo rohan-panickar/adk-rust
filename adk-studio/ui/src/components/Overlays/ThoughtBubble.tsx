@@ -1,58 +1,172 @@
-import { motion, AnimatePresence } from 'framer-motion';
+/**
+ * ThoughtBubble Component for ADK Studio v2.0
+ * 
+ * Displays agent reasoning in real-time with animated thought bubbles.
+ * Supports different types: thinking, tool, decision with distinct icons.
+ * Uses CSS transitions for smooth in/out animations.
+ * 
+ * Requirements: 9.1, 9.3, 9.4, 9.5
+ */
 
-interface ThoughtBubbleProps {
-  text: string;
-  position?: 'top' | 'right';
-  streaming?: boolean;
-  type?: 'thinking' | 'tool' | 'decision';
-}
+import { memo, useEffect, useState, useRef } from 'react';
+import '../../styles/thought-bubble.css';
 
-const icons = { thinking: '💭', tool: '🔧', decision: '🤔' };
+/**
+ * Thought bubble types with distinct visual styles
+ * @see Requirement 9.4: Support thinking, tool, decision types with icons
+ */
+export type ThoughtBubbleType = 'thinking' | 'tool' | 'decision';
 
-const colors = {
-  thinking: 'from-blue-500 to-blue-600',
-  tool: 'from-yellow-500 to-yellow-600',
-  decision: 'from-purple-500 to-purple-600',
+/**
+ * Position of the thought bubble relative to the source node
+ */
+export type ThoughtBubblePosition = 'top' | 'right' | 'bottom' | 'left';
+
+/**
+ * Icons for each thought bubble type
+ * @see Requirement 9.4: Different types with icons
+ */
+const typeIcons: Record<ThoughtBubbleType, string> = {
+  thinking: '💭',
+  tool: '🔧',
+  decision: '🤔',
 };
 
-export function ThoughtBubble({ 
-  text, 
-  position = 'right', 
+/**
+ * CSS class names for each thought bubble type (for gradient colors)
+ */
+const typeClasses: Record<ThoughtBubbleType, string> = {
+  thinking: 'thought-bubble-thinking',
+  tool: 'thought-bubble-tool',
+  decision: 'thought-bubble-decision',
+};
+
+export interface ThoughtBubbleProps {
+  /** The text content to display */
+  text: string;
+  /** Position relative to the source node */
+  position?: ThoughtBubblePosition;
+  /** Whether the text is still streaming */
+  streaming?: boolean;
+  /** Type of thought bubble (affects icon and color) */
+  type?: ThoughtBubbleType;
+  /** Whether the bubble is visible (controls animation) */
+  visible?: boolean;
+  /** Unique identifier for the bubble */
+  id?: string;
+  /** Source node ID (for pointer indication) */
+  sourceNodeId?: string;
+  /** Callback when bubble should be dismissed */
+  onDismiss?: () => void;
+  /** Maximum width of the bubble */
+  maxWidth?: number;
+  /** Z-index for stacking multiple bubbles */
+  zIndex?: number;
+}
+
+/**
+ * ThoughtBubble displays agent reasoning in real-time.
+ * 
+ * Features:
+ * - CSS transition animations for smooth in/out (Requirement 9.3)
+ * - Support for thinking, tool, decision types with icons (Requirement 9.4)
+ * - Pointer indicating source node (Requirement 9.5)
+ * - Streaming text indicator
+ * 
+ * @see Requirement 9.1: Display thought bubble near node when agent is thinking
+ * @see Requirement 9.3: Animate in/out smoothly using CSS transitions
+ * @see Requirement 9.4: Support different types with icons
+ * @see Requirement 9.5: Pointer indicating which node it belongs to
+ */
+export const ThoughtBubble = memo(function ThoughtBubble({
+  text,
+  position = 'right',
   streaming = false,
-  type = 'thinking'
+  type = 'thinking',
+  visible = true,
+  id,
+  sourceNodeId,
+  onDismiss,
+  maxWidth = 280,
+  zIndex = 1000,
 }: ThoughtBubbleProps) {
-  if (!text) return null;
+  // Track animation state for CSS transitions
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [shouldRender, setShouldRender] = useState(visible);
+  const bubbleRef = useRef<HTMLDivElement>(null);
 
-  const positionClasses = {
-    right: 'left-full ml-3 top-1/2 -translate-y-1/2',
-    top: 'bottom-full mb-3 left-1/2 -translate-x-1/2',
-  };
+  // Handle visibility changes with animation
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      // Small delay to ensure DOM is ready for animation
+      requestAnimationFrame(() => {
+        setIsAnimating(true);
+      });
+    } else {
+      setIsAnimating(false);
+      // Wait for exit animation to complete before removing from DOM
+      const timer = setTimeout(() => {
+        setShouldRender(false);
+        onDismiss?.();
+      }, 200); // Match CSS transition duration
+      return () => clearTimeout(timer);
+    }
+  }, [visible, onDismiss]);
 
-  const pointerClasses = {
-    right: 'left-0 top-1/2 -translate-x-full -translate-y-1/2 border-r-blue-500 border-y-transparent border-l-transparent border-8',
-    top: 'bottom-0 left-1/2 translate-y-full -translate-x-1/2 border-t-blue-500 border-x-transparent border-b-transparent border-8',
-  };
+  // Don't render if not visible and animation complete
+  if (!shouldRender || !text) {
+    return null;
+  }
+
+  const icon = typeIcons[type];
+  const typeClass = typeClasses[type];
+
+  // Build position class
+  const positionClass = `thought-bubble-${position}`;
+
+  // Build animation class
+  const animationClass = isAnimating ? 'thought-bubble-enter' : 'thought-bubble-exit';
 
   return (
-    <AnimatePresence>
-      <motion.div
-        className={`absolute z-50 ${positionClasses[position]}`}
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.8 }}
-        transition={{ duration: 0.15 }}
-      >
-        <div className={`relative bg-gradient-to-br ${colors[type]} rounded-lg px-3 py-2 max-w-[250px] shadow-lg`}>
-          <div className={`absolute ${pointerClasses[position]}`} style={{ width: 0, height: 0 }} />
-          <div className="flex items-start gap-2 text-white text-xs">
-            <span>{icons[type]}</span>
-            <span className="leading-relaxed">
-              {text}
-              {streaming && <span className="animate-pulse ml-1">▊</span>}
+    <div
+      ref={bubbleRef}
+      className={`thought-bubble ${positionClass} ${typeClass} ${animationClass}`}
+      style={{
+        maxWidth,
+        zIndex,
+      }}
+      data-bubble-id={id}
+      data-source-node={sourceNodeId}
+      role="status"
+      aria-live="polite"
+      aria-label={`${type} bubble: ${text}`}
+    >
+      {/* Pointer indicating source node - Requirement 9.5 */}
+      <div className="thought-bubble-pointer" />
+      
+      {/* Content container */}
+      <div className="thought-bubble-content">
+        {/* Type icon - Requirement 9.4 */}
+        <span className="thought-bubble-icon" aria-hidden="true">
+          {icon}
+        </span>
+        
+        {/* Text content */}
+        <span className="thought-bubble-text">
+          {text}
+          {/* Streaming cursor indicator */}
+          {streaming && (
+            <span className="thought-bubble-cursor" aria-hidden="true">
+              ▊
             </span>
-          </div>
-        </div>
-      </motion.div>
-    </AnimatePresence>
+          )}
+        </span>
+      </div>
+    </div>
   );
-}
+});
+
+ThoughtBubble.displayName = 'ThoughtBubble';
+
+export default ThoughtBubble;
