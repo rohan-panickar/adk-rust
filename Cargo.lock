@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "adk-agent"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "adk-guardrail",
@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "adk-artifact"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "adk-auth"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "adk-browser"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "adk-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-agent",
  "adk-artifact",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "adk-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "adk-doc-audit"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -169,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "adk-eval"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "adk-model",
@@ -190,7 +190,7 @@ dependencies = [
 
 [[package]]
 name = "adk-examples"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-agent",
  "adk-artifact",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "adk-gemini"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -260,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "adk-graph"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "async-stream",
@@ -278,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "adk-guardrail"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -294,7 +294,7 @@ dependencies = [
 
 [[package]]
 name = "adk-memory"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -326,7 +326,7 @@ dependencies = [
 
 [[package]]
 name = "adk-model"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "adk-gemini",
@@ -349,7 +349,7 @@ dependencies = [
 
 [[package]]
 name = "adk-realtime"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "async-openai",
@@ -370,7 +370,7 @@ dependencies = [
 
 [[package]]
 name = "adk-runner"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-artifact",
  "adk-core",
@@ -387,7 +387,7 @@ dependencies = [
 
 [[package]]
 name = "adk-rust"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-agent",
  "adk-artifact",
@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "adk-server"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-agent",
  "adk-artifact",
@@ -447,7 +447,7 @@ dependencies = [
 
 [[package]]
 name = "adk-session"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -461,7 +461,7 @@ dependencies = [
 
 [[package]]
 name = "adk-studio"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-agent",
  "adk-core",
@@ -496,7 +496,7 @@ dependencies = [
 
 [[package]]
 name = "adk-telemetry"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "adk-tool"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "adk-telemetry",
@@ -530,7 +530,7 @@ dependencies = [
 
 [[package]]
 name = "adk-ui"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -1517,6 +1517,15 @@ name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
+
+[[package]]
+name = "colored"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
+dependencies = [
+ "windows-sys 0.59.0",
+]
 
 [[package]]
 name = "compact_str"
@@ -5330,6 +5339,29 @@ checksum = "c069c179fcdc6a2fe24d8d18305cf085fdbd4f922c041943e203685d6a1c58fd"
 dependencies = [
  "endian-type",
  "nibble_vec",
+]
+
+[[package]]
+name = "ralph"
+version = "0.2.1"
+dependencies = [
+ "adk-agent",
+ "adk-cli",
+ "adk-core",
+ "adk-model",
+ "adk-runner",
+ "adk-session",
+ "adk-tool",
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "colored",
+ "dotenvy",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
