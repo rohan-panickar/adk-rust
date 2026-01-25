@@ -30,9 +30,16 @@ export function useLayout() {
   const setSnapToGrid = useStore(s => s.setSnapToGrid);
   const setGridSize = useStore(s => s.setGridSize);
 
-  // Padding accounts for side panel (~320px) when node is selected
+  // Padding accounts for toolbar at top (~60px) and side panel (~320px) when node is selected
   const getPadding = useCallback(() => {
-    return selectedNodeId ? { top: 0.1, left: 0.1, bottom: 0.1, right: 0.35 } : 0.1;
+    // Top padding needs to be larger to account for the canvas toolbar
+    // Right padding is larger when a node is selected (properties panel open)
+    return { 
+      top: 0.15,      // Extra padding for toolbar
+      left: 0.1, 
+      bottom: 0.1, 
+      right: selectedNodeId ? 0.35 : 0.1 
+    };
   }, [selectedNodeId]);
 
   // Apply Dagre auto-layout
