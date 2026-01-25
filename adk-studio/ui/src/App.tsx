@@ -64,7 +64,7 @@ export default function App() {
         >
           <div className="flex items-center">
             <h1 className="text-lg font-bold flex items-center gap-2">
-              <span className="text-2xl">🚀</span> ADK Studio
+              <img src="https://adk-rust.com/icon.svg" alt="ADK" className="w-7 h-7" /> ADK Studio
             </h1>
             {currentProject && (
               <span className="ml-4" style={{ color: 'var(--text-secondary)' }}>/ {currentProject.name}</span>

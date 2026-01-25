@@ -154,7 +154,10 @@ export function MenuBar({ onExportCode, onNewProject, onTemplateApplied, onRunTe
       className="flex items-center gap-1 px-2 py-1"
       style={{ backgroundColor: 'var(--surface-panel)', borderBottom: '1px solid var(--border-default)' }}
     >
-      <span className="text-sm font-semibold mr-4" style={{ color: 'var(--accent-primary)' }}>🔧 ADK Studio</span>
+      <span className="text-sm font-semibold mr-4 flex items-center gap-1.5" style={{ color: 'var(--accent-primary)' }}>
+        <img src="https://adk-rust.com/icon.svg" alt="ADK" className="w-5 h-5" />
+        ADK Studio
+      </span>
 
       <Menu name="File">
         <MenuItem onClick={onNewProject}>📄 New Project</MenuItem>
