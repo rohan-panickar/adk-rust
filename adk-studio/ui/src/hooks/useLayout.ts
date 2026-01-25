@@ -64,15 +64,13 @@ export function useLayout() {
     setTimeout(() => fitView({ padding: getPadding(), maxZoom: 0.9 }), 50);
   }, [getNodes, getEdges, setNodes, fitView, getPadding]);
 
-  // Toggle layout direction (TB <-> LR)
+  // Toggle layout direction (TB <-> LR) and apply layout
   const toggleDirection = useCallback(() => {
     const newDirection: LayoutDirection = layoutDirection === 'LR' ? 'TB' : 'LR';
     setLayoutDirection(newDirection);
-    // Auto-apply layout when in fixed mode
-    if (layoutMode === 'fixed') {
-      doLayout(newDirection);
-    }
-  }, [layoutDirection, layoutMode, setLayoutDirection, doLayout]);
+    // Always apply layout when direction is toggled
+    doLayout(newDirection);
+  }, [layoutDirection, setLayoutDirection, doLayout]);
 
   // Toggle layout mode (free <-> fixed)
   const toggleMode = useCallback(() => {
