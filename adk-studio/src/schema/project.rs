@@ -109,7 +109,7 @@ fn default_model() -> String {
 }
 
 fn default_adk_version() -> Option<String> {
-    Some("0.2.2".to_string())
+    Some("0.2.1".to_string())
 }
 
 fn default_rust_edition() -> Option<String> {

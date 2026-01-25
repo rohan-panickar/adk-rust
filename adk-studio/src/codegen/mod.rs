@@ -1032,7 +1032,7 @@ fn generate_cargo_toml(project: &ProjectSchema) -> String {
     }
 
     // Get ADK version and Rust edition from project settings (with defaults)
-    let adk_version = project.settings.adk_version.as_deref().unwrap_or("0.2.2");
+    let adk_version = project.settings.adk_version.as_deref().unwrap_or("0.2.1");
     let rust_edition = project.settings.rust_edition.as_deref().unwrap_or("2024");
 
     // Check if any function tool code uses specific crates
