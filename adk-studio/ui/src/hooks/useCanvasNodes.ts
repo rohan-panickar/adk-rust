@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import type { Project, Edge as WorkflowEdge } from '../types/project';
+import type { ActionNodeConfig } from '../types/actionNodes';
 import { useStore } from '../store';
 
 interface ExecutionState {
@@ -22,6 +23,35 @@ interface ExecutionState {
   isExecuting?: boolean;
 }
 
+/**
+ * Maps action node type to ReactFlow node type key.
+ * Action nodes use 'action_' prefix to avoid conflicts with agent node types.
+ */
+function getActionNodeType(actionType: ActionNodeConfig['type']): string {
+  return `action_${actionType}`;
+}
+
+/**
+ * Generate a stable hash for detecting structural changes.
+ * This ensures we only rebuild nodes when the actual structure changes.
+ */
+function getStructureHash(project: Project | null): string {
+  if (!project) return '';
+  
+  const agentKeys = Object.keys(project.agents).sort().join(',');
+  const actionNodeKeys = Object.keys(project.actionNodes || {}).sort().join(',');
+  const toolsHash = Object.entries(project.agents)
+    .map(([id, a]) => `${id}:${(a.tools || []).join('+')}`)
+    .sort()
+    .join('|');
+  const edgesHash = project.workflow.edges
+    .map(e => `${e.from}->${e.to}`)
+    .sort()
+    .join(',');
+  
+  return `${agentKeys}|${actionNodeKeys}|${toolsHash}|${edgesHash}`;
+}
+
 export function useCanvasNodes(project: Project | null, execution: ExecutionState) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -40,25 +70,30 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
   const layoutDirection = useStore(s => s.layoutDirection);
   const isHorizontal = layoutDirection === 'LR' || layoutDirection === 'RL';
   
-  // Track project structure for detecting actual changes
-  const prevAgentKeys = useRef<string | null>(null);
-  const prevToolsHash = useRef<string | null>(null);
+  // Track structure hash to detect actual changes
+  const prevStructureHash = useRef<string>('');
+  
+  // Compute current structure hash
+  const currentStructureHash = useMemo(() => getStructureHash(project), [project]);
 
-  // Build nodes only when project STRUCTURE changes (agents added/removed)
+  // Build nodes when project STRUCTURE changes (agents/action nodes added/removed)
   useEffect(() => {
-    if (!project) return;
-    const agentKeys = Object.keys(project.agents).sort().join(',');
-    const toolsHash = Object.entries(project.agents).map(([id, a]) => `${id}:${a.tools?.join(',')}`).join('|');
+    if (!project) {
+      setNodes([]);
+      return;
+    }
     
-    if (agentKeys === prevAgentKeys.current && toolsHash === prevToolsHash.current) return;
-    prevAgentKeys.current = agentKeys;
-    prevToolsHash.current = toolsHash;
-
+    // Only rebuild if structure actually changed
+    if (currentStructureHash === prevStructureHash.current) {
+      return;
+    }
+    prevStructureHash.current = currentStructureHash;
+    
     const agentIds = Object.keys(project.agents);
+    const actionNodeIds = Object.keys(project.actionNodes || {});
     
-    // v2.0: If no agents, show empty canvas (no START/END nodes)
-    // This allows undo to restore to a truly blank state
-    if (agentIds.length === 0) {
+    // If no agents and no action nodes, show empty canvas (no START/END)
+    if (agentIds.length === 0 && actionNodeIds.length === 0) {
       setNodes([]);
       return;
     }
@@ -66,37 +101,91 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
     const allSubAgents = new Set(agentIds.flatMap(id => project.agents[id].sub_agents || []));
     const topLevelAgents = agentIds.filter(id => !allSubAgents.has(id));
 
-    const sortedAgents: string[] = [];
+    // Sort ALL workflow items (agents and action nodes) by workflow order
+    // This ensures proper positioning based on edge connections
+    const allWorkflowItems = [...topLevelAgents, ...actionNodeIds];
+    const sortedWorkflowItems: string[] = [];
     let current = 'START';
-    while (sortedAgents.length < topLevelAgents.length) {
-      const nextEdge = project.workflow.edges.find((e: WorkflowEdge) => e.from === current && e.to !== 'END');
-      if (!nextEdge) break;
-      if (topLevelAgents.includes(nextEdge.to)) sortedAgents.push(nextEdge.to);
-      current = nextEdge.to;
-    }
-    topLevelAgents.forEach(id => { if (!sortedAgents.includes(id)) sortedAgents.push(id); });
-
-    const newNodes: Node[] = [
-      { id: 'START', position: { x: 50, y: 50 }, data: {}, type: 'start' },
-      { id: 'END', position: { x: 50, y: 150 + sortedAgents.length * 150 }, data: {}, type: 'end' },
-    ];
-
-    sortedAgents.forEach((id, i) => {
-      const agent = project.agents[id];
-      const pos = { x: 50, y: 150 + i * 150 };
-      const subAgentTools = (agent.sub_agents || []).reduce((acc, subId) => {
-        acc[subId] = project.agents[subId]?.tools || [];
-        return acc;
-      }, {} as Record<string, string[]>);
+    const visited = new Set<string>();
+    
+    // Follow edges from START to END to determine order
+    while (sortedWorkflowItems.length < allWorkflowItems.length) {
+      const nextEdge = project.workflow.edges.find((e: WorkflowEdge) => 
+        e.from === current && 
+        e.to !== 'END' && 
+        allWorkflowItems.includes(e.to) && 
+        !visited.has(e.to)
+      );
       
-      if (agent.type === 'sequential') newNodes.push({ id, type: 'sequential', position: pos, data: { label: id, subAgents: agent.sub_agents, subAgentTools } });
-      else if (agent.type === 'loop') newNodes.push({ id, type: 'loop', position: pos, data: { label: id, subAgents: agent.sub_agents, subAgentTools, maxIterations: agent.max_iterations || 3 } });
-      else if (agent.type === 'parallel') newNodes.push({ id, type: 'parallel', position: pos, data: { label: id, subAgents: agent.sub_agents, subAgentTools } });
-      else if (agent.type === 'router') newNodes.push({ id, type: 'router', position: pos, data: { label: id, routes: agent.routes || [] } });
-      else newNodes.push({ id, type: 'llm', position: pos, data: { label: id, model: agent.model, tools: agent.tools || [] } });
+      if (nextEdge) {
+        sortedWorkflowItems.push(nextEdge.to);
+        visited.add(nextEdge.to);
+        current = nextEdge.to;
+      } else {
+        // Try to find any unvisited item connected in the workflow
+        const anyEdge = project.workflow.edges.find((e: WorkflowEdge) => 
+          allWorkflowItems.includes(e.to) && !visited.has(e.to)
+        );
+        if (anyEdge) {
+          sortedWorkflowItems.push(anyEdge.to);
+          visited.add(anyEdge.to);
+          current = anyEdge.to;
+        } else {
+          break;
+        }
+      }
+    }
+    
+    // Add any remaining items not in workflow
+    allWorkflowItems.forEach(id => { 
+      if (!sortedWorkflowItems.includes(id)) sortedWorkflowItems.push(id); 
     });
+
+    const newNodes: Node[] = [];
+    
+    // Add START/END if there are any workflow items (agents OR action nodes)
+    if (sortedWorkflowItems.length > 0) {
+      newNodes.push(
+        { id: 'START', position: { x: 50, y: 50 }, data: {}, type: 'start' },
+        { id: 'END', position: { x: 50, y: 150 + sortedWorkflowItems.length * 150 }, data: {}, type: 'end' },
+      );
+    }
+
+    // Add all workflow nodes (agents and action nodes) in workflow order
+    sortedWorkflowItems.forEach((id, i) => {
+      const pos = { x: 50, y: 150 + i * 150 };
+      
+      // Check if this is an agent
+      const agent = project.agents[id];
+      if (agent) {
+        const subAgentTools = (agent.sub_agents || []).reduce((acc, subId) => {
+          acc[subId] = project.agents[subId]?.tools || [];
+          return acc;
+        }, {} as Record<string, string[]>);
+        
+        if (agent.type === 'sequential') newNodes.push({ id, type: 'sequential', position: pos, data: { label: id, subAgents: agent.sub_agents, subAgentTools } });
+        else if (agent.type === 'loop') newNodes.push({ id, type: 'loop', position: pos, data: { label: id, subAgents: agent.sub_agents, subAgentTools, maxIterations: agent.max_iterations || 3 } });
+        else if (agent.type === 'parallel') newNodes.push({ id, type: 'parallel', position: pos, data: { label: id, subAgents: agent.sub_agents, subAgentTools } });
+        else if (agent.type === 'router') newNodes.push({ id, type: 'router', position: pos, data: { label: id, routes: agent.routes || [] } });
+        else newNodes.push({ id, type: 'llm', position: pos, data: { label: id, model: agent.model, tools: agent.tools || [] } });
+        return;
+      }
+      
+      // Check if this is an action node
+      const actionNode = project.actionNodes?.[id];
+      if (actionNode) {
+        const nodeType = getActionNodeType(actionNode.type);
+        newNodes.push({
+          id,
+          type: nodeType,
+          position: pos,
+          data: { ...actionNode },
+        });
+      }
+    });
+
     setNodes(newNodes);
-  }, [project, setNodes]);
+  }, [project, currentStructureHash, setNodes]);
 
   // Update execution state (isActive, iteration, thoughts, execution path) WITHOUT changing positions
   useEffect(() => {
@@ -114,6 +203,26 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
           className: isInPath ? 'node-execution-path' : undefined,
         };
       }
+      
+      // Check if this is an action node
+      const actionNode = project.actionNodes?.[n.id];
+      if (actionNode) {
+        const isActive = activeAgent === n.id;
+        const isInPath = executionPath.includes(n.id);
+        
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            ...actionNode, // Include latest action node config
+            isActive,
+            isInExecutionPath: isInPath,
+          },
+          className: isActive ? 'node-active' : (isInPath ? 'node-execution-path' : undefined),
+        };
+      }
+      
+      // Handle agent nodes
       const agent = project.agents[n.id];
       if (!agent) return n;
       
@@ -157,6 +266,21 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
       const isInPath = sourceIndex !== -1 && targetIndex !== -1 && targetIndex === sourceIndex + 1;
       const isAnimatedPath = isExecuting && animated;
       
+      // Determine source and target handles
+      // For multi-port nodes (Switch, Merge), use the port names from edge
+      // For action nodes without port specified, use 'output-0' / 'input-0'
+      // For agent nodes, use layout-based defaults
+      const isSourceActionNode = project.actionNodes?.[e.from] !== undefined;
+      const isTargetActionNode = project.actionNodes?.[e.to] !== undefined;
+      
+      // Default handles based on node type
+      const defaultSourceHandle = isSourceActionNode 
+        ? 'output-0' 
+        : (isHorizontal ? 'right' : 'bottom');
+      const defaultTargetHandle = isTargetActionNode 
+        ? 'input-0' 
+        : (isHorizontal ? 'left' : 'top');
+      
       return { 
         id: `e${i}-${layoutDirection}`,
         source: e.from, 
@@ -173,8 +297,9 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
           // v2.0: Execution path data
           isExecutionPath: isInPath && !isAnimatedPath,
         },
-        sourceHandle: isHorizontal ? 'right' : 'bottom',
-        targetHandle: isHorizontal ? 'left' : 'top',
+        // Use port-specific handles if specified, otherwise use defaults
+        sourceHandle: e.fromPort || defaultSourceHandle,
+        targetHandle: e.toPort || defaultTargetHandle,
       };
     }));
   }, [project?.workflow.edges, flowPhase, activeAgent, setEdges, layoutDirection, isHorizontal, stateKeys, showDataFlowOverlay, highlightedKey, onKeyHover, executionPath, isExecuting]);

@@ -16,7 +16,7 @@ const RUST_EDITIONS = ['2024', '2021'] as const;
 export function GlobalSettingsModal({ onClose, onThemeChange }: Props) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('defaults');
   const [settings, setSettings] = useState<GlobalSettings>(DEFAULT_GLOBAL_SETTINGS);
-  const { mode, setMode } = useTheme();
+  const { mode: _mode, setMode } = useTheme();
 
   useEffect(() => {
     setSettings(loadGlobalSettings());

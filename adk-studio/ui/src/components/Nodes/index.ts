@@ -19,12 +19,16 @@ import { LoopNode } from './LoopNode';
 import { ParallelNode } from './ParallelNode';
 import { RouterNode } from './RouterNode';
 import { StartNode, EndNode } from './StartEndNodes';
+import { actionNodeTypes } from '../ActionNodes';
 
 /**
  * Node types registry for ReactFlow.
  * Keys must match the NodeType type in types/nodes.ts.
+ * 
+ * Includes both agent node types and action node types.
  */
 export const nodeTypes = {
+  // Agent node types
   llm: LlmAgentNode,
   sequential: SequentialNode,
   loop: LoopNode,
@@ -32,6 +36,8 @@ export const nodeTypes = {
   router: RouterNode,
   start: StartNode,
   end: EndNode,
+  // Action node types (prefixed with 'action_' to avoid conflicts)
+  ...actionNodeTypes,
 } as const;
 
 /**

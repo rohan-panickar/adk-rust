@@ -6,16 +6,36 @@
  * - Eval loops
  * - Tool-heavy workflows
  * - Realtime agents
+ * - Automation workflows with action nodes
  * 
  * Requirements: 6.1, 6.2
+ * 
+ * Extended with n8n-inspired workflow templates for automation use cases.
+ * @see .kiro/specs/action-nodes/tasks.md - Task 35
  */
 
 import type { AgentSchema } from '../../types/project';
+import type { ActionNodeConfig, ActionNodeType } from '../../types/actionNodes';
+import { AUTOMATION_TEMPLATES } from './automationTemplates';
 
 /**
  * Template category for filtering
  */
-export type TemplateCategory = 'basic' | 'advanced' | 'realtime' | 'tools' | 'teams';
+export type TemplateCategory = 'basic' | 'advanced' | 'realtime' | 'tools' | 'teams' | 'automation';
+
+/**
+ * Required environment variables for a template
+ */
+export interface TemplateEnvVar {
+  /** Environment variable name */
+  name: string;
+  /** Description of what this variable is for */
+  description: string;
+  /** Whether this variable is required */
+  required: boolean;
+  /** Example value */
+  example?: string;
+}
 
 /**
  * Template data structure
@@ -33,10 +53,20 @@ export interface Template {
   category: TemplateCategory;
   /** Agent definitions */
   agents: Record<string, AgentSchema>;
+  /** Action node definitions (for automation workflows) */
+  actionNodes?: Record<string, ActionNodeConfig>;
   /** Edge connections */
-  edges: Array<{ from: string; to: string }>;
+  edges: Array<{ from: string; to: string; fromPort?: string; toPort?: string }>;
   /** Preview image path (optional) */
   previewImage?: string;
+  /** Required action node types (for filtering) */
+  requiredNodeTypes?: ActionNodeType[];
+  /** Required environment variables */
+  envVars?: TemplateEnvVar[];
+  /** Detailed use case description */
+  useCase?: string;
+  /** Customization tips */
+  customizationTips?: string[];
 }
 
 /**
@@ -440,6 +470,384 @@ export const TEMPLATES: Template[] = [
       { from: 'translator', to: 'END' },
     ]
   },
+
+  // ============================================
+  // AUTOMATION TEMPLATES (Action Nodes)
+  // ============================================
+  {
+    id: 'email_sentiment_analysis',
+    name: 'Email Sentiment Analysis',
+    icon: '📧',
+    description: 'Analyze email sentiment and update spreadsheet with results',
+    category: 'automation',
+    requiredNodeTypes: ['trigger', 'http', 'transform', 'loop', 'switch', 'set', 'merge'],
+    envVars: [
+      { name: 'GMAIL_TOKEN', description: 'Gmail API OAuth token', required: true, example: 'ya29.xxx' },
+      { name: 'SHEET_ID', description: 'Google Sheets spreadsheet ID', required: true, example: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms' },
+      { name: 'SHEETS_TOKEN', description: 'Google Sheets API OAuth token', required: true, example: 'ya29.xxx' },
+    ],
+    useCase: 'Automatically analyze incoming emails for sentiment, categorize them by urgency, and log results to a Google Sheet for tracking and reporting.',
+    customizationTips: [
+      'Adjust the cron schedule to match your email checking frequency',
+      'Modify sentiment thresholds in the Switch node for your use case',
+      'Add additional categories beyond positive/neutral/negative',
+    ],
+    agents: {
+      'sentiment_analyzer': {
+        type: 'llm',
+        model: 'gemini-2.0-flash',
+        instruction: `You are a sentiment analysis expert. Analyze the email content provided and determine:
+1. Overall sentiment: positive, negative, or neutral
+2. Sentiment score: a number from -1.0 (very negative) to 1.0 (very positive)
+3. Key phrases that indicate the sentiment
+4. Urgency level: low, medium, or high
+
+Output your analysis as JSON:
+{
+  "sentiment": "positive|negative|neutral",
+  "score": 0.75,
+  "keyPhrases": ["phrase1", "phrase2"],
+  "urgency": "low|medium|high",
+  "summary": "Brief summary of the email"
+}`,
+        tools: [],
+        sub_agents: [],
+        position: { x: 400, y: 300 },
+      }
+    },
+    actionNodes: {
+      'trigger_schedule': {
+        type: 'trigger',
+        id: 'trigger_schedule',
+        name: 'Daily Email Check',
+        description: 'Trigger workflow daily at 9 AM',
+        triggerType: 'schedule',
+        schedule: {
+          cron: '0 9 * * *',
+          timezone: 'America/New_York',
+        },
+        errorHandling: { mode: 'stop' },
+        tracing: { enabled: true, logLevel: 'info' },
+        callbacks: {},
+        execution: { timeout: 30000 },
+        mapping: { outputKey: 'triggerData' },
+      },
+      'fetch_emails': {
+        type: 'http',
+        id: 'fetch_emails',
+        name: 'Fetch Unread Emails',
+        description: 'Fetch unread emails from Gmail API',
+        method: 'GET',
+        url: 'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread',
+        auth: {
+          type: 'bearer',
+          bearer: { token: '{{GMAIL_TOKEN}}' },
+        },
+        headers: {},
+        body: { type: 'none' },
+        response: {
+          type: 'json',
+          jsonPath: '$.messages',
+        },
+        errorHandling: { mode: 'retry', retryCount: 3, retryDelay: 1000 },
+        tracing: { enabled: true, logLevel: 'info' },
+        callbacks: {},
+        execution: { timeout: 30000 },
+        mapping: { outputKey: 'emails' },
+      },
+      'parse_emails': {
+        type: 'transform',
+        id: 'parse_emails',
+        name: 'Parse Email Data',
+        description: 'Extract email content for analysis',
+        transformType: 'javascript',
+        expression: `return input.emails.map(email => ({
+  id: email.id,
+  subject: email.payload?.headers?.find(h => h.name === 'Subject')?.value || 'No Subject',
+  from: email.payload?.headers?.find(h => h.name === 'From')?.value || 'Unknown',
+  body: email.snippet || ''
+}));`,
+        errorHandling: { mode: 'stop' },
+        tracing: { enabled: true, logLevel: 'debug' },
+        callbacks: {},
+        execution: { timeout: 10000 },
+        mapping: { 
+          inputMapping: { 'emails': 'emails' },
+          outputKey: 'parsedEmails' 
+        },
+      },
+      'process_loop': {
+        type: 'loop',
+        id: 'process_loop',
+        name: 'Process Each Email',
+        description: 'Iterate through emails for sentiment analysis',
+        loopType: 'forEach',
+        forEach: {
+          sourceArray: 'parsedEmails',
+          itemVar: 'email',
+          indexVar: 'idx',
+        },
+        parallel: {
+          enabled: true,
+          batchSize: 5,
+        },
+        results: {
+          collect: true,
+          aggregationKey: 'analysisResults',
+        },
+        errorHandling: { mode: 'continue' },
+        tracing: { enabled: true, logLevel: 'info' },
+        callbacks: {},
+        execution: { timeout: 120000 },
+        mapping: { outputKey: 'loopResults' },
+      },
+      'route_sentiment': {
+        type: 'switch',
+        id: 'route_sentiment',
+        name: 'Route by Sentiment',
+        description: 'Route emails based on sentiment score',
+        evaluationMode: 'first_match',
+        conditions: [
+          { id: 'positive', name: 'Positive', field: 'sentiment.score', operator: 'gt', value: 0.3, outputPort: 'positive' },
+          { id: 'negative', name: 'Negative', field: 'sentiment.score', operator: 'lt', value: -0.3, outputPort: 'negative' },
+        ],
+        defaultBranch: 'neutral',
+        errorHandling: { mode: 'stop' },
+        tracing: { enabled: true, logLevel: 'info' },
+        callbacks: {},
+        execution: { timeout: 5000 },
+        mapping: { outputKey: 'routeResult' },
+      },
+      'set_positive': {
+        type: 'set',
+        id: 'set_positive',
+        name: 'Set Positive Category',
+        description: 'Mark email as positive sentiment',
+        mode: 'set',
+        variables: [
+          { key: 'category', value: 'Positive', valueType: 'string', isSecret: false },
+          { key: 'color', value: '#22C55E', valueType: 'string', isSecret: false },
+          { key: 'priority', value: 'low', valueType: 'string', isSecret: false },
+        ],
+        errorHandling: { mode: 'stop' },
+        tracing: { enabled: false, logLevel: 'none' },
+        callbacks: {},
+        execution: { timeout: 5000 },
+        mapping: { outputKey: 'categoryData' },
+      },
+      'set_neutral': {
+        type: 'set',
+        id: 'set_neutral',
+        name: 'Set Neutral Category',
+        description: 'Mark email as neutral sentiment',
+        mode: 'set',
+        variables: [
+          { key: 'category', value: 'Neutral', valueType: 'string', isSecret: false },
+          { key: 'color', value: '#6B7280', valueType: 'string', isSecret: false },
+          { key: 'priority', value: 'medium', valueType: 'string', isSecret: false },
+        ],
+        errorHandling: { mode: 'stop' },
+        tracing: { enabled: false, logLevel: 'none' },
+        callbacks: {},
+        execution: { timeout: 5000 },
+        mapping: { outputKey: 'categoryData' },
+      },
+      'set_negative': {
+        type: 'set',
+        id: 'set_negative',
+        name: 'Set Negative Category',
+        description: 'Mark email as negative sentiment - requires attention',
+        mode: 'set',
+        variables: [
+          { key: 'category', value: 'Negative', valueType: 'string', isSecret: false },
+          { key: 'color', value: '#EF4444', valueType: 'string', isSecret: false },
+          { key: 'priority', value: 'high', valueType: 'string', isSecret: false },
+        ],
+        errorHandling: { mode: 'stop' },
+        tracing: { enabled: false, logLevel: 'none' },
+        callbacks: {},
+        execution: { timeout: 5000 },
+        mapping: { outputKey: 'categoryData' },
+      },
+      'merge_results': {
+        type: 'merge',
+        id: 'merge_results',
+        name: 'Merge All Results',
+        description: 'Combine results from all sentiment branches',
+        mode: 'wait_all',
+        combineStrategy: 'array',
+        timeout: {
+          enabled: true,
+          ms: 30000,
+          behavior: 'continue',
+        },
+        errorHandling: { mode: 'continue' },
+        tracing: { enabled: true, logLevel: 'info' },
+        callbacks: {},
+        execution: { timeout: 35000 },
+        mapping: { outputKey: 'mergedResults' },
+      },
+      'update_sheet': {
+        type: 'http',
+        id: 'update_sheet',
+        name: 'Update Google Sheet',
+        description: 'Append analysis results to spreadsheet',
+        method: 'POST',
+        url: 'https://sheets.googleapis.com/v4/spreadsheets/{{SHEET_ID}}/values/A1:append?valueInputOption=USER_ENTERED',
+        auth: {
+          type: 'bearer',
+          bearer: { token: '{{SHEETS_TOKEN}}' },
+        },
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: {
+          type: 'json',
+          content: '{"values": {{mergedResults}}}',
+        },
+        response: {
+          type: 'json',
+        },
+        errorHandling: { mode: 'retry', retryCount: 2, retryDelay: 2000 },
+        tracing: { enabled: true, logLevel: 'info' },
+        callbacks: {},
+        execution: { timeout: 30000 },
+        mapping: { outputKey: 'sheetResponse' },
+      },
+    },
+    edges: [
+      { from: 'START', to: 'trigger_schedule' },
+      { from: 'trigger_schedule', to: 'fetch_emails' },
+      { from: 'fetch_emails', to: 'parse_emails' },
+      { from: 'parse_emails', to: 'process_loop' },
+      { from: 'process_loop', to: 'sentiment_analyzer' },
+      { from: 'sentiment_analyzer', to: 'route_sentiment' },
+      { from: 'route_sentiment', to: 'set_positive', fromPort: 'positive' },
+      { from: 'route_sentiment', to: 'set_neutral', fromPort: 'neutral' },
+      { from: 'route_sentiment', to: 'set_negative', fromPort: 'negative' },
+      { from: 'set_positive', to: 'merge_results' },
+      { from: 'set_neutral', to: 'merge_results' },
+      { from: 'set_negative', to: 'merge_results' },
+      { from: 'merge_results', to: 'update_sheet' },
+      { from: 'update_sheet', to: 'END' },
+    ]
+  },
+  {
+    id: 'api_data_pipeline',
+    name: 'API Data Pipeline',
+    icon: '🔄',
+    description: 'Fetch, transform, and store data from external APIs',
+    category: 'automation',
+    requiredNodeTypes: ['trigger', 'http', 'transform', 'database'],
+    envVars: [
+      { name: 'WEBHOOK_API_KEY', description: 'API key for webhook authentication', required: true, example: 'sk-xxx' },
+      { name: 'DATABASE_URL', description: 'PostgreSQL connection string', required: true, example: 'postgresql://user:pass@host:5432/db' },
+    ],
+    useCase: 'Create a webhook endpoint that receives data, fetches additional information from external APIs, transforms it, and stores it in a PostgreSQL database.',
+    customizationTips: [
+      'Modify the transform expression to match your data structure',
+      'Add additional HTTP nodes for multiple API calls',
+      'Change the database type to MySQL or MongoDB if needed',
+    ],
+    agents: {},
+    actionNodes: {
+      'trigger_webhook': {
+        type: 'trigger',
+        id: 'trigger_webhook',
+        name: 'Webhook Trigger',
+        description: 'Receive incoming webhook requests',
+        triggerType: 'webhook',
+        webhook: {
+          path: '/api/webhook/data-pipeline',
+          method: 'POST',
+          auth: 'api_key',
+          authConfig: {
+            headerName: 'X-API-Key',
+            tokenEnvVar: 'WEBHOOK_API_KEY',
+          },
+        },
+        errorHandling: { mode: 'stop' },
+        tracing: { enabled: true, logLevel: 'info' },
+        callbacks: {},
+        execution: { timeout: 30000 },
+        mapping: { outputKey: 'webhookData' },
+      },
+      'fetch_data': {
+        type: 'http',
+        id: 'fetch_data',
+        name: 'Fetch External Data',
+        description: 'Retrieve data from external API',
+        method: 'GET',
+        url: '{{webhookData.apiUrl}}',
+        auth: { type: 'none' },
+        headers: {
+          'Accept': 'application/json',
+        },
+        body: { type: 'none' },
+        response: { type: 'json' },
+        errorHandling: { mode: 'retry', retryCount: 3, retryDelay: 1000 },
+        tracing: { enabled: true, logLevel: 'info' },
+        callbacks: {},
+        execution: { timeout: 30000 },
+        mapping: { outputKey: 'rawData' },
+      },
+      'transform_data': {
+        type: 'transform',
+        id: 'transform_data',
+        name: 'Transform Data',
+        description: 'Clean and transform the fetched data',
+        transformType: 'javascript',
+        expression: `const data = input.rawData;
+return {
+  processed: true,
+  timestamp: new Date().toISOString(),
+  records: Array.isArray(data) ? data.length : 1,
+  data: data
+};`,
+        errorHandling: { mode: 'stop' },
+        tracing: { enabled: true, logLevel: 'debug' },
+        callbacks: {},
+        execution: { timeout: 10000 },
+        mapping: { 
+          inputMapping: { 'rawData': 'rawData' },
+          outputKey: 'transformedData' 
+        },
+      },
+      'store_database': {
+        type: 'database',
+        id: 'store_database',
+        name: 'Store in Database',
+        description: 'Save transformed data to PostgreSQL',
+        dbType: 'postgresql',
+        connection: {
+          connectionString: '{{DATABASE_URL}}',
+          poolSize: 5,
+        },
+        sql: {
+          operation: 'insert',
+          query: 'INSERT INTO pipeline_data (payload, processed_at) VALUES ($1, $2)',
+          params: {
+            '$1': '{{transformedData}}',
+            '$2': '{{transformedData.timestamp}}',
+          },
+        },
+        errorHandling: { mode: 'retry', retryCount: 2, retryDelay: 500 },
+        tracing: { enabled: true, logLevel: 'info' },
+        callbacks: {},
+        execution: { timeout: 15000 },
+        mapping: { outputKey: 'dbResult' },
+      },
+    },
+    edges: [
+      { from: 'START', to: 'trigger_webhook' },
+      { from: 'trigger_webhook', to: 'fetch_data' },
+      { from: 'fetch_data', to: 'transform_data' },
+      { from: 'transform_data', to: 'store_database' },
+      { from: 'store_database', to: 'END' },
+    ]
+  },
+  // Include all n8n-inspired automation templates
+  ...AUTOMATION_TEMPLATES,
 ];
 
 /**
@@ -463,7 +871,39 @@ export function getTemplateById(id: string): Template | undefined {
  * Get all unique categories
  */
 export function getCategories(): TemplateCategory[] {
-  return ['basic', 'advanced', 'tools', 'teams', 'realtime'];
+  return ['basic', 'advanced', 'tools', 'teams', 'realtime', 'automation'];
+}
+
+/**
+ * Get templates filtered by required node types
+ */
+export function getTemplatesByNodeTypes(nodeTypes: ActionNodeType[]): Template[] {
+  return TEMPLATES.filter(template => {
+    if (!template.actionNodes) return false;
+    const templateNodeTypes = Object.values(template.actionNodes).map(n => n.type);
+    return nodeTypes.every(type => templateNodeTypes.includes(type));
+  });
+}
+
+/**
+ * Get templates that contain action nodes
+ */
+export function getAutomationTemplates(): Template[] {
+  return TEMPLATES.filter(template => 
+    template.actionNodes && Object.keys(template.actionNodes).length > 0
+  );
+}
+
+/**
+ * Extract required node types from a template
+ */
+export function extractRequiredNodeTypes(template: Template): ActionNodeType[] {
+  if (!template.actionNodes) return [];
+  const types = new Set<ActionNodeType>();
+  Object.values(template.actionNodes).forEach(node => {
+    types.add(node.type);
+  });
+  return Array.from(types);
 }
 
 /**
@@ -476,4 +916,5 @@ export const CATEGORY_LABELS: Record<TemplateCategory | 'all', string> = {
   tools: 'Tool-Heavy',
   teams: 'Agent Teams',
   realtime: 'Realtime',
+  automation: 'Automation',
 };

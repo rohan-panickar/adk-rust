@@ -376,6 +376,26 @@ name = "ui_server"
 path = "ui_server/main.rs"
 
 [[example]]
+name = "ui_working_support"
+path = "ui_working/support/main.rs"
+
+[[example]]
+name = "ui_working_appointment"
+path = "ui_working/appointment/main.rs"
+
+[[example]]
+name = "ui_working_inventory"
+path = "ui_working/inventory/main.rs"
+
+[[example]]
+name = "ui_working_events"
+path = "ui_working/events/main.rs"
+
+[[example]]
+name = "ui_working_facilities"
+path = "ui_working/facilities/main.rs"
+
+[[example]]
 name = "streaming_demo"
 path = "streaming_demo/main.rs"
 

@@ -4,6 +4,12 @@
 /* Import node styles */
 @import './styles/nodes.css';
 
+/* Import action node styles */
+@import './styles/actionNodes.css';
+
+/* Import standard properties panel styles */
+@import './styles/standardPropertiesPanel.css';
+
 /* Import data flow overlay styles */
 @import './styles/data-flow.css';
 

@@ -1,0 +1,432 @@
+use crate::a2ui::{
+    encode_jsonl, stable_child_id, stable_id, stable_indexed_id, A2uiMessage, A2uiSchemaVersion,
+    A2uiValidator, CreateSurface, CreateSurfaceMessage, UpdateComponents, UpdateComponentsMessage,
+    UpdateDataModel, UpdateDataModelMessage,
+};
+use crate::catalog_registry::CatalogRegistry;
+use adk_core::{Result, Tool, ToolContext};
+use async_trait::async_trait;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
+use std::sync::Arc;
+
+fn default_surface_id() -> String {
+    "main".to_string()
+}
+
+fn default_send_data_model() -> bool {
+    true
+}
+
+fn default_validate() -> bool {
+    true
+}
+
+/// Page action button definition.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PageAction {
+    /// Button label
+    pub label: String,
+    /// Action name emitted as A2UI action.event.name
+    pub action: String,
+    /// Button variant: "primary" or "borderless"
+    #[serde(default)]
+    pub variant: Option<String>,
+    /// Optional action context (supports data bindings)
+    #[serde(default)]
+    pub context: Option<Value>,
+}
+
+/// A section in a page.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PageSection {
+    /// Section heading text
+    pub heading: String,
+    /// Optional body text
+    #[serde(default)]
+    pub body: Option<String>,
+    /// Optional bullet list items
+    #[serde(default)]
+    pub bullets: Vec<String>,
+    /// Optional image URL
+    #[serde(default)]
+    pub image_url: Option<String>,
+    /// Optional action buttons
+    #[serde(default)]
+    pub actions: Vec<PageAction>,
+}
+
+/// Parameters for the render_page tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RenderPageParams {
+    /// Surface id (default: "main")
+    #[serde(default = "default_surface_id")]
+    pub surface_id: String,
+    /// Catalog id (defaults to the embedded ADK catalog)
+    #[serde(default)]
+    pub catalog_id: Option<String>,
+    /// Page title (rendered as h1)
+    pub title: String,
+    /// Optional description below the title
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Sections to include
+    #[serde(default)]
+    pub sections: Vec<PageSection>,
+    /// Optional initial data model (sent via updateDataModel at path "/")
+    #[serde(default)]
+    pub data_model: Option<Value>,
+    /// Optional theme object for createSurface
+    #[serde(default)]
+    pub theme: Option<Value>,
+    /// If true, the client should include the data model in action metadata (default: true)
+    #[serde(default = "default_send_data_model")]
+    pub send_data_model: bool,
+    /// Validate generated messages against the A2UI v0.9 schema (default: true)
+    #[serde(default = "default_validate")]
+    pub validate: bool,
+}
+
+/// Tool for emitting A2UI JSONL for a multi-section page.
+pub struct RenderPageTool;
+
+impl RenderPageTool {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for RenderPageTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl Tool for RenderPageTool {
+    fn name(&self) -> &str {
+        "render_page"
+    }
+
+    fn description(&self) -> &str {
+        r#"Render a multi-section page as A2UI JSONL. Builds a root column with a title, optional description, and section blocks. Each section can include body text, bullets, images, and action buttons."#
+    }
+
+    fn parameters_schema(&self) -> Option<Value> {
+        Some(super::generate_gemini_schema::<RenderPageParams>())
+    }
+
+    async fn execute(&self, _ctx: Arc<dyn ToolContext>, args: Value) -> Result<Value> {
+        let params: RenderPageParams = serde_json::from_value(args.clone())
+            .map_err(|e| adk_core::AdkError::Tool(format!("Invalid parameters: {}. Got: {}", e, args)))?;
+
+        let registry = CatalogRegistry::new();
+        let catalog_id = params
+            .catalog_id
+            .unwrap_or_else(|| registry.default_catalog_id().to_string());
+
+        let page_id = stable_id(&format!("page:{}:{}", params.surface_id, params.title));
+        let mut components: Vec<Value> = Vec::new();
+        let mut root_children: Vec<String> = Vec::new();
+
+        let title_id = stable_child_id(&page_id, "title");
+        components.push(json!({
+            "id": title_id,
+            "component": "Text",
+            "text": params.title,
+            "variant": "h1"
+        }));
+        root_children.push(title_id);
+
+        if let Some(description) = params.description {
+            let desc_id = stable_child_id(&page_id, "description");
+            components.push(json!({
+                "id": desc_id,
+                "component": "Text",
+                "text": description,
+                "variant": "body"
+            }));
+            root_children.push(desc_id);
+        }
+
+        for (index, section) in params.sections.iter().enumerate() {
+            let section_id = stable_indexed_id(&page_id, "section", index);
+            let mut section_children: Vec<String> = Vec::new();
+
+            let heading_id = stable_child_id(&section_id, "heading");
+            components.push(json!({
+                "id": heading_id,
+                "component": "Text",
+                "text": section.heading,
+                "variant": "h2"
+            }));
+            section_children.push(heading_id);
+
+            if let Some(body) = &section.body {
+                let body_id = stable_child_id(&section_id, "body");
+                components.push(json!({
+                    "id": body_id,
+                    "component": "Text",
+                    "text": body,
+                    "variant": "body"
+                }));
+                section_children.push(body_id);
+            }
+
+            if let Some(image_url) = &section.image_url {
+                let image_id = stable_child_id(&section_id, "image");
+                components.push(json!({
+                    "id": image_id,
+                    "component": "Image",
+                    "url": image_url
+                }));
+                section_children.push(image_id);
+            }
+
+            if !section.bullets.is_empty() {
+                let list_id = stable_child_id(&section_id, "bullets");
+                let mut bullet_ids = Vec::new();
+                for (idx, bullet) in section.bullets.iter().enumerate() {
+                    let bullet_id = stable_indexed_id(&list_id, "item", idx);
+                    components.push(json!({
+                        "id": bullet_id,
+                        "component": "Text",
+                        "text": bullet,
+                        "variant": "body"
+                    }));
+                    bullet_ids.push(bullet_id);
+                }
+                components.push(json!({
+                    "id": list_id,
+                    "component": "Column",
+                    "children": bullet_ids
+                }));
+                section_children.push(list_id);
+            }
+
+            if !section.actions.is_empty() {
+                let actions_id = stable_child_id(&section_id, "actions");
+                let mut action_ids = Vec::new();
+                for (idx, action) in section.actions.iter().enumerate() {
+                    let button_id = stable_indexed_id(&actions_id, "button", idx);
+                    let label_id = stable_child_id(&button_id, "label");
+                    components.push(json!({
+                        "id": label_id,
+                        "component": "Text",
+                        "text": action.label,
+                        "variant": "body"
+                    }));
+
+                    let mut event = Map::new();
+                    event.insert("name".to_string(), Value::String(action.action.clone()));
+                    if let Some(context) = &action.context {
+                        event.insert("context".to_string(), context.clone());
+                    }
+                    let mut action_obj = Map::new();
+                    action_obj.insert("event".to_string(), Value::Object(event));
+
+                    let mut button = Map::new();
+                    button.insert("id".to_string(), Value::String(button_id.clone()));
+                    button.insert("component".to_string(), Value::String("Button".to_string()));
+                    button.insert("child".to_string(), Value::String(label_id));
+                    if let Some(variant) = &action.variant {
+                        button.insert("variant".to_string(), Value::String(variant.clone()));
+                    }
+                    button.insert("action".to_string(), Value::Object(action_obj));
+
+                    components.push(Value::Object(button));
+                    action_ids.push(button_id);
+                }
+                components.push(json!({
+                    "id": actions_id,
+                    "component": "Row",
+                    "children": action_ids,
+                    "justify": "start",
+                    "align": "center"
+                }));
+                section_children.push(actions_id);
+            }
+
+            components.push(json!({
+                "id": section_id,
+                "component": "Column",
+                "children": section_children,
+                "justify": "start",
+                "align": "stretch"
+            }));
+            root_children.push(section_id);
+
+            if index + 1 < params.sections.len() {
+                let divider_id = stable_indexed_id(&page_id, "divider", index);
+                components.push(json!({
+                    "id": divider_id,
+                    "component": "Divider",
+                    "axis": "horizontal"
+                }));
+                root_children.push(divider_id);
+            }
+        }
+
+        components.push(json!({
+            "id": "root",
+            "component": "Column",
+            "children": root_children,
+            "justify": "start",
+            "align": "stretch"
+        }));
+
+        let mut messages: Vec<A2uiMessage> = Vec::new();
+        messages.push(A2uiMessage::CreateSurface(CreateSurfaceMessage {
+            create_surface: CreateSurface {
+                surface_id: params.surface_id.clone(),
+                catalog_id,
+                theme: params.theme.clone(),
+                send_data_model: Some(params.send_data_model),
+            },
+        }));
+
+        if let Some(data_model) = params.data_model.clone() {
+            messages.push(A2uiMessage::UpdateDataModel(UpdateDataModelMessage {
+                update_data_model: UpdateDataModel {
+                    surface_id: params.surface_id.clone(),
+                    path: Some("/".to_string()),
+                    value: Some(data_model),
+                },
+            }));
+        }
+
+        messages.push(A2uiMessage::UpdateComponents(UpdateComponentsMessage {
+            update_components: UpdateComponents {
+                surface_id: params.surface_id.clone(),
+                components,
+            },
+        }));
+
+        if params.validate {
+            let validator = A2uiValidator::new().map_err(|e| {
+                adk_core::AdkError::Tool(format!("Failed to initialize A2UI validator: {}", e))
+            })?;
+            for message in &messages {
+                if let Err(errors) = validator.validate_message(message, A2uiSchemaVersion::V0_9) {
+                    let details = errors
+                        .iter()
+                        .map(|err| format!("{} at {}", err.message, err.instance_path))
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    return Err(adk_core::AdkError::Tool(format!(
+                        "A2UI validation failed: {}",
+                        details
+                    )));
+                }
+            }
+        }
+
+        let jsonl = encode_jsonl(messages).map_err(|e| {
+            adk_core::AdkError::Tool(format!("Failed to encode A2UI JSONL: {}", e))
+        })?;
+
+        Ok(Value::String(jsonl))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use adk_core::{Content, EventActions, ReadonlyContext};
+    use async_trait::async_trait;
+    use std::sync::{Arc, Mutex};
+
+    struct TestContext {
+        content: Content,
+        actions: Mutex<EventActions>,
+    }
+
+    impl TestContext {
+        fn new() -> Self {
+            Self {
+                content: Content::new("user"),
+                actions: Mutex::new(EventActions::default()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ReadonlyContext for TestContext {
+        fn invocation_id(&self) -> &str {
+            "test"
+        }
+        fn agent_name(&self) -> &str {
+            "test"
+        }
+        fn user_id(&self) -> &str {
+            "user"
+        }
+        fn app_name(&self) -> &str {
+            "app"
+        }
+        fn session_id(&self) -> &str {
+            "session"
+        }
+        fn branch(&self) -> &str {
+            ""
+        }
+        fn user_content(&self) -> &Content {
+            &self.content
+        }
+    }
+
+    #[async_trait]
+    impl adk_core::CallbackContext for TestContext {
+        fn artifacts(&self) -> Option<Arc<dyn adk_core::Artifacts>> {
+            None
+        }
+    }
+
+    #[async_trait]
+    impl ToolContext for TestContext {
+        fn function_call_id(&self) -> &str {
+            "call-123"
+        }
+        fn actions(&self) -> EventActions {
+            self.actions.lock().unwrap().clone()
+        }
+        fn set_actions(&self, actions: EventActions) {
+            *self.actions.lock().unwrap() = actions;
+        }
+        async fn search_memory(&self, _query: &str) -> Result<Vec<adk_core::MemoryEntry>> {
+            Ok(vec![])
+        }
+    }
+
+    #[tokio::test]
+    async fn render_page_emits_jsonl() {
+        let tool = RenderPageTool::new();
+        let args = serde_json::json!({
+            "title": "Launch",
+            "sections": [
+                {
+                    "heading": "Features",
+                    "body": "Fast and secure.",
+                    "bullets": ["One", "Two"],
+                    "actions": [
+                        { "label": "Get Started", "action": "start", "variant": "primary" }
+                    ]
+                }
+            ]
+        });
+
+        let ctx: Arc<dyn ToolContext> = Arc::new(TestContext::new());
+        let value = tool.execute(ctx, args).await.unwrap();
+        let jsonl = value.as_str().unwrap();
+        let lines: Vec<Value> = jsonl
+            .trim_end()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].get("createSurface").is_some());
+        assert!(lines[1].get("updateComponents").is_some());
+    }
+}

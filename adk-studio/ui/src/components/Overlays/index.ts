@@ -9,5 +9,8 @@ export { CodeEditorModal } from './CodeEditorModal';
 export { StatusIndicator } from './StatusIndicator';
 export type { NodeStatus } from './StatusIndicator';
 export { WalkthroughModal } from './WalkthroughModal';
+export { TemplateWalkthroughModal } from './TemplateWalkthroughModal';
 export { SettingsModal } from './SettingsModal';
 export { GlobalSettingsModal } from './GlobalSettingsModal';
+export { Tooltip, ACTION_NODE_TOOLTIPS } from './Tooltip';
+export type { TooltipProps, TooltipPosition } from './Tooltip';

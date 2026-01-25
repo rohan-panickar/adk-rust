@@ -1,3 +1,5 @@
+import type { ActionNodeConfig } from './actionNodes';
+
 export interface Project {
   id: string;
   version: string;
@@ -7,6 +9,8 @@ export interface Project {
   agents: Record<string, AgentSchema>;
   tools: Record<string, ToolSchema>;
   tool_configs: Record<string, ToolConfig>;
+  /** Action nodes for non-LLM programmatic operations */
+  actionNodes: Record<string, ActionNodeConfig>;
   workflow: WorkflowSchema;
   created_at: string;
   updated_at: string;
@@ -119,6 +123,10 @@ export interface Edge {
   from: string;
   to: string;
   condition?: string;
+  /** Source port for multi-output nodes like Switch */
+  fromPort?: string;
+  /** Target port for multi-input nodes like Merge */
+  toPort?: string;
 }
 
 export interface Condition {

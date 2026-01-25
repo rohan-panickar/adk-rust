@@ -2,7 +2,7 @@
  * BaseNode Component for ADK Studio v2.0
  * 
  * Shared node wrapper with theme support, colored header bar based on node type,
- * node type icon, and integrated StatusIndicator.
+ * node type icon, type badge, and integrated StatusIndicator.
  * 
  * Requirements: 7.2, 7.3, 7.9
  */
@@ -30,6 +30,19 @@ const nodeIcons: Record<NodeType, string> = {
   end: '⏹',
 };
 
+/**
+ * Node type labels for badge display
+ */
+const nodeLabels: Record<NodeType, string> = {
+  agent: 'agent',
+  sequential: 'sequential',
+  loop: 'loop',
+  parallel: 'parallel',
+  router: 'router',
+  start: 'start',
+  end: 'end',
+};
+
 interface BaseNodeProps {
   /** Unique node identifier */
   id?: string;
@@ -55,6 +68,8 @@ interface BaseNodeProps {
   showLeftHandle?: boolean;
   /** Whether to show right handle */
   showRightHandle?: boolean;
+  /** Whether to show the type badge (default: true) */
+  showTypeBadge?: boolean;
 }
 
 /**
@@ -79,9 +94,11 @@ export const BaseNode = memo(function BaseNode({
   showBottomHandle = true,
   showLeftHandle = true,
   showRightHandle = true,
+  showTypeBadge = true,
 }: BaseNodeProps) {
   // Use custom icon or default type icon
   const displayIcon = icon || nodeIcons[nodeType];
+  const typeBadgeLabel = nodeLabels[nodeType];
   
   // Build class names for styling
   const containerClasses = [
@@ -119,6 +136,9 @@ export const BaseNode = memo(function BaseNode({
       <div className={headerClasses}>
         <span className="node-icon">{displayIcon}</span>
         <span className="node-label">{label}</span>
+        {showTypeBadge && nodeType !== 'start' && nodeType !== 'end' && (
+          <span className="node-type-badge">{typeBadgeLabel}</span>
+        )}
         <StatusIndicator status={isActive ? 'running' : status} size="sm" />
       </div>
 

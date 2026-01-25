@@ -7,11 +7,32 @@
  * Requirements: 6.7
  */
 
-import { useState } from 'react';
-import { X, Search } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { X, Search, Filter } from 'lucide-react';
 import { TEMPLATES, CATEGORY_LABELS, getCategories } from './templates';
 import { TemplateCard } from './TemplateCard';
 import type { Template, TemplateCategory } from './templates';
+import type { ActionNodeType } from '../../types/actionNodes';
+
+/**
+ * Action node type labels for filter display
+ */
+const ACTION_NODE_LABELS: Record<ActionNodeType, string> = {
+  trigger: '🎯 Trigger',
+  http: '🌐 HTTP',
+  set: '📝 Set',
+  transform: '⚙️ Transform',
+  switch: '🔀 Switch',
+  loop: '🔄 Loop',
+  merge: '🔗 Merge',
+  wait: '⏱️ Wait',
+  code: '💻 Code',
+  database: '🗄️ Database',
+  email: '📧 Email',
+  notification: '🔔 Notification',
+  rss: '📡 RSS',
+  file: '📁 File',
+};
 
 interface TemplateGalleryProps {
   /** Callback when a template is selected */
@@ -35,14 +56,59 @@ export function TemplateGallery({
 }: TemplateGalleryProps) {
   const [category, setCategory] = useState<TemplateCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedNodeTypes, setSelectedNodeTypes] = useState<Set<ActionNodeType>>(new Set());
+  const [showNodeTypeFilter, setShowNodeTypeFilter] = useState(false);
 
-  // Filter templates by category and search
+  // Get all unique action node types from automation templates
+  const availableNodeTypes = useMemo(() => {
+    const types = new Set<ActionNodeType>();
+    TEMPLATES.forEach(template => {
+      if (template.actionNodes) {
+        Object.values(template.actionNodes).forEach(node => {
+          types.add(node.type);
+        });
+      }
+    });
+    return Array.from(types).sort();
+  }, []);
+
+  // Toggle node type filter
+  const toggleNodeType = (type: ActionNodeType) => {
+    setSelectedNodeTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
+      return next;
+    });
+  };
+
+  // Clear all node type filters
+  const clearNodeTypeFilters = () => {
+    setSelectedNodeTypes(new Set());
+  };
+
+  // Filter templates by category, search, and node types
   const filteredTemplates = TEMPLATES.filter(template => {
     const matchesCategory = category === 'all' || template.category === category;
     const matchesSearch = searchQuery === '' || 
       template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       template.description.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
+    
+    // Filter by selected node types (if any selected)
+    let matchesNodeTypes = true;
+    if (selectedNodeTypes.size > 0) {
+      if (!template.actionNodes) {
+        matchesNodeTypes = false;
+      } else {
+        const templateNodeTypes = new Set(Object.values(template.actionNodes).map(n => n.type));
+        matchesNodeTypes = Array.from(selectedNodeTypes).every(type => templateNodeTypes.has(type));
+      }
+    }
+    
+    return matchesCategory && matchesSearch && matchesNodeTypes;
   });
 
   const categories = getCategories();
@@ -125,7 +191,77 @@ export function TemplateGallery({
               {CATEGORY_LABELS[cat]}
             </button>
           ))}
+          
+          {/* Node type filter toggle */}
+          <button
+            onClick={() => setShowNodeTypeFilter(!showNodeTypeFilter)}
+            className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1"
+            style={{
+              backgroundColor: selectedNodeTypes.size > 0 || showNodeTypeFilter
+                ? 'var(--accent-secondary)' 
+                : 'var(--bg-secondary)',
+              color: selectedNodeTypes.size > 0 || showNodeTypeFilter
+                ? 'white' 
+                : 'var(--text-secondary)',
+            }}
+            title="Filter by action node types"
+          >
+            <Filter size={14} />
+            {selectedNodeTypes.size > 0 && (
+              <span className="ml-1">({selectedNodeTypes.size})</span>
+            )}
+          </button>
         </div>
+
+        {/* Action node type filters (collapsible) */}
+        {showNodeTypeFilter && (
+          <div 
+            className="p-3 rounded-lg border"
+            style={{ 
+              backgroundColor: 'var(--bg-tertiary)',
+              borderColor: 'var(--border-default)',
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span 
+                className="text-xs font-medium"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Filter by Action Node Types
+              </span>
+              {selectedNodeTypes.size > 0 && (
+                <button
+                  onClick={clearNodeTypeFilters}
+                  className="text-xs px-2 py-0.5 rounded"
+                  style={{ 
+                    color: 'var(--accent-primary)',
+                  }}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {availableNodeTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => toggleNodeType(type)}
+                  className="px-2 py-1 rounded text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: selectedNodeTypes.has(type)
+                      ? 'var(--accent-primary)' 
+                      : 'var(--bg-secondary)',
+                    color: selectedNodeTypes.has(type)
+                      ? 'white' 
+                      : 'var(--text-secondary)',
+                  }}
+                >
+                  {ACTION_NODE_LABELS[type] || type}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Template grid */}

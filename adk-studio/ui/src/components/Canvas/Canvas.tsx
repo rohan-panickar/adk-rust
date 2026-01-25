@@ -6,7 +6,7 @@ import { TestConsole, BuildStatus } from '../Console/TestConsole';
 import { MenuBar } from '../MenuBar';
 import { nodeTypes } from '../Nodes';
 import { edgeTypes } from '../Edges';
-import { AgentPalette, ToolPalette, PropertiesPanel, ToolConfigPanel, StateInspector } from '../Panels';
+import { AgentPalette, ToolPalette, PropertiesPanel, ToolConfigPanel, StateInspector, ActionPalette, ActionPropertiesPanel } from '../Panels';
 import { CodeModal, BuildModal, CodeEditorModal, NewProjectModal, SettingsModal } from '../Overlays';
 import { TimelineView } from '../Timeline';
 import { CanvasToolbar } from './CanvasToolbar';
@@ -21,7 +21,10 @@ import { useTheme } from '../../hooks/useTheme';
 import { useExecutionPath } from '../../hooks/useExecutionPath';
 import { useUndoRedo, useUndoRedoStore } from '../../hooks/useUndoRedo';
 import type { FunctionToolConfig, AgentSchema, ToolConfig, Edge as ProjectEdge } from '../../types/project';
+import type { ActionNodeType } from '../../types/actionNodes';
+import { createDefaultStandardProperties } from '../../types/standardProperties';
 import { TEMPLATES } from '../MenuBar/templates';
+import { validateConnection } from '../../utils/connectionValidation';
 
 type FlowPhase = 'idle' | 'input' | 'output';
 
@@ -47,6 +50,11 @@ export function Canvas() {
     addAgent,
     snapToGrid,
     gridSize,
+    // v2.0: Action node state
+    addActionNode,
+    removeActionNode,
+    selectedActionNodeId,
+    selectActionNode,
     // v2.0: Data flow overlay state
     showDataFlowOverlay,
     setShowDataFlowOverlay,
@@ -61,7 +69,7 @@ export function Canvas() {
   }, [updateProjectSettings]);
 
   // Canvas UI state - pass project settings to initialize from saved preferences
-  const { showConsole, toggleConsole, showMinimap, toggleMinimap, showTimeline, toggleTimeline } = useCanvasState(currentProject?.settings, handleUISettingChange);
+  const { showConsole, toggleConsole, showMinimap, toggleMinimap, showTimeline, toggleTimeline: _toggleTimeline } = useCanvasState(currentProject?.settings, handleUISettingChange);
   
   // Check if project can be built (has agents and edges)
   const canBuild = useCallback(() => {
@@ -370,10 +378,13 @@ export function Canvas() {
   useKeyboardShortcuts({
     selectedNodeId, 
     selectedToolId,
+    selectedActionNodeId,
     onDeleteNode: removeAgentWithUndo,
+    onDeleteActionNode: removeActionNode,
     onDeleteTool: removeToolFromAgent,
     onDuplicateNode: duplicateAgent,
     onSelectNode: selectNode,
+    onSelectActionNode: selectActionNode,
     onSelectTool: selectTool,
     onAutoLayout: applyLayout,
     onFitView: fitToView,
@@ -391,6 +402,140 @@ export function Canvas() {
     e.dataTransfer.effectAllowed = 'move'; 
   };
   
+  // Action node drag start handler
+  const onActionDragStart = (e: DragEvent, type: ActionNodeType) => {
+    e.dataTransfer.setData('application/actionnode', type);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  
+  // Create action node handler
+  // Action nodes integrate into the workflow the same way agents do:
+  // - If first item on canvas, connect START -> node -> END
+  // - If other items exist, insert before END (remove edge to END, connect previous -> new -> END)
+  const createActionNode = useCallback((type: ActionNodeType) => {
+    if (!currentProject) return;
+    
+    const id = `${type}_${Date.now()}`;
+    const name = type.charAt(0).toUpperCase() + type.slice(1);
+    const baseProps = createDefaultStandardProperties(id, name, `${type}Result`);
+    
+    // Create node config based on type
+    let nodeConfig: import('../../types/actionNodes').ActionNodeConfig;
+    
+    switch (type) {
+      case 'trigger':
+        nodeConfig = { ...baseProps, type: 'trigger', triggerType: 'manual' };
+        break;
+      case 'http':
+        nodeConfig = { 
+          ...baseProps, 
+          type: 'http', 
+          method: 'GET', 
+          url: 'https://api.example.com', 
+          auth: { type: 'none' },
+          headers: {},
+          body: { type: 'none' },
+          response: { type: 'json' },
+        };
+        break;
+      case 'set':
+        nodeConfig = { ...baseProps, type: 'set', mode: 'set', variables: [] };
+        break;
+      case 'transform':
+        nodeConfig = { ...baseProps, type: 'transform', transformType: 'jsonpath', expression: '' };
+        break;
+      case 'switch':
+        nodeConfig = { ...baseProps, type: 'switch', evaluationMode: 'first_match', conditions: [] };
+        break;
+      case 'loop':
+        nodeConfig = { 
+          ...baseProps, 
+          type: 'loop', 
+          loopType: 'forEach',
+          forEach: { sourceArray: '', itemVar: 'item', indexVar: 'index' },
+          parallel: { enabled: false },
+          results: { collect: true },
+        };
+        break;
+      case 'merge':
+        nodeConfig = { 
+          ...baseProps, 
+          type: 'merge', 
+          mode: 'wait_all', 
+          combineStrategy: 'array',
+          timeout: { enabled: false, ms: 30000, behavior: 'error' },
+        };
+        break;
+      case 'wait':
+        nodeConfig = { 
+          ...baseProps, 
+          type: 'wait', 
+          waitType: 'fixed',
+          fixed: { duration: 1000, unit: 'ms' },
+        };
+        break;
+      case 'code':
+        nodeConfig = { 
+          ...baseProps, 
+          type: 'code', 
+          language: 'javascript',
+          code: '// Your code here\nreturn input;',
+          sandbox: { networkAccess: false, fileSystemAccess: false, memoryLimit: 128, timeLimit: 5000 },
+        };
+        break;
+      case 'database':
+        nodeConfig = { 
+          ...baseProps, 
+          type: 'database', 
+          dbType: 'postgresql',
+          connection: { connectionString: '' },
+        };
+        break;
+      case 'email':
+        nodeConfig = { 
+          ...baseProps, 
+          type: 'email', 
+          mode: 'send',
+          smtp: {
+            host: 'smtp.example.com',
+            port: 587,
+            secure: true,
+            username: '',
+            password: '',
+            fromEmail: '',
+          },
+          recipients: { to: '' },
+          content: { subject: '', body: '', bodyType: 'text' },
+          attachments: [],
+        };
+        break;
+      default:
+        return;
+    }
+    
+    // Add the action node
+    addActionNode(id, nodeConfig);
+    
+    // Connect to workflow edges (same logic as agents)
+    // Find edge going to END and insert this node before it
+    const edgeToEnd = currentProject.workflow.edges.find(e => e.to === 'END');
+    if (edgeToEnd) {
+      // Remove the existing edge to END
+      removeProjectEdge(edgeToEnd.from, 'END');
+      // Connect previous node to this new node
+      addProjectEdge(edgeToEnd.from, id);
+    } else {
+      // No existing edges to END, connect from START
+      addProjectEdge('START', id);
+    }
+    // Connect this node to END
+    addProjectEdge(id, 'END');
+    
+    selectActionNode(id);
+    invalidateBuild('onAgentAdd'); // Action nodes use same trigger as agents
+    setTimeout(() => applyLayout(), 100);
+  }, [currentProject, addActionNode, addProjectEdge, removeProjectEdge, selectActionNode, applyLayout, invalidateBuild]);
+  
   const onDragOver = useCallback((e: DragEvent) => { 
     e.preventDefault(); 
     e.dataTransfer.dropEffect = e.dataTransfer.types.includes('text/plain') ? 'copy' : 'move'; 
@@ -404,6 +549,14 @@ export function Canvas() {
       invalidateBuild('onToolAdd'); // Trigger autobuild when tool is added
       return;
     }
+    
+    // Handle action node drop
+    const actionType = e.dataTransfer.getData('application/actionnode');
+    if (actionType) {
+      createActionNode(actionType as ActionNodeType);
+      return;
+    }
+    
     const type = e.dataTransfer.getData('application/reactflow');
     if (type) {
       createAgentWithUndo(type);
@@ -411,29 +564,75 @@ export function Canvas() {
       // Apply layout after adding node (only in fixed mode or always for initial setup)
       setTimeout(() => applyLayout(), 100);
     }
-  }, [createAgentWithUndo, selectedNodeId, currentProject, addToolToAgent, applyLayout, invalidateBuild]);
+  }, [createAgentWithUndo, createActionNode, selectedNodeId, currentProject, addToolToAgent, applyLayout, invalidateBuild]);
 
   // Connection handlers
+  // @see Requirement 12.3: Edge connections between action nodes and agents
   const onConnect = useCallback((p: Connection) => {
-    if (p.source && p.target) {
+    if (p.source && p.target && currentProject) {
+      // Validate the connection
+      const validation = validateConnection(
+        p.source,
+        p.target,
+        currentProject.agents,
+        currentProject.actionNodes || {},
+        currentProject.workflow.edges
+      );
+      
+      if (!validation.valid) {
+        // Could show a toast notification here
+        console.warn('Invalid connection:', validation.reason);
+        return;
+      }
+      
       addProjectEdge(p.source, p.target);
       invalidateBuild('onEdgeAdd'); // Trigger autobuild when edge is added
     }
-  }, [addProjectEdge, invalidateBuild]);
+  }, [addProjectEdge, invalidateBuild, currentProject]);
   const onEdgesDelete = useCallback((eds: Edge[]) => {
     eds.forEach(e => removeProjectEdge(e.source, e.target));
     if (eds.length > 0) invalidateBuild('onEdgeDelete'); // Trigger autobuild when edges are deleted
   }, [removeProjectEdge, invalidateBuild]);
   const onNodesDelete = useCallback((nds: Node[]) => {
-    nds.forEach(n => n.id !== 'START' && n.id !== 'END' && removeAgentWithUndo(n.id));
-    if (nds.some(n => n.id !== 'START' && n.id !== 'END')) invalidateBuild('onAgentDelete'); // Trigger autobuild when nodes are deleted
-  }, [removeAgentWithUndo, invalidateBuild]);
+    nds.forEach(n => {
+      if (n.id === 'START' || n.id === 'END') return;
+      
+      // Check if it's an action node (type starts with 'action_')
+      if (n.type?.startsWith('action_')) {
+        removeActionNode(n.id);
+      } else {
+        removeAgentWithUndo(n.id);
+      }
+    });
+    if (nds.some(n => n.id !== 'START' && n.id !== 'END')) {
+      invalidateBuild('onAgentDelete'); // Node deletion uses agent delete trigger
+    }
+  }, [removeAgentWithUndo, removeActionNode, invalidateBuild]);
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, e: Edge) => {
     removeProjectEdge(e.source, e.target);
     invalidateBuild('onEdgeDelete'); // Trigger autobuild when edge is deleted
   }, [removeProjectEdge, invalidateBuild]);
-  const onNodeClick = useCallback((_: React.MouseEvent, n: Node) => selectNode(n.id !== 'START' && n.id !== 'END' ? n.id : null), [selectNode]);
-  const onPaneClick = useCallback(() => selectNode(null), [selectNode]);
+  const onNodeClick = useCallback((_: React.MouseEvent, n: Node) => {
+    // Skip START and END nodes
+    if (n.id === 'START' || n.id === 'END') {
+      selectNode(null);
+      selectActionNode(null);
+      return;
+    }
+    
+    // Check if this is an action node (type starts with 'action_')
+    if (n.type?.startsWith('action_')) {
+      selectActionNode(n.id);
+      selectNode(null); // Deselect any agent node
+    } else {
+      selectNode(n.id);
+      selectActionNode(null); // Deselect any action node
+    }
+  }, [selectNode, selectActionNode]);
+  const onPaneClick = useCallback(() => {
+    selectNode(null);
+    selectActionNode(null);
+  }, [selectNode, selectActionNode]);
 
   // Tool add handler
   const handleAddTool = useCallback((type: string) => {
@@ -500,6 +699,8 @@ export function Canvas() {
           }}
         >
           <AgentPalette onDragStart={onDragStart} onCreate={createAgent} />
+          <div className="my-2" />
+          <ActionPalette onDragStart={onActionDragStart} onCreate={createActionNode} />
           <div className="my-2" />
           <ToolPalette 
             selectedNodeId={selectedNodeId} 
@@ -660,6 +861,16 @@ export function Canvas() {
             onRemoveTool={t => removeToolFromAgent(selectedNodeId, t)} 
           />
         )}
+        
+        {/* Right Sidebar - Action Properties Panel (v2.0) */}
+        {/* @see Requirements 12.2, 12.3 */}
+        {selectedActionNodeId && currentProject && (
+          <ActionPropertiesPanel
+            nodeId={selectedActionNodeId}
+            onClose={() => selectActionNode(null)}
+          />
+        )}
+        
         {selectedToolId && currentProject && (
           <ToolConfigPanel 
             toolId={selectedToolId} 

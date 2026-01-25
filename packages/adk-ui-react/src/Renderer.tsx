@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useRef } from 'react';
-import type { Component, UiEvent } from './types';
+import React, { createContext, useContext, useMemo, useRef, useState } from 'react';
+import type { Component, UiEvent, UiUpdate } from './types';
+import { applyUiUpdates } from './updates';
 import { AlertCircle, CheckCircle, Info, XCircle, User, Mail, Calendar } from 'lucide-react';
 import Markdown from 'react-markdown';
 import clsx from 'clsx';
@@ -44,6 +45,32 @@ export const Renderer: React.FC<RendererProps> = ({ component, onAction, theme }
             </div>
         </FormContext.Provider>
     );
+};
+
+interface StreamingRendererProps extends RendererProps {
+    updates?: UiUpdate | UiUpdate[];
+}
+
+export const StreamingRenderer: React.FC<StreamingRendererProps> = ({ component, updates, onAction, theme }) => {
+    const [current, setCurrent] = useState(component);
+    const updatesList = useMemo(() => {
+        if (!updates) return [];
+        return Array.isArray(updates) ? updates : [updates];
+    }, [updates]);
+
+    React.useEffect(() => {
+        setCurrent(component);
+    }, [component]);
+
+    React.useEffect(() => {
+        if (updatesList.length === 0) return;
+        setCurrent((prev) => {
+            const updated = applyUiUpdates(prev, updatesList);
+            return updated ?? prev;
+        });
+    }, [updatesList]);
+
+    return <Renderer component={current} onAction={onAction} theme={theme} />;
 };
 
 const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) => {
@@ -209,6 +236,11 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                         placeholder={component.placeholder}
                         defaultValue={component.default_value}
                         required={component.required}
+                        onChange={(event) => onAction?.({
+                            action: 'input_change',
+                            name: component.name,
+                            value: event.currentTarget.value,
+                        })}
                         className={clsx('w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white', {
                             'border-red-500 focus:ring-red-500 focus:border-red-500': component.error,
                         })}
@@ -230,6 +262,14 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                         max={component.max}
                         step={component.step}
                         required={component.required}
+                        onChange={(event) => {
+                            const parsed = event.currentTarget.valueAsNumber;
+                            onAction?.({
+                                action: 'input_change',
+                                name: component.name,
+                                value: Number.isNaN(parsed) ? event.currentTarget.value : parsed,
+                            });
+                        }}
                         className={clsx('w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none', {
                             'border-red-500 focus:ring-red-500 focus:border-red-500': component.error,
                         })}
@@ -247,6 +287,11 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                     <select
                         name={component.name}
                         required={component.required}
+                        onChange={(event) => onAction?.({
+                            action: 'input_change',
+                            name: component.name,
+                            value: event.currentTarget.value,
+                        })}
                         className={clsx('w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none', {
                             'border-red-500 focus:ring-red-500 focus:border-red-500': component.error,
                         })}
@@ -269,6 +314,11 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                         type="checkbox"
                         name={component.name}
                         defaultChecked={component.default_checked}
+                        onChange={(event) => onAction?.({
+                            action: 'input_change',
+                            name: component.name,
+                            value: event.currentTarget.checked,
+                        })}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                     <label className="ml-2 text-sm font-medium text-gray-700">{component.label}</label>
@@ -284,6 +334,14 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                         multiple
                         required={component.required}
                         size={Math.min(component.options.length, 5)}
+                        onChange={(event) => {
+                            const selected = Array.from(event.currentTarget.selectedOptions).map((opt) => opt.value);
+                            onAction?.({
+                                action: 'input_change',
+                                name: component.name,
+                                value: selected,
+                            });
+                        }}
                         className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     >
                         {component.options.map((opt, i) => (
@@ -301,6 +359,11 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                         type="date"
                         name={component.name}
                         required={component.required}
+                        onChange={(event) => onAction?.({
+                            action: 'input_change',
+                            name: component.name,
+                            value: event.currentTarget.value,
+                        })}
                         className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
                 </div>
@@ -317,6 +380,14 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                         max={component.max}
                         step={component.step}
                         defaultValue={component.default_value}
+                        onChange={(event) => {
+                            const parsed = event.currentTarget.valueAsNumber;
+                            onAction?.({
+                                action: 'input_change',
+                                name: component.name,
+                                value: Number.isNaN(parsed) ? event.currentTarget.value : parsed,
+                            });
+                        }}
                         className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                     />
                 </div>
@@ -345,6 +416,11 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                         rows={component.rows || 4}
                         required={component.required}
                         defaultValue={component.default_value}
+                        onChange={(event) => onAction?.({
+                            action: 'input_change',
+                            name: component.name,
+                            value: event.currentTarget.value,
+                        })}
                         className={clsx('w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white resize-y', {
                             'border-red-500 focus:ring-red-500 focus:border-red-500': component.error,
                         })}
@@ -478,7 +554,10 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                             {component.tabs.map((tab, i) => (
                                 <button
                                     key={i}
-                                    onClick={() => setActiveTab(i)}
+                                    onClick={() => {
+                                        setActiveTab(i);
+                                        onAction?.({ action: 'tab_change', index: i });
+                                    }}
                                     className={clsx('px-4 py-2 border-b-2 font-medium text-sm transition-colors', {
                                         'border-blue-600 text-blue-600': activeTab === i,
                                         'border-transparent text-gray-500 hover:text-gray-700': activeTab !== i,

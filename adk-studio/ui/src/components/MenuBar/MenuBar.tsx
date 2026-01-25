@@ -3,6 +3,7 @@ import { useStore } from '../../store';
 import { TEMPLATES, Template } from './templates';
 import { useTheme } from '../../hooks/useTheme';
 import { useWalkthrough } from '../../hooks/useWalkthrough';
+import { useTemplateWalkthrough } from '../../hooks/useTemplateWalkthrough';
 import { KEYBOARD_SHORTCUTS } from '../../hooks/useKeyboardShortcuts';
 import { TemplateGallery } from '../Templates';
 import type { Template as NewTemplate } from '../Templates/templates';
@@ -28,6 +29,7 @@ export function MenuBar({ onExportCode, onNewProject, onTemplateApplied, onRunTe
   const { currentProject, addAgent, removeAgent, addEdge, removeEdge } = useStore();
   const { mode } = useTheme();
   const { completed: walkthroughCompleted, show: showWalkthrough, reset: resetWalkthrough } = useWalkthrough();
+  const { start: startTemplateWalkthrough } = useTemplateWalkthrough();
   const isLight = mode === 'light';
 
   useEffect(() => {
@@ -54,8 +56,8 @@ export function MenuBar({ onExportCode, onNewProject, onTemplateApplied, onRunTe
       addAgent(id, agent);
     });
 
-    // Add edges from template
-    template.edges.forEach(e => addEdge(e.from, e.to));
+    // Add edges from template (including port information for multi-port nodes)
+    template.edges.forEach(e => addEdge(e.from, e.to, e.fromPort, e.toPort));
 
     if (onTemplateApplied) {
       onTemplateApplied();
@@ -66,7 +68,7 @@ export function MenuBar({ onExportCode, onNewProject, onTemplateApplied, onRunTe
 
   /**
    * Apply template from the new TemplateGallery component
-   * Supports both old and new template formats
+   * Supports both old and new template formats including action nodes
    */
   const applyNewTemplate = (template: NewTemplate) => {
     if (!currentProject) return;
@@ -77,19 +79,52 @@ export function MenuBar({ onExportCode, onNewProject, onTemplateApplied, onRunTe
     // Clear existing agents
     Object.keys(currentProject.agents).forEach(id => removeAgent(id));
 
-    // Add all agents from template
-    Object.entries(template.agents).forEach(([id, agent]) => {
-      addAgent(id, agent);
+    // Clear existing action nodes
+    const { removeActionNode, addActionNode } = useStore.getState();
+    Object.keys(currentProject.actionNodes || {}).forEach(id => removeActionNode(id));
+
+    // Add all agents from template with proper positions
+    const agentEntries = Object.entries(template.agents);
+    agentEntries.forEach(([id, agent], index) => {
+      // Calculate position if not provided
+      const position = agent.position || {
+        x: 250 + (index % 3) * 300,
+        y: 150 + Math.floor(index / 3) * 200,
+      };
+      addAgent(id, { ...agent, position });
     });
 
-    // Add edges from template
-    template.edges.forEach(e => addEdge(e.from, e.to));
+    // Add all action nodes from template with proper positions
+    if (template.actionNodes) {
+      const actionEntries = Object.entries(template.actionNodes);
+      actionEntries.forEach(([id, node], index) => {
+        // Calculate position based on index - arrange in a grid
+        // Action nodes go below agents
+        const baseY = agentEntries.length > 0 ? 400 : 150;
+        const position = {
+          x: 100 + (index % 4) * 250,
+          y: baseY + Math.floor(index / 4) * 150,
+        };
+        addActionNode(id, { ...node, position } as any);
+      });
+    }
+
+    // Add edges from template (including port information for multi-port nodes)
+    template.edges.forEach(e => addEdge(e.from, e.to, e.fromPort, e.toPort));
 
     // Close gallery and apply layout
     setShowTemplateGallery(false);
     
     if (onTemplateApplied) {
       onTemplateApplied();
+    }
+    
+    // Start template walkthrough for automation templates (those with action nodes or env vars)
+    if (template.actionNodes || template.envVars || template.useCase) {
+      // Small delay to let the canvas render first
+      setTimeout(() => {
+        startTemplateWalkthrough(template);
+      }, 300);
     }
   };
 

@@ -1,4 +1,5 @@
 use crate::schema::*;
+use crate::a2ui::{stable_child_id, stable_id};
 use adk_core::{Result, Tool, ToolContext};
 use async_trait::async_trait;
 use schemars::JsonSchema;
@@ -25,6 +26,9 @@ pub struct RenderFormParams {
     /// Theme: "light", "dark", or "system" (default: "light")
     #[serde(default)]
     pub theme: Option<String>,
+    /// Optional data path prefix for binding form fields (e.g. "/user")
+    #[serde(default)]
+    pub data_path_prefix: Option<String>,
 }
 
 fn default_submit_action() -> String {
@@ -39,6 +43,9 @@ fn default_submit_label() -> String {
 pub struct FormField {
     /// Field name (used as key in submission)
     pub name: String,
+    /// Optional binding path override (e.g. "/user/email")
+    #[serde(default)]
+    pub path: Option<String>,
     /// Label displayed to user
     pub label: String,
     /// Field type: text, email, password, number, date, select
@@ -128,14 +135,24 @@ Use field types: text, email, password, number, select, textarea. Set required=t
         let params: RenderFormParams = serde_json::from_value(args)
             .map_err(|e| adk_core::AdkError::Tool(format!("Invalid parameters: {}", e)))?;
 
+        let form_id = stable_id(&format!("form:{}:{}", params.title, params.submit_action));
         // Build the form UI
         let mut form_content: Vec<Component> = Vec::new();
 
         for field in params.fields {
+            let field_path = field.path.clone().unwrap_or_else(|| {
+                if let Some(prefix) = &params.data_path_prefix {
+                    let trimmed = prefix.trim_end_matches('/');
+                    format!("{}/{}", trimmed, field.name)
+                } else {
+                    field.name.clone()
+                }
+            });
+            let field_id = stable_child_id(&form_id, &format!("field:{}", field_path));
             let component = match field.field_type.as_str() {
                 "number" => Component::NumberInput(NumberInput {
-                    id: None,
-                    name: field.name,
+                    id: Some(field_id),
+                    name: field_path,
                     label: field.label,
                     min: None,
                     max: None,
@@ -145,16 +162,16 @@ Use field types: text, email, password, number, select, textarea. Set required=t
                     error: None,
                 }),
                 "select" => Component::Select(Select {
-                    id: None,
-                    name: field.name,
+                    id: Some(field_id),
+                    name: field_path,
                     label: field.label,
                     options: field.options,
                     required: field.required,
                     error: None,
                 }),
                 "textarea" => Component::Textarea(Textarea {
-                    id: None,
-                    name: field.name,
+                    id: Some(field_id),
+                    name: field_path,
                     label: field.label,
                     placeholder: field.placeholder,
                     rows: 4,
@@ -163,8 +180,8 @@ Use field types: text, email, password, number, select, textarea. Set required=t
                     error: None,
                 }),
                 _ => Component::TextInput(TextInput {
-                    id: None,
-                    name: field.name,
+                    id: Some(field_id),
+                    name: field_path,
                     label: field.label,
                     input_type: field.field_type.clone(),
                     placeholder: field.placeholder,
@@ -180,7 +197,7 @@ Use field types: text, email, password, number, select, textarea. Set required=t
 
         // Add submit button
         form_content.push(Component::Button(Button {
-            id: None,
+            id: Some(stable_child_id(&form_id, "submit")),
             label: params.submit_label,
             action_id: params.submit_action,
             variant: ButtonVariant::Primary,
@@ -190,7 +207,7 @@ Use field types: text, email, password, number, select, textarea. Set required=t
 
         // Wrap in a card
         let mut ui = UiResponse::new(vec![Component::Card(Card {
-            id: None,
+            id: Some(form_id),
             title: Some(params.title),
             description: params.description,
             content: form_content,
@@ -210,5 +227,111 @@ Use field types: text, email, password, number, select, textarea. Set required=t
         // Return as JSON - the framework will convert to Part::InlineData
         serde_json::to_value(ui)
             .map_err(|e| adk_core::AdkError::Tool(format!("Failed to serialize UI: {}", e)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use adk_core::{Content, EventActions, ReadonlyContext};
+    use async_trait::async_trait;
+    use std::sync::{Arc, Mutex};
+
+    struct TestContext {
+        content: Content,
+        actions: Mutex<EventActions>,
+    }
+
+    impl TestContext {
+        fn new() -> Self {
+            Self {
+                content: Content::new("user"),
+                actions: Mutex::new(EventActions::default()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ReadonlyContext for TestContext {
+        fn invocation_id(&self) -> &str {
+            "test"
+        }
+        fn agent_name(&self) -> &str {
+            "test"
+        }
+        fn user_id(&self) -> &str {
+            "user"
+        }
+        fn app_name(&self) -> &str {
+            "app"
+        }
+        fn session_id(&self) -> &str {
+            "session"
+        }
+        fn branch(&self) -> &str {
+            ""
+        }
+        fn user_content(&self) -> &Content {
+            &self.content
+        }
+    }
+
+    #[async_trait]
+    impl adk_core::CallbackContext for TestContext {
+        fn artifacts(&self) -> Option<Arc<dyn adk_core::Artifacts>> {
+            None
+        }
+    }
+
+    #[async_trait]
+    impl ToolContext for TestContext {
+        fn function_call_id(&self) -> &str {
+            "call-123"
+        }
+        fn actions(&self) -> EventActions {
+            self.actions.lock().unwrap().clone()
+        }
+        fn set_actions(&self, actions: EventActions) {
+            *self.actions.lock().unwrap() = actions;
+        }
+        async fn search_memory(&self, _query: &str) -> Result<Vec<adk_core::MemoryEntry>> {
+            Ok(vec![])
+        }
+    }
+
+    #[tokio::test]
+    async fn render_form_applies_binding_paths_and_ids() {
+        let tool = RenderFormTool::new();
+        let args = serde_json::json!({
+            "title": "Profile",
+            "fields": [
+                { "name": "email", "label": "Email", "type": "email" },
+                { "name": "name", "label": "Name", "type": "text", "path": "/account/name" }
+            ],
+            "submit_action": "save_profile",
+            "data_path_prefix": "/user"
+        });
+
+        let ctx: Arc<dyn ToolContext> = Arc::new(TestContext::new());
+        let value = tool.execute(ctx, args).await.unwrap();
+        let ui: UiResponse = serde_json::from_value(value).unwrap();
+
+        let card = match &ui.components[0] {
+            Component::Card(card) => card,
+            _ => panic!("expected card"),
+        };
+
+        assert!(card.id.is_some());
+        let field_names: Vec<String> = card
+            .content
+            .iter()
+            .filter_map(|component| match component {
+                Component::TextInput(input) => Some(input.name.clone()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(field_names.contains(&"/user/email".to_string()));
+        assert!(field_names.contains(&"/account/name".to_string()));
     }
 }

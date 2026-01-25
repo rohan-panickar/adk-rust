@@ -9,8 +9,10 @@
 //! - Explanatory comments in generated code (Requirement 12.2)
 //! - Environment variable warnings (Requirement 12.10)
 //! - Support for all agent types: LLM, Sequential, Loop, Parallel, Router
+//! - Action node code generation (Requirements 13.1, 13.2, 13.3)
 
 mod validation;
+pub mod action_nodes;
 
 pub use validation::{ValidationError, ValidationErrorCode, ValidationResult, validate_project, get_required_env_vars, check_env_vars, EnvVarRequirement, EnvVarWarning};
 

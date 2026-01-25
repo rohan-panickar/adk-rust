@@ -4,7 +4,7 @@ import { useStore } from './store';
 import { ProjectList } from './components/Projects/ProjectList';
 import { Canvas } from './components/Canvas/Canvas';
 import { ThemeProvider, ThemeToggle } from './components/Theme';
-import { WalkthroughModal, GlobalSettingsModal } from './components/Overlays';
+import { WalkthroughModal, GlobalSettingsModal, TemplateWalkthroughModal } from './components/Overlays';
 import { useWalkthrough } from './hooks/useWalkthrough';
 import { useTheme } from './hooks/useTheme';
 import { loadGlobalSettings } from './types/settings';
@@ -105,6 +105,20 @@ export default function App() {
         {showGlobalSettings && (
           <GlobalSettingsModal onClose={() => setShowGlobalSettings(false)} />
         )}
+        
+        {/* Template Walkthrough Modal - shows after loading a template */}
+        <TemplateWalkthroughModal 
+          onAction={(actionType, templateId) => {
+            // Handle walkthrough actions
+            if (actionType === 'open-env') {
+              setShowGlobalSettings(true);
+            } else if (actionType === 'open-docs') {
+              // Open template documentation
+              window.open(`https://github.com/zavora-ai/adk-rust/blob/main/adk-studio/ui/src/components/Templates/docs/${templateId}.md`, '_blank');
+            }
+            // run-workflow and highlight-node can be handled by the Canvas component
+          }}
+        />
       </div>
     </ThemeProvider>
   );

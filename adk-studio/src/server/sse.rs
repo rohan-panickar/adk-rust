@@ -139,7 +139,17 @@ impl ExecutionContext {
             }
             "node_end" => {
                 // NodeEnd from adk-graph doesn't include state, just duration
-                // We'll emit our own node_end when we get state from Done
+                // Use node_end_fallback to emit our own node_end with accumulated state
+                // if we haven't already emitted one for this node
+                let node = event.get("node").and_then(|v| v.as_str()).unwrap_or("");
+                if !node.is_empty() {
+                    // Check if this node is still pending (hasn't been emitted via message event)
+                    if self.pending_agents.iter().any(|p| p.name == node) {
+                        if let Some(event_json) = self.node_end_fallback(node) {
+                            return (Some(event_json), false);
+                        }
+                    }
+                }
                 (None, false)
             }
             "message" => {
@@ -156,11 +166,17 @@ impl ExecutionContext {
                         "response": content,
                         "input": self.current_state.get("input").cloned().unwrap_or(serde_json::Value::Null)
                     });
-                    self.completed_outputs.insert(node.to_string(), agent_response);
+                    self.completed_outputs.insert(node.to_string(), agent_response.clone());
                     
                     // If this is a final message, also update current state
                     if is_final {
                         self.current_state.insert("response".to_string(), serde_json::Value::String(content.to_string()));
+                        
+                        // Emit node_end immediately for this agent since we have the final output
+                        // This provides more granular timeline updates
+                        if let Some(event_json) = self.node_end_with_state(node, agent_response) {
+                            return (Some(event_json), false);
+                        }
                     }
                 }
                 (None, false)

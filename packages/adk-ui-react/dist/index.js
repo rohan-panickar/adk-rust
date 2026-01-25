@@ -5,6 +5,7 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -26,17 +27,151 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
+  A2uiStore: () => A2uiStore,
+  A2uiSurfaceRenderer: () => A2uiSurfaceRenderer,
   Renderer: () => Renderer,
+  StreamingRenderer: () => StreamingRenderer,
+  applyParsedMessages: () => applyParsedMessages,
+  applyUiUpdate: () => applyUiUpdate,
+  applyUiUpdates: () => applyUiUpdates,
+  buildActionEvent: () => buildActionEvent,
+  isDataBinding: () => isDataBinding,
+  isFunctionCall: () => isFunctionCall,
+  parseJsonl: () => parseJsonl,
+  resolveDynamicString: () => resolveDynamicString,
+  resolveDynamicValue: () => resolveDynamicValue,
+  resolvePath: () => resolvePath,
   uiEventToMessage: () => uiEventToMessage
 });
 module.exports = __toCommonJS(index_exports);
 
 // src/Renderer.tsx
 var import_react = __toESM(require("react"));
+
+// src/updates.ts
+function applyUiUpdates(component, updates) {
+  return updates.reduce((current, update) => {
+    if (!current) return null;
+    return applyUiUpdate(current, update);
+  }, component);
+}
+function applyUiUpdate(component, update) {
+  if (component.id === update.target_id) {
+    return applyUpdateToTarget(component, update);
+  }
+  switch (component.type) {
+    case "stack": {
+      const updated = applyToChildren(component.children, update);
+      if (!updated.changed) return component;
+      return { ...component, children: updated.children };
+    }
+    case "grid": {
+      const updated = applyToChildren(component.children, update);
+      if (!updated.changed) return component;
+      return { ...component, children: updated.children };
+    }
+    case "container": {
+      const updated = applyToChildren(component.children, update);
+      if (!updated.changed) return component;
+      return { ...component, children: updated.children };
+    }
+    case "card": {
+      const contentUpdate = applyToChildren(component.content, update);
+      const footerUpdate = component.footer ? applyToChildren(component.footer, update) : { children: component.footer, changed: false };
+      if (!contentUpdate.changed && !footerUpdate.changed) return component;
+      return {
+        ...component,
+        content: contentUpdate.children,
+        footer: footerUpdate.children
+      };
+    }
+    case "tabs": {
+      let changed = false;
+      const tabs = component.tabs.map((tab) => {
+        const updated = applyToChildren(tab.content, update);
+        if (updated.changed) {
+          changed = true;
+          return { ...tab, content: updated.children };
+        }
+        return tab;
+      });
+      if (!changed) return component;
+      return { ...component, tabs };
+    }
+    case "modal": {
+      const contentUpdate = applyToChildren(component.content, update);
+      const footerUpdate = component.footer ? applyToChildren(component.footer, update) : { children: component.footer, changed: false };
+      if (!contentUpdate.changed && !footerUpdate.changed) return component;
+      return {
+        ...component,
+        content: contentUpdate.children,
+        footer: footerUpdate.children
+      };
+    }
+    default:
+      return component;
+  }
+}
+function applyUpdateToTarget(component, update) {
+  switch (update.operation) {
+    case "remove":
+      return null;
+    case "replace":
+      return update.payload ?? component;
+    case "patch":
+      if (!update.payload) return component;
+      return {
+        ...component,
+        ...update.payload,
+        id: update.payload.id ?? component.id
+      };
+    case "append":
+      if (!update.payload) return component;
+      return appendChild(component, update.payload);
+    default:
+      return component;
+  }
+}
+function appendChild(component, child) {
+  switch (component.type) {
+    case "stack":
+      return { ...component, children: [...component.children, child] };
+    case "grid":
+      return { ...component, children: [...component.children, child] };
+    case "container":
+      return { ...component, children: [...component.children, child] };
+    case "card":
+      return { ...component, content: [...component.content, child] };
+    case "tabs":
+      return component;
+    case "modal":
+      return { ...component, content: [...component.content, child] };
+    default:
+      return component;
+  }
+}
+function applyToChildren(children, update) {
+  let changed = false;
+  const next = children.flatMap((child) => {
+    const updated = applyUiUpdate(child, update);
+    if (!updated) {
+      changed = true;
+      return [];
+    }
+    if (updated !== child) {
+      changed = true;
+    }
+    return [updated];
+  });
+  return { children: next, changed };
+}
+
+// src/Renderer.tsx
 var import_lucide_react = require("lucide-react");
 var import_react_markdown = __toESM(require("react-markdown"));
 var import_clsx = __toESM(require("clsx"));
@@ -55,6 +190,24 @@ var FormContext = (0, import_react.createContext)({});
 var Renderer = ({ component, onAction, theme }) => {
   const isDark = theme === "dark";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FormContext.Provider, { value: { onAction }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: isDark ? "dark" : "", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ComponentRenderer, { component }) }) });
+};
+var StreamingRenderer = ({ component, updates, onAction, theme }) => {
+  const [current, setCurrent] = (0, import_react.useState)(component);
+  const updatesList = (0, import_react.useMemo)(() => {
+    if (!updates) return [];
+    return Array.isArray(updates) ? updates : [updates];
+  }, [updates]);
+  import_react.default.useEffect(() => {
+    setCurrent(component);
+  }, [component]);
+  import_react.default.useEffect(() => {
+    if (updatesList.length === 0) return;
+    setCurrent((prev) => {
+      const updated = applyUiUpdates(prev, updatesList);
+      return updated ?? prev;
+    });
+  }, [updatesList]);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Renderer, { component: current, onAction, theme });
 };
 var ComponentRenderer = ({ component }) => {
   const { onAction } = (0, import_react.useContext)(FormContext);
@@ -170,6 +323,11 @@ var ComponentRenderer = ({ component }) => {
             placeholder: component.placeholder,
             defaultValue: component.default_value,
             required: component.required,
+            onChange: (event) => onAction?.({
+              action: "input_change",
+              name: component.name,
+              value: event.currentTarget.value
+            }),
             className: (0, import_clsx.default)("w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white", {
               "border-red-500 focus:ring-red-500 focus:border-red-500": component.error
             })
@@ -189,6 +347,14 @@ var ComponentRenderer = ({ component }) => {
             max: component.max,
             step: component.step,
             required: component.required,
+            onChange: (event) => {
+              const parsed = event.currentTarget.valueAsNumber;
+              onAction?.({
+                action: "input_change",
+                name: component.name,
+                value: Number.isNaN(parsed) ? event.currentTarget.value : parsed
+              });
+            },
             className: (0, import_clsx.default)("w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none", {
               "border-red-500 focus:ring-red-500 focus:border-red-500": component.error
             })
@@ -204,6 +370,11 @@ var ComponentRenderer = ({ component }) => {
           {
             name: component.name,
             required: component.required,
+            onChange: (event) => onAction?.({
+              action: "input_change",
+              name: component.name,
+              value: event.currentTarget.value
+            }),
             className: (0, import_clsx.default)("w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none", {
               "border-red-500 focus:ring-red-500 focus:border-red-500": component.error
             }),
@@ -223,6 +394,11 @@ var ComponentRenderer = ({ component }) => {
             type: "checkbox",
             name: component.name,
             defaultChecked: component.default_checked,
+            onChange: (event) => onAction?.({
+              action: "input_change",
+              name: component.name,
+              value: event.currentTarget.checked
+            }),
             className: "h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           }
         ),
@@ -238,6 +414,14 @@ var ComponentRenderer = ({ component }) => {
             multiple: true,
             required: component.required,
             size: Math.min(component.options.length, 5),
+            onChange: (event) => {
+              const selected = Array.from(event.currentTarget.selectedOptions).map((opt) => opt.value);
+              onAction?.({
+                action: "input_change",
+                name: component.name,
+                value: selected
+              });
+            },
             className: "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none",
             children: component.options.map((opt, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: opt.value, children: opt.label }, i))
           }
@@ -252,6 +436,11 @@ var ComponentRenderer = ({ component }) => {
             type: "date",
             name: component.name,
             required: component.required,
+            onChange: (event) => onAction?.({
+              action: "input_change",
+              name: component.name,
+              value: event.currentTarget.value
+            }),
             className: "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
           }
         )
@@ -268,6 +457,14 @@ var ComponentRenderer = ({ component }) => {
             max: component.max,
             step: component.step,
             defaultValue: component.default_value,
+            onChange: (event) => {
+              const parsed = event.currentTarget.valueAsNumber;
+              onAction?.({
+                action: "input_change",
+                name: component.name,
+                value: Number.isNaN(parsed) ? event.currentTarget.value : parsed
+              });
+            },
             className: "w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
           }
         )
@@ -294,6 +491,11 @@ var ComponentRenderer = ({ component }) => {
             rows: component.rows || 4,
             required: component.required,
             defaultValue: component.default_value,
+            onChange: (event) => onAction?.({
+              action: "input_change",
+              name: component.name,
+              value: event.currentTarget.value
+            }),
             className: (0, import_clsx.default)("w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white resize-y", {
               "border-red-500 focus:ring-red-500 focus:border-red-500": component.error
             })
@@ -390,7 +592,10 @@ var ComponentRenderer = ({ component }) => {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-b border-gray-200", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("nav", { className: "flex space-x-4", children: component.tabs.map((tab, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
-            onClick: () => setActiveTab(i),
+            onClick: () => {
+              setActiveTab(i);
+              onAction?.({ action: "tab_change", index: i });
+            },
             className: (0, import_clsx.default)("px-4 py-2 border-b-2 font-medium text-sm transition-colors", {
               "border-blue-600 text-blue-600": activeTab === i,
               "border-transparent text-gray-500 hover:text-gray-700": activeTab !== i
@@ -559,6 +764,745 @@ var ComponentRenderer = ({ component }) => {
   }
 };
 
+// src/a2ui/renderer.tsx
+var import_react2 = __toESM(require("react"));
+var import_clsx2 = __toESM(require("clsx"));
+var import_react_markdown2 = __toESM(require("react-markdown"));
+var import_lucide_react2 = require("lucide-react");
+
+// src/a2ui/bindings.ts
+var DEFAULT_FUNCTIONS = {
+  now: () => (/* @__PURE__ */ new Date()).toISOString(),
+  concat: (args) => args.map((value) => stringifyValue(value)).join(""),
+  add: (args) => args.reduce((total, value) => total + toNumber(value), 0),
+  formatString: (args, ctx) => formatString(String(args[0] ?? ""), ctx)
+};
+function isDataBinding(value) {
+  return typeof value === "object" && value !== null && "path" in value && typeof value.path === "string" && Object.keys(value).length === 1;
+}
+function isFunctionCall(value) {
+  return typeof value === "object" && value !== null && "call" in value && typeof value.call === "string";
+}
+function resolvePath(dataModel, path, scope) {
+  const source = path.startsWith("/") ? dataModel : scope ?? dataModel;
+  if (path === "/" || path.length === 0) {
+    return source;
+  }
+  const tokens = path.replace(/^\//, "").split("/").filter(Boolean);
+  let cursor = source;
+  for (const token of tokens) {
+    if (typeof cursor !== "object" || cursor === null) {
+      return void 0;
+    }
+    cursor = cursor[token];
+  }
+  return cursor;
+}
+function resolveDynamicValue(value, dataModel, scope, functions) {
+  if (isDataBinding(value)) {
+    return resolvePath(dataModel, value.path, scope);
+  }
+  if (isFunctionCall(value)) {
+    return evaluateFunctionCall(value, { dataModel, scope, functions });
+  }
+  return value;
+}
+function resolveDynamicString(value, dataModel, scope, functions) {
+  const resolved = resolveDynamicValue(value, dataModel, scope, functions);
+  return stringifyValue(resolved);
+}
+function evaluateFunctionCall(call, ctx) {
+  const registry = { ...DEFAULT_FUNCTIONS, ...ctx.functions ?? {} };
+  const fn = registry[call.call];
+  if (!fn) {
+    return void 0;
+  }
+  const args = (call.args ?? []).map(
+    (arg) => resolveDynamicValue(arg, ctx.dataModel, ctx.scope, ctx.functions)
+  );
+  return fn(args, ctx);
+}
+function formatString(template, ctx) {
+  let output = "";
+  let index = 0;
+  while (index < template.length) {
+    if (template[index] === "\\" && template[index + 1] === "$" && template[index + 2] === "{") {
+      output += "${";
+      index += 3;
+      continue;
+    }
+    if (template[index] === "$" && template[index + 1] === "{") {
+      const { expression, nextIndex } = parseExpression(template, index + 2);
+      const value = resolveExpression(expression, ctx);
+      output += stringifyValue(value);
+      index = nextIndex + 1;
+      continue;
+    }
+    output += template[index];
+    index += 1;
+  }
+  return output;
+}
+function parseExpression(source, startIndex) {
+  let index = startIndex;
+  let depth = 1;
+  let inString = null;
+  while (index < source.length) {
+    const char = source[index];
+    if (inString) {
+      if (char === "\\") {
+        index += 2;
+        continue;
+      }
+      if (char === inString) {
+        inString = null;
+      }
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      inString = char;
+      index += 1;
+      continue;
+    }
+    if (char === "$" && source[index + 1] === "{") {
+      depth += 1;
+      index += 2;
+      continue;
+    }
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return { expression: source.slice(startIndex, index), nextIndex: index };
+      }
+    }
+    index += 1;
+  }
+  return { expression: source.slice(startIndex), nextIndex: source.length - 1 };
+}
+function resolveExpression(expression, ctx) {
+  const trimmed = expression.trim();
+  if (trimmed.startsWith("/")) {
+    return resolvePath(ctx.dataModel, trimmed, ctx.scope);
+  }
+  if (trimmed.length === 0) {
+    return "";
+  }
+  const callMatch = /^([a-zA-Z_][\w]*)\((.*)\)$/.exec(trimmed);
+  if (callMatch) {
+    const [, name, rawArgs] = callMatch;
+    const args = splitArgs(rawArgs).map((arg) => resolveArgument(arg, ctx));
+    return evaluateFunctionCall({ call: name, args }, ctx);
+  }
+  return resolvePath(ctx.dataModel, trimmed, ctx.scope);
+}
+function splitArgs(raw) {
+  const args = [];
+  let current = "";
+  let depth = 0;
+  let inString = null;
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if (inString) {
+      current += char;
+      if (char === "\\") {
+        current += raw[index + 1] ?? "";
+        index += 1;
+        continue;
+      }
+      if (char === inString) {
+        inString = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      inString = char;
+      current += char;
+      continue;
+    }
+    if (char === "(") {
+      depth += 1;
+      current += char;
+      continue;
+    }
+    if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      current += char;
+      continue;
+    }
+    if (char === "," && depth === 0) {
+      args.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim().length > 0) {
+    args.push(current.trim());
+  }
+  return args;
+}
+function resolveArgument(raw, ctx) {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("${") && trimmed.endsWith("}")) {
+    return resolveExpression(trimmed.slice(2, -1), ctx);
+  }
+  if (trimmed.startsWith("/") || trimmed.match(/^[a-zA-Z_]/)) {
+    const resolved = resolveExpression(trimmed, ctx);
+    if (resolved !== void 0) {
+      return resolved;
+    }
+  }
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') || trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return unquote(trimmed);
+  }
+  if (trimmed === "true") {
+    return true;
+  }
+  if (trimmed === "false") {
+    return false;
+  }
+  if (trimmed === "null") {
+    return null;
+  }
+  if (trimmed.length === 0) {
+    return void 0;
+  }
+  const numeric = Number(trimmed);
+  if (!Number.isNaN(numeric)) {
+    return numeric;
+  }
+  return trimmed;
+}
+function stringifyValue(value) {
+  if (value === null || typeof value === "undefined") {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+function toNumber(value) {
+  if (typeof value === "number") {
+    return value;
+  }
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+function unquote(value) {
+  const quote = value[0];
+  const body = value.slice(1, -1);
+  return body.replace(new RegExp(`\\\\${quote}`, "g"), quote).replace(/\\\\/g, "\\");
+}
+
+// src/a2ui/events.ts
+function buildActionEvent(action, surfaceId, sourceComponentId, options) {
+  if (!action?.event?.name) {
+    return null;
+  }
+  const context = resolveActionContext(action.event.context ?? {}, options);
+  return {
+    action: {
+      name: action.event.name,
+      surfaceId,
+      sourceComponentId,
+      timestamp: (options.timestamp ?? /* @__PURE__ */ new Date()).toISOString(),
+      context
+    }
+  };
+}
+function resolveActionContext(context, options) {
+  const resolved = {};
+  for (const [key, value] of Object.entries(context)) {
+    resolved[key] = resolveDynamicValue(
+      value,
+      options.dataModel,
+      options.scope,
+      options.functions
+    );
+  }
+  return resolved;
+}
+
+// src/a2ui/renderer.tsx
+var import_jsx_runtime2 = require("react/jsx-runtime");
+var IconMap2 = {
+  "alert-circle": import_lucide_react2.AlertCircle,
+  "check-circle": import_lucide_react2.CheckCircle,
+  "info": import_lucide_react2.Info,
+  "x-circle": import_lucide_react2.XCircle,
+  "user": import_lucide_react2.User,
+  "mail": import_lucide_react2.Mail,
+  "calendar": import_lucide_react2.Calendar
+};
+var A2uiRenderContext = (0, import_react2.createContext)(null);
+var A2uiSurfaceRenderer = ({
+  store,
+  surfaceId,
+  rootId = "root",
+  onAction,
+  theme,
+  functions
+}) => {
+  const surface = store.getSurface(surfaceId);
+  const [version, setVersion] = (0, import_react2.useState)(0);
+  const bumpVersion = import_react2.default.useCallback(() => {
+    setVersion((prev) => prev + 1);
+  }, []);
+  if (!surface) {
+    return null;
+  }
+  const dataModel = surface.dataModel ?? {};
+  const isDark = theme === "dark";
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    A2uiRenderContext.Provider,
+    {
+      value: {
+        store,
+        surfaceId,
+        dataModel,
+        onAction,
+        functions,
+        bumpVersion
+      },
+      children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: isDark ? "dark" : "", "data-version": version, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(A2uiComponentRenderer, { componentId: rootId }) })
+    }
+  );
+};
+var A2uiComponentRenderer = ({
+  componentId,
+  scope
+}) => {
+  const ctx = (0, import_react2.useContext)(A2uiRenderContext);
+  if (!ctx) {
+    return null;
+  }
+  const surface = ctx.store.getSurface(ctx.surfaceId);
+  const component = surface?.components.get(componentId);
+  if (!component) {
+    return null;
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    A2uiComponentView,
+    {
+      component,
+      scope
+    }
+  );
+};
+var A2uiComponentView = ({
+  component,
+  scope
+}) => {
+  const ctx = (0, import_react2.useContext)(A2uiRenderContext);
+  if (!ctx) {
+    return null;
+  }
+  const resolveString = (value) => resolveDynamicString(value, ctx.dataModel, scope, ctx.functions);
+  const resolveValue = (value) => resolveDynamicValue(value, ctx.dataModel, scope, ctx.functions);
+  const renderChildList = (children) => {
+    if (!children) return null;
+    if (Array.isArray(children)) {
+      return children.map((childId) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(A2uiComponentRenderer, { componentId: childId, scope }, childId));
+    }
+    const items = resolvePath(ctx.dataModel, children.path, scope);
+    if (!Array.isArray(items)) {
+      return null;
+    }
+    return items.map((item, index) => {
+      const itemScope = typeof item === "object" && item !== null ? item : {};
+      const key = itemScope && "id" in itemScope && typeof itemScope.id === "string" ? itemScope.id : `${children.componentId}-${index}`;
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        A2uiComponentRenderer,
+        {
+          componentId: children.componentId,
+          scope: itemScope
+        },
+        key
+      );
+    });
+  };
+  const baseComponent = component.component;
+  switch (baseComponent) {
+    case "Text": {
+      const text = resolveString(component.text);
+      const variant = component.variant;
+      if (variant === "body" || !variant) {
+        return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_react_markdown2.default, { children: text }) });
+      }
+      const Tag = variant === "h1" ? "h1" : variant === "h2" ? "h2" : variant === "h3" ? "h3" : variant === "h4" ? "h4" : variant === "code" ? "code" : "p";
+      const classes = (0, import_clsx2.default)({
+        "text-4xl font-bold mb-4 dark:text-white": variant === "h1",
+        "text-3xl font-bold mb-3 dark:text-white": variant === "h2",
+        "text-2xl font-bold mb-2 dark:text-white": variant === "h3",
+        "text-xl font-bold mb-2 dark:text-white": variant === "h4",
+        "font-mono bg-gray-100 dark:bg-gray-800 p-1 rounded dark:text-gray-100": variant === "code",
+        "text-sm text-gray-500 dark:text-gray-400": variant === "caption"
+      });
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Tag, { className: classes, children: text });
+    }
+    case "Image": {
+      const url = resolveString(component.url);
+      const alt = resolveString(component.alt ?? "");
+      const fit = component.fit;
+      const style = fit ? { objectFit: fit } : void 0;
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("img", { src: url, alt, style, className: "max-w-full h-auto" });
+    }
+    case "Icon": {
+      const name = String(component.name ?? "info");
+      const Icon = IconMap2[name] || import_lucide_react2.Info;
+      const size = typeof component.size === "number" ? component.size : 24;
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Icon, { size });
+    }
+    case "Row":
+    case "Column": {
+      const justify = component.justify;
+      const align = component.align;
+      const flexDirection = baseComponent === "Row" ? "row" : "column";
+      const style = {
+        display: "flex",
+        flexDirection,
+        justifyContent: mapJustify(justify),
+        alignItems: mapAlign(align),
+        gap: 12
+      };
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style, children: renderChildList(component.children) });
+    }
+    case "List": {
+      const direction = component.direction;
+      const style = {
+        display: "flex",
+        flexDirection: direction === "horizontal" ? "row" : "column",
+        gap: 12
+      };
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style, children: renderChildList(component.children) });
+    }
+    case "Card": {
+      const childId = component.child;
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "bg-white dark:bg-gray-900 rounded-lg border dark:border-gray-700 shadow-sm overflow-hidden mb-4 p-4", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(A2uiComponentRenderer, { componentId: childId, scope }) });
+    }
+    case "Divider": {
+      const axis = component.axis;
+      return axis === "vertical" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "w-px bg-gray-200 dark:bg-gray-700 self-stretch mx-2" }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "h-px bg-gray-200 dark:bg-gray-700 w-full my-2" });
+    }
+    case "Tabs": {
+      const tabs = component.tabs ?? [];
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        A2uiTabs,
+        {
+          tabs,
+          scope
+        }
+      );
+    }
+    case "Modal": {
+      const triggerId = component.trigger;
+      const contentId = component.content;
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        A2uiModal,
+        {
+          triggerId,
+          contentId,
+          scope
+        }
+      );
+    }
+    case "Button": {
+      const childId = component.child;
+      const variant = component.variant;
+      const action = component.action;
+      const btnClasses = (0, import_clsx2.default)("px-4 py-2 rounded font-medium transition-colors", {
+        "bg-blue-600 text-white hover:bg-blue-700": variant === "primary" || !variant,
+        "bg-transparent text-blue-600 hover:text-blue-700": variant === "borderless"
+      });
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          type: "button",
+          className: btnClasses,
+          onClick: () => {
+            const event = buildActionEvent(action, ctx.surfaceId, component.id, {
+              dataModel: ctx.dataModel,
+              scope,
+              functions: ctx.functions
+            });
+            if (event) {
+              ctx.onAction?.(event);
+            }
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(A2uiComponentRenderer, { componentId: childId, scope })
+        }
+      );
+    }
+    case "CheckBox": {
+      const label = resolveString(component.label);
+      const value = Boolean(resolveValue(component.value));
+      const bindingPath = isDataBinding(component.value) ? component.value.path : void 0;
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { className: "mb-3 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "input",
+          {
+            type: "checkbox",
+            checked: value,
+            onChange: (event) => {
+              if (bindingPath) {
+                ctx.store.applyUpdateDataModel(ctx.surfaceId, bindingPath, event.currentTarget.checked);
+                ctx.bumpVersion();
+              }
+            },
+            className: "h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          }
+        ),
+        label
+      ] });
+    }
+    case "TextField": {
+      const label = resolveString(component.label);
+      const variant = component.variant;
+      const bindingPath = isDataBinding(component.value) ? component.value.path : void 0;
+      const resolved = resolveValue(component.value);
+      const value = typeof resolved === "string" ? resolved : resolved ?? "";
+      if (variant === "longText") {
+        return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mb-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1", children: label }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "textarea",
+            {
+              value: String(value),
+              onChange: (event) => {
+                if (bindingPath) {
+                  ctx.store.applyUpdateDataModel(ctx.surfaceId, bindingPath, event.currentTarget.value);
+                  ctx.bumpVersion();
+                }
+              },
+              className: "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white",
+              rows: 4
+            }
+          )
+        ] });
+      }
+      const inputType = variant === "obscured" ? "password" : variant === "number" ? "number" : "text";
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mb-3", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1", children: label }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "input",
+          {
+            type: inputType,
+            value: String(value),
+            onChange: (event) => {
+              if (bindingPath) {
+                const nextValue = inputType === "number" ? event.currentTarget.valueAsNumber : event.currentTarget.value;
+                ctx.store.applyUpdateDataModel(ctx.surfaceId, bindingPath, Number.isNaN(nextValue) ? event.currentTarget.value : nextValue);
+                ctx.bumpVersion();
+              }
+            },
+            className: "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+          }
+        )
+      ] });
+    }
+    case "ChoicePicker": {
+      const label = resolveString(component.label ?? "");
+      const options = component.options ?? [];
+      const variant = component.variant;
+      const bindingPath = isDataBinding(component.value) ? component.value.path : void 0;
+      const resolved = resolveValue(component.value);
+      const values = Array.isArray(resolved) ? resolved.map(String) : [];
+      if (variant === "mutuallyExclusive") {
+        return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mb-3", children: [
+          label && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1", children: label }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "select",
+            {
+              value: values[0] ?? "",
+              onChange: (event) => {
+                if (bindingPath) {
+                  ctx.store.applyUpdateDataModel(ctx.surfaceId, bindingPath, [event.currentTarget.value]);
+                  ctx.bumpVersion();
+                }
+              },
+              className: "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white",
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "", children: "Select..." }),
+                options.map((opt, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: opt.value, children: resolveString(opt.label) }, i))
+              ]
+            }
+          )
+        ] });
+      }
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mb-3", children: [
+        label && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1", children: label }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "select",
+          {
+            multiple: true,
+            value: values,
+            onChange: (event) => {
+              if (bindingPath) {
+                const selected = Array.from(event.currentTarget.selectedOptions).map((opt) => opt.value);
+                ctx.store.applyUpdateDataModel(ctx.surfaceId, bindingPath, selected);
+                ctx.bumpVersion();
+              }
+            },
+            className: "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white",
+            children: options.map((opt, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: opt.value, children: resolveString(opt.label) }, i))
+          }
+        )
+      ] });
+    }
+    case "Slider": {
+      const label = resolveString(component.label ?? "");
+      const bindingPath = isDataBinding(component.value) ? component.value.path : void 0;
+      const resolved = resolveValue(component.value);
+      const value = typeof resolved === "number" ? resolved : Number(resolved ?? 0);
+      const min = typeof component.min === "number" ? component.min : 0;
+      const max = typeof component.max === "number" ? component.max : 100;
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mb-3", children: [
+        label && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1", children: label }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "input",
+          {
+            type: "range",
+            min,
+            max,
+            value: Number.isNaN(value) ? min : value,
+            onChange: (event) => {
+              if (bindingPath) {
+                ctx.store.applyUpdateDataModel(ctx.surfaceId, bindingPath, event.currentTarget.valueAsNumber);
+                ctx.bumpVersion();
+              }
+            },
+            className: "w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+          }
+        )
+      ] });
+    }
+    case "DateTimeInput": {
+      const label = resolveString(component.label ?? "");
+      const bindingPath = isDataBinding(component.value) ? component.value.path : void 0;
+      const resolved = resolveValue(component.value);
+      const value = typeof resolved === "string" ? resolved : "";
+      const enableDate = component.enableDate !== false;
+      const enableTime = component.enableTime !== false;
+      const inputType = enableDate && enableTime ? "datetime-local" : enableDate ? "date" : "time";
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mb-3", children: [
+        label && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("label", { className: "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1", children: label }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "input",
+          {
+            type: inputType,
+            value,
+            onChange: (event) => {
+              if (bindingPath) {
+                ctx.store.applyUpdateDataModel(ctx.surfaceId, bindingPath, event.currentTarget.value);
+                ctx.bumpVersion();
+              }
+            },
+            className: "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+          }
+        )
+      ] });
+    }
+    case "Video": {
+      const url = resolveString(component.url);
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("video", { src: url, controls: true, className: "w-full rounded-md" });
+    }
+    case "AudioPlayer": {
+      const url = resolveString(component.url);
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("audio", { src: url, controls: true, className: "w-full" });
+    }
+    default:
+      return null;
+  }
+};
+var A2uiModal = ({
+  triggerId,
+  contentId,
+  scope
+}) => {
+  const [open, setOpen] = (0, import_react2.useState)(false);
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { onClick: () => setOpen(true), className: "inline-block cursor-pointer", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(A2uiComponentRenderer, { componentId: triggerId, scope }) }),
+    open && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "bg-white dark:bg-gray-900 rounded-lg shadow-lg max-w-lg w-full", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "p-4 flex items-center justify-between border-b dark:border-gray-700", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "text-sm font-medium text-gray-700 dark:text-gray-200", children: "Modal" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "button",
+          {
+            onClick: () => setOpen(false),
+            className: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+            type: "button",
+            children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_lucide_react2.XCircle, { className: "w-5 h-5" })
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "p-4", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(A2uiComponentRenderer, { componentId: contentId, scope }) })
+    ] }) })
+  ] });
+};
+var A2uiTabs = ({
+  tabs,
+  scope
+}) => {
+  const ctx = (0, import_react2.useContext)(A2uiRenderContext);
+  const [activeTab, setActiveTab] = (0, import_react2.useState)(0);
+  if (!ctx) {
+    return null;
+  }
+  const resolveString = (value) => resolveDynamicString(value, ctx.dataModel, scope, ctx.functions);
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mb-4", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "border-b border-gray-200", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("nav", { className: "flex space-x-4", children: tabs.map((tab, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      "button",
+      {
+        onClick: () => setActiveTab(i),
+        className: (0, import_clsx2.default)("px-4 py-2 border-b-2 font-medium text-sm transition-colors", {
+          "border-blue-600 text-blue-600": activeTab === i,
+          "border-transparent text-gray-500 hover:text-gray-700": activeTab !== i
+        }),
+        children: resolveString(tab.title)
+      },
+      i
+    )) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "p-4", children: tabs[activeTab]?.child && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(A2uiComponentRenderer, { componentId: tabs[activeTab].child, scope }) })
+  ] });
+};
+function mapJustify(value) {
+  switch (value) {
+    case "center":
+      return "center";
+    case "end":
+      return "flex-end";
+    case "spaceAround":
+      return "space-around";
+    case "spaceBetween":
+      return "space-between";
+    case "spaceEvenly":
+      return "space-evenly";
+    case "stretch":
+      return "stretch";
+    case "start":
+    default:
+      return "flex-start";
+  }
+}
+function mapAlign(value) {
+  switch (value) {
+    case "center":
+      return "center";
+    case "end":
+      return "flex-end";
+    case "stretch":
+      return "stretch";
+    case "start":
+    default:
+      return "flex-start";
+  }
+}
+
 // src/types.ts
 function uiEventToMessage(event) {
   switch (event.action) {
@@ -579,8 +1523,114 @@ Value: ${event.value}`;
 Index: ${event.index}`;
   }
 }
+
+// src/a2ui/store.ts
+var A2uiStore = class {
+  constructor() {
+    __publicField(this, "surfaces", /* @__PURE__ */ new Map());
+  }
+  getSurface(surfaceId) {
+    return this.surfaces.get(surfaceId);
+  }
+  ensureSurface(surfaceId) {
+    const existing = this.surfaces.get(surfaceId);
+    if (existing) {
+      return existing;
+    }
+    const created = {
+      components: /* @__PURE__ */ new Map(),
+      dataModel: {}
+    };
+    this.surfaces.set(surfaceId, created);
+    return created;
+  }
+  applyUpdateComponents(surfaceId, components) {
+    const surface = this.ensureSurface(surfaceId);
+    for (const component of components) {
+      if (!component.id) {
+        continue;
+      }
+      surface.components.set(component.id, component);
+    }
+  }
+  removeSurface(surfaceId) {
+    this.surfaces.delete(surfaceId);
+  }
+  applyUpdateDataModel(surfaceId, path, value) {
+    const surface = this.ensureSurface(surfaceId);
+    if (!path || path === "/") {
+      surface.dataModel = value ?? {};
+      return;
+    }
+    const tokens = path.split("/").filter(Boolean);
+    if (tokens.length === 0) {
+      surface.dataModel = value ?? {};
+      return;
+    }
+    let cursor = surface.dataModel;
+    for (let i = 0; i < tokens.length - 1; i += 1) {
+      const key = tokens[i];
+      const next = cursor[key];
+      if (typeof next === "object" && next !== null) {
+        cursor = next;
+      } else {
+        const created = {};
+        cursor[key] = created;
+        cursor = created;
+      }
+    }
+    const lastKey = tokens[tokens.length - 1];
+    if (typeof value === "undefined") {
+      delete cursor[lastKey];
+    } else {
+      cursor[lastKey] = value;
+    }
+  }
+};
+
+// src/a2ui/parser.ts
+function parseJsonl(payload) {
+  return payload.split("\n").map((line) => line.trim()).filter((line) => line.length > 0).map((line) => ({
+    message: JSON.parse(line),
+    raw: line
+  }));
+}
+function applyParsedMessages(store, parsed) {
+  for (const entry of parsed) {
+    const message = entry.message;
+    if ("createSurface" in message) {
+      store.ensureSurface(message.createSurface.surfaceId);
+    } else if ("updateComponents" in message) {
+      store.applyUpdateComponents(
+        message.updateComponents.surfaceId,
+        message.updateComponents.components
+      );
+    } else if ("updateDataModel" in message) {
+      store.applyUpdateDataModel(
+        message.updateDataModel.surfaceId,
+        message.updateDataModel.path,
+        message.updateDataModel.value
+      );
+    } else if ("deleteSurface" in message) {
+      store.removeSurface(message.deleteSurface.surfaceId);
+    }
+  }
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  A2uiStore,
+  A2uiSurfaceRenderer,
   Renderer,
+  StreamingRenderer,
+  applyParsedMessages,
+  applyUiUpdate,
+  applyUiUpdates,
+  buildActionEvent,
+  isDataBinding,
+  isFunctionCall,
+  parseJsonl,
+  resolveDynamicString,
+  resolveDynamicValue,
+  resolvePath,
   uiEventToMessage
 });

@@ -6,7 +6,7 @@ export interface Template {
   icon: string;
   description: string;
   agents: Record<string, AgentSchema>;
-  edges: Array<{ from: string; to: string }>;
+  edges: Array<{ from: string; to: string; fromPort?: string; toPort?: string }>;
 }
 
 export const TEMPLATES: Template[] = [

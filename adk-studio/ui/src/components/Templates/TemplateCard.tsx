@@ -20,11 +20,37 @@ interface TemplateCardProps {
 }
 
 /**
+ * Action node type icons for display
+ */
+const ACTION_NODE_ICONS: Record<string, string> = {
+  trigger: '🎯',
+  http: '🌐',
+  set: '📝',
+  transform: '⚙️',
+  switch: '🔀',
+  loop: '🔄',
+  merge: '🔗',
+  wait: '⏱️',
+  code: '💻',
+  database: '🗄️',
+  email: '📧',
+  notification: '🔔',
+  rss: '📡',
+  file: '📁',
+};
+
+/**
  * Individual template card with preview
  */
 export function TemplateCard({ template, onSelect, onRun }: TemplateCardProps) {
   const agentCount = Object.keys(template.agents).length;
+  const actionNodeCount = template.actionNodes ? Object.keys(template.actionNodes).length : 0;
   const edgeCount = template.edges.length;
+  
+  // Get unique action node types for icon display
+  const actionNodeTypes = template.actionNodes 
+    ? [...new Set(Object.values(template.actionNodes).map(n => n.type))]
+    : [];
 
   return (
     <div
@@ -69,9 +95,48 @@ export function TemplateCard({ template, onSelect, onRun }: TemplateCardProps) {
         style={{ color: 'var(--text-muted)' }}
       >
         <span>{agentCount} agent{agentCount !== 1 ? 's' : ''}</span>
+        {actionNodeCount > 0 && (
+          <>
+            <span>•</span>
+            <span>{actionNodeCount} action{actionNodeCount !== 1 ? 's' : ''}</span>
+          </>
+        )}
         <span>•</span>
         <span>{edgeCount} connection{edgeCount !== 1 ? 's' : ''}</span>
       </div>
+
+      {/* Action node type icons */}
+      {actionNodeTypes.length > 0 && (
+        <div 
+          className="flex flex-wrap gap-1 mb-3"
+          title={`Uses: ${actionNodeTypes.join(', ')}`}
+        >
+          {actionNodeTypes.slice(0, 6).map((type) => (
+            <span
+              key={type}
+              className="text-sm px-1.5 py-0.5 rounded"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                fontSize: '12px',
+              }}
+              title={type}
+            >
+              {ACTION_NODE_ICONS[type] || '📦'}
+            </span>
+          ))}
+          {actionNodeTypes.length > 6 && (
+            <span
+              className="text-xs px-1.5 py-0.5 rounded"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-muted)',
+              }}
+            >
+              +{actionNodeTypes.length - 6}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex items-center gap-2">

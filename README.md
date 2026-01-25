@@ -867,5 +867,6 @@ Contributions welcome! Please open an issue or pull request on GitHub.
 
 | Priority | Feature | Target | Status |
 |----------|---------|--------|--------|
+| 🔴 P0 | [ADK-UI vNext (A2UI + Generative UI)](docs/roadmap/adk-ui.md) | Q2-Q4 2026 | Planned |
 | 🟡 P1 | [Cloud Integrations](docs/roadmap/cloud-integrations.md) | Q2-Q3 2026 | Planned |
 | 🟢 P2 | [Enterprise Features](docs/roadmap/enterprise.md) | Q4 2026 | Planned |

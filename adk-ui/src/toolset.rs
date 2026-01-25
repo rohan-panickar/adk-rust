@@ -19,6 +19,9 @@ use std::sync::Arc;
 /// let agent = builder.build()?;
 /// ```
 pub struct UiToolset {
+    include_screen: bool,
+    include_page: bool,
+    include_kit: bool,
     include_form: bool,
     include_card: bool,
     include_alert: bool,
@@ -35,6 +38,9 @@ impl UiToolset {
     /// Create a new UiToolset with all tools enabled
     pub fn new() -> Self {
         Self {
+            include_screen: true,
+            include_page: true,
+            include_kit: true,
             include_form: true,
             include_card: true,
             include_alert: true,
@@ -51,6 +57,9 @@ impl UiToolset {
     /// Create a toolset with only form rendering
     pub fn forms_only() -> Self {
         Self {
+            include_screen: false,
+            include_page: false,
+            include_kit: false,
             include_form: true,
             include_card: false,
             include_alert: false,
@@ -67,6 +76,24 @@ impl UiToolset {
     /// Disable form rendering
     pub fn without_form(mut self) -> Self {
         self.include_form = false;
+        self
+    }
+
+    /// Disable screen rendering
+    pub fn without_screen(mut self) -> Self {
+        self.include_screen = false;
+        self
+    }
+
+    /// Disable page rendering
+    pub fn without_page(mut self) -> Self {
+        self.include_page = false;
+        self
+    }
+
+    /// Disable kit rendering
+    pub fn without_kit(mut self) -> Self {
+        self.include_kit = false;
         self
     }
 
@@ -127,6 +154,9 @@ impl UiToolset {
     /// Get all tools as a Vec for use with LlmAgentBuilder
     pub fn all_tools() -> Vec<Arc<dyn Tool>> {
         vec![
+            Arc::new(RenderScreenTool::new()) as Arc<dyn Tool>,
+            Arc::new(RenderPageTool::new()),
+            Arc::new(RenderKitTool::new()),
             Arc::new(RenderFormTool::new()) as Arc<dyn Tool>,
             Arc::new(RenderCardTool::new()),
             Arc::new(RenderAlertTool::new()),
@@ -156,6 +186,15 @@ impl Toolset for UiToolset {
     async fn tools(&self, _ctx: Arc<dyn ReadonlyContext>) -> Result<Vec<Arc<dyn Tool>>> {
         let mut tools: Vec<Arc<dyn Tool>> = Vec::new();
 
+        if self.include_screen {
+            tools.push(Arc::new(RenderScreenTool::new()));
+        }
+        if self.include_page {
+            tools.push(Arc::new(RenderPageTool::new()));
+        }
+        if self.include_kit {
+            tools.push(Arc::new(RenderKitTool::new()));
+        }
         if self.include_form {
             tools.push(Arc::new(RenderFormTool::new()));
         }
@@ -196,11 +235,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_all_tools_returns_10_tools() {
+    fn test_all_tools_returns_13_tools() {
         let tools = UiToolset::all_tools();
-        assert_eq!(tools.len(), 10);
+        assert_eq!(tools.len(), 13);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(names.contains(&"render_screen"));
+        assert!(names.contains(&"render_page"));
+        assert!(names.contains(&"render_kit"));
         assert!(names.contains(&"render_form"));
         assert!(names.contains(&"render_card"));
         assert!(names.contains(&"render_alert"));
@@ -216,6 +258,9 @@ mod tests {
     #[test]
     fn test_forms_only() {
         let toolset = UiToolset::forms_only();
+        assert!(!toolset.include_screen);
+        assert!(!toolset.include_page);
+        assert!(!toolset.include_kit);
         assert!(toolset.include_form);
         assert!(!toolset.include_card);
         assert!(!toolset.include_alert);
@@ -243,6 +288,9 @@ mod tests {
     fn test_default_is_new() {
         let default = UiToolset::default();
         let new = UiToolset::new();
+        assert_eq!(default.include_screen, new.include_screen);
+        assert_eq!(default.include_page, new.include_page);
+        assert_eq!(default.include_kit, new.include_kit);
         assert_eq!(default.include_form, new.include_form);
         assert_eq!(default.include_card, new.include_card);
         assert_eq!(default.include_chart, new.include_chart);

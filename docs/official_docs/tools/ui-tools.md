@@ -150,8 +150,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder = builder.tool(tool);
     }
 
-    let agent = builder.build()?;
-    Ok(())
+let agent = builder.build()?;
+Ok(())
+}
+```
+
+## A2UI JSONL (render_screen / render_page / render_kit)
+
+These tools emit A2UI v0.9 JSONL for compatibility with A2UI renderers.
+
+### render_screen (single surface)
+
+```json
+{
+  "surface_id": "main",
+  "components": [
+    { "id": "root", "component": "Column", "children": ["title", "cta"] },
+    { "id": "title", "component": "Text", "text": "Welcome", "variant": "h1" },
+    { "id": "cta_label", "component": "Text", "text": "Continue", "variant": "body" },
+    { "id": "cta", "component": "Button", "child": "cta_label", "action": { "event": { "name": "continue" } } }
+  ]
+}
+```
+
+### render_page (multi-section page)
+
+```json
+{
+  "title": "Release Notes",
+  "description": "Highlights for the latest launch.",
+  "sections": [
+    {
+      "heading": "What’s new",
+      "body": "Three big improvements shipped this week.",
+      "bullets": ["Faster onboarding", "Better search", "New dashboards"],
+      "actions": [{ "label": "View details", "action": "view_details", "variant": "borderless" }]
+    }
+  ]
+}
+```
+
+### render_kit (catalog + tokens + templates)
+
+```json
+{
+  "name": "Fintech Pro",
+  "version": "0.1.0",
+  "brand": { "vibe": "trustworthy", "industry": "fintech" },
+  "colors": { "primary": "#2F6BFF" },
+  "typography": { "family": "Source Sans 3" },
+  "templates": ["auth_login", "dashboard"]
+}
+```
+
+Use the React renderer to consume A2UI JSONL:
+
+```tsx
+import {
+  A2uiStore,
+  A2uiSurfaceRenderer,
+  applyParsedMessages,
+  parseJsonl,
+} from "@zavora-ai/adk-ui-react";
+
+const store = new A2uiStore();
+const parsed = parseJsonl(jsonl);
+applyParsedMessages(store, parsed);
+
+export function App() {
+  return <A2uiSurfaceRenderer store={store} surfaceId="main" />;
 }
 ```
 

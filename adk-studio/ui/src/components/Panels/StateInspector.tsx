@@ -581,15 +581,36 @@ function truncateString(str: string, maxLength: number): string {
 
 /**
  * Get icon for node type based on node ID
+ * 
+ * Supports both LLM agent nodes and action nodes.
+ * Action nodes are identified by their type prefix (e.g., trigger_, http_, etc.)
+ * 
+ * @see Requirements 12.3: Action node integration with state inspector
  */
 function getNodeIcon(nodeId: string): string {
   const id = nodeId.toLowerCase();
+  
+  // Action node icons (identified by type prefix)
+  // @see Requirements 12.1: Action node visual distinction
+  if (id.startsWith('trigger')) return '🎯';
+  if (id.startsWith('http')) return '🌐';
+  if (id.startsWith('set')) return '📝';
+  if (id.startsWith('transform')) return '⚙️';
+  if (id.startsWith('switch')) return '🔀';
+  if (id.startsWith('merge')) return '🔗';
+  if (id.startsWith('wait')) return '⏱️';
+  if (id.startsWith('code')) return '💻';
+  if (id.startsWith('database')) return '🗄️';
+  
+  // LLM agent node icons
   if (id.includes('loop')) return '🔄';
   if (id.includes('parallel')) return '⚡';
   if (id.includes('sequential')) return '📋';
   if (id.includes('router')) return '🔀';
   if (id === 'start') return '▶️';
   if (id === 'end') return '⏹️';
+  
+  // Default to robot for LLM agents
   return '🤖';
 }
 

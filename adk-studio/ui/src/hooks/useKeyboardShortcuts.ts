@@ -7,10 +7,16 @@ import { useEffect } from 'react';
 interface Props {
   selectedNodeId: string | null;
   selectedToolId: string | null;
+  /** v2.0: Selected action node ID */
+  selectedActionNodeId?: string | null;
   onDeleteNode: (id: string) => void;
+  /** v2.0: Delete action node handler */
+  onDeleteActionNode?: (id: string) => void;
   onDeleteTool: (nodeId: string, toolType: string) => void;
   onDuplicateNode?: (id: string) => string | null;
   onSelectNode: (id: string | null) => void;
+  /** v2.0: Select action node handler */
+  onSelectActionNode?: (id: string | null) => void;
   onSelectTool: (id: string | null) => void;
   onAutoLayout?: () => void;
   onFitView?: () => void;
@@ -58,10 +64,13 @@ export const KEYBOARD_SHORTCUTS = [
 export function useKeyboardShortcuts({ 
   selectedNodeId, 
   selectedToolId, 
+  selectedActionNodeId,
   onDeleteNode, 
+  onDeleteActionNode,
   onDeleteTool, 
   onDuplicateNode, 
   onSelectNode, 
+  onSelectActionNode,
   onSelectTool, 
   onAutoLayout, 
   onFitView,
@@ -83,12 +92,16 @@ export function useKeyboardShortcuts({
       const isMod = e.metaKey || e.ctrlKey;
       const isShift = e.shiftKey;
 
-      // Requirement 11.1: Delete/Backspace - remove selected tool or node
+      // Requirement 11.1: Delete/Backspace - remove selected tool, action node, or agent node
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedToolId && selectedNodeId) {
           const parts = selectedToolId.split('_');
           onDeleteTool(selectedNodeId, parts.slice(-2).join('_'));
           onSelectTool(null);
+        } else if (selectedActionNodeId && onDeleteActionNode) {
+          // Delete selected action node
+          onDeleteActionNode(selectedActionNodeId);
+          onSelectActionNode?.(null);
         } else if (selectedNodeId && selectedNodeId !== 'START' && selectedNodeId !== 'END') {
           onDeleteNode(selectedNodeId);
           onSelectNode(null);
@@ -161,10 +174,13 @@ export function useKeyboardShortcuts({
   }, [
     selectedNodeId, 
     selectedToolId, 
+    selectedActionNodeId,
     onDeleteNode, 
+    onDeleteActionNode,
     onDeleteTool, 
     onDuplicateNode, 
     onSelectNode, 
+    onSelectActionNode,
     onSelectTool, 
     onAutoLayout, 
     onFitView,

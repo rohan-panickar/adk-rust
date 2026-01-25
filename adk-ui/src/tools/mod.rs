@@ -6,6 +6,9 @@ mod render_form;
 mod render_layout;
 mod render_modal;
 mod render_progress;
+mod render_screen;
+mod render_page;
+mod render_kit;
 mod render_table;
 mod render_toast;
 
@@ -17,6 +20,9 @@ pub use render_form::RenderFormTool;
 pub use render_layout::RenderLayoutTool;
 pub use render_modal::RenderModalTool;
 pub use render_progress::RenderProgressTool;
+pub use render_screen::RenderScreenTool;
+pub use render_page::RenderPageTool;
+pub use render_kit::RenderKitTool;
 pub use render_table::RenderTableTool;
 pub use render_toast::RenderToastTool;
 

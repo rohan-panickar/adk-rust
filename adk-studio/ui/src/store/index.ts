@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Project, ProjectMeta, AgentSchema, ToolConfig, Edge } from '../types/project';
+import type { ActionNodeConfig } from '../types/actionNodes';
 import type { LayoutDirection, LayoutMode } from '../types/layout';
 import { api } from '../api/client';
 import { loadGlobalSettings } from '../types/settings';
@@ -13,6 +14,9 @@ interface StudioState {
   currentProject: Project | null;
   selectedNodeId: string | null;
   selectedToolId: string | null;
+  
+  // Action node selection
+  selectedActionNodeId: string | null;
   
   // Layout state
   layoutMode: LayoutMode;
@@ -39,7 +43,7 @@ interface StudioState {
   renameAgent: (oldId: string, newId: string) => void;
   addAgent: (id: string, agent: AgentSchema) => void;
   removeAgent: (id: string) => void;
-  addEdge: (from: string, to: string) => void;
+  addEdge: (from: string, to: string, fromPort?: string, toPort?: string) => void;
   removeEdge: (from: string, to: string) => void;
   setEdges: (edges: Edge[]) => void;
   addToolToAgent: (agentId: string, toolType: string) => void;
@@ -49,6 +53,13 @@ interface StudioState {
   // Tool config actions
   selectTool: (toolId: string | null) => void;
   updateToolConfig: (toolId: string, config: ToolConfig) => void;
+  
+  // Action node actions (v2.0)
+  selectActionNode: (id: string | null) => void;
+  addActionNode: (id: string, node: ActionNodeConfig) => void;
+  updateActionNode: (id: string, updates: Partial<ActionNodeConfig>) => void;
+  removeActionNode: (id: string) => void;
+  renameActionNode: (oldId: string, newId: string) => void;
   
   // Layout actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -66,6 +77,9 @@ export const useStore = create<StudioState>((set, get) => ({
   currentProject: null,
   selectedNodeId: null,
   selectedToolId: null,
+  
+  // Action node selection
+  selectedActionNodeId: null,
   
   // Layout state with defaults
   layoutMode: 'free',
@@ -124,7 +138,7 @@ export const useStore = create<StudioState>((set, get) => ({
     await api.projects.update(currentProject.id, projectToSave);
   },
 
-  closeProject: () => set({ currentProject: null, selectedNodeId: null }),
+  closeProject: () => set({ currentProject: null, selectedNodeId: null, selectedActionNodeId: null }),
 
   deleteProject: async (id) => {
     await api.projects.delete(id);
@@ -301,15 +315,18 @@ export const useStore = create<StudioState>((set, get) => ({
     setTimeout(() => get().saveProject(), 0);
   },
 
-  addEdge: (from, to) => {
+  addEdge: (from, to, fromPort, toPort) => {
     set((s) => {
       if (!s.currentProject) return s;
+      const edge: Edge = { from, to };
+      if (fromPort) edge.fromPort = fromPort;
+      if (toPort) edge.toPort = toPort;
       return {
         currentProject: {
           ...s.currentProject,
           workflow: {
             ...s.currentProject.workflow,
-            edges: [...s.currentProject.workflow.edges, { from, to }],
+            edges: [...s.currentProject.workflow.edges, edge],
           },
         },
       };
@@ -428,6 +445,129 @@ export const useStore = create<StudioState>((set, get) => ({
           ...s.currentProject,
           tool_configs: { ...s.currentProject.tool_configs, [toolId]: config },
         },
+      };
+    });
+    setTimeout(() => get().saveProject(), 0);
+  },
+
+  // Action node actions (v2.0)
+  // @see Requirement 12.3: Canvas integration with action nodes
+  
+  selectActionNode: (id) => set((s) => ({ 
+    selectedActionNodeId: id, 
+    // Only clear selectedNodeId when selecting an action node (id is not null)
+    selectedNodeId: id ? null : s.selectedNodeId, 
+    selectedToolId: id ? null : s.selectedToolId,
+  })),
+
+  addActionNode: (id, node) => {
+    set((s) => {
+      if (!s.currentProject) return s;
+      // Ensure actionNodes exists (for backward compatibility)
+      const actionNodes = s.currentProject.actionNodes || {};
+      return {
+        currentProject: {
+          ...s.currentProject,
+          actionNodes: { ...actionNodes, [id]: node },
+        },
+      };
+    });
+    setTimeout(() => get().saveProject(), 0);
+  },
+
+  updateActionNode: (id, updates) => {
+    set((s) => {
+      if (!s.currentProject) return s;
+      const actionNodes = s.currentProject.actionNodes || {};
+      if (!actionNodes[id]) return s;
+      return {
+        currentProject: {
+          ...s.currentProject,
+          actionNodes: {
+            ...actionNodes,
+            [id]: { ...actionNodes[id], ...updates } as ActionNodeConfig,
+          },
+        },
+      };
+    });
+    setTimeout(() => get().saveProject(), 0);
+  },
+
+  removeActionNode: (id) => {
+    set((s) => {
+      if (!s.currentProject) return s;
+      const actionNodes = { ...(s.currentProject.actionNodes || {}) };
+      delete actionNodes[id];
+      
+      // Reconnect edges: connect sources to targets to maintain flow
+      // (Same logic as removeAgent)
+      const currentEdges = s.currentProject.workflow.edges;
+      const newEdges: typeof currentEdges = [];
+      
+      // Find incoming and outgoing edges for the removed node
+      const incomingEdges = currentEdges.filter(e => e.to === id);
+      const outgoingEdges = currentEdges.filter(e => e.from === id);
+      
+      // Connect each source to each target
+      for (const incoming of incomingEdges) {
+        for (const outgoing of outgoingEdges) {
+          // Don't create self-loops or duplicate edges
+          if (incoming.from !== outgoing.to) {
+            const edgeExists = newEdges.some(e => e.from === incoming.from && e.to === outgoing.to) ||
+                               currentEdges.some(e => e.from === incoming.from && e.to === outgoing.to && e.from !== id && e.to !== id);
+            if (!edgeExists) {
+              newEdges.push({ from: incoming.from, to: outgoing.to });
+            }
+          }
+        }
+      }
+      
+      // Keep edges not involving removed node, plus add reconnected edges
+      const remainingEdges = currentEdges.filter(
+        (e) => e.from !== id && e.to !== id
+      );
+      
+      return {
+        currentProject: {
+          ...s.currentProject,
+          actionNodes,
+          workflow: {
+            ...s.currentProject.workflow,
+            edges: [...remainingEdges, ...newEdges],
+          },
+        },
+        selectedActionNodeId: s.selectedActionNodeId === id ? null : s.selectedActionNodeId,
+      };
+    });
+    setTimeout(() => get().saveProject(), 0);
+  },
+
+  renameActionNode: (oldId, newId) => {
+    if (oldId === newId) return;
+    set((s) => {
+      if (!s.currentProject) return s;
+      const actionNodes = s.currentProject.actionNodes || {};
+      if (!actionNodes[oldId]) return s;
+      
+      // Clone action nodes, add new key, remove old
+      const newActionNodes = { ...actionNodes };
+      newActionNodes[newId] = { ...newActionNodes[oldId], id: newId };
+      delete newActionNodes[oldId];
+      
+      // Update edges
+      const edges = s.currentProject.workflow.edges.map(e => ({
+        ...e,
+        from: e.from === oldId ? newId : e.from,
+        to: e.to === oldId ? newId : e.to,
+      }));
+      
+      return {
+        currentProject: {
+          ...s.currentProject,
+          actionNodes: newActionNodes,
+          workflow: { ...s.currentProject.workflow, edges },
+        },
+        selectedActionNodeId: s.selectedActionNodeId === oldId ? newId : s.selectedActionNodeId,
       };
     });
     setTimeout(() => get().saveProject(), 0);

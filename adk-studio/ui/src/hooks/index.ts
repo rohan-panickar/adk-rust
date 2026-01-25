@@ -8,6 +8,8 @@ export { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from './useKeyboardShortcuts
 export { useLayout } from './useLayout';
 export { useNodeActions } from './useNodeActions';
 export { useSSE } from './useSSE';
+export { useTemplateWalkthrough, generateTemplateWalkthroughSteps } from './useTemplateWalkthrough';
+export type { TemplateWalkthroughStep } from './useTemplateWalkthrough';
 export { useTheme, useThemeTokens } from './useTheme';
 export { useThoughtBubbles } from './useThoughtBubbles';
 export { useUndoRedo, useUndoRedoStore, MAX_HISTORY_SIZE } from './useUndoRedo';
