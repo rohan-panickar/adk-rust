@@ -2,7 +2,6 @@ import { useLayout } from '../../hooks/useLayout';
 import { useViewport } from '@xyflow/react';
 
 interface CanvasToolbarProps {
-  onAutoLayout: () => void;
   onFitView: () => void;
   /** v2.0: Data flow overlay toggle */
   showDataFlowOverlay?: boolean;
@@ -17,7 +16,6 @@ interface CanvasToolbarProps {
 }
 
 export function CanvasToolbar({ 
-  onAutoLayout, 
   onFitView, 
   showDataFlowOverlay, 
   onToggleDataFlowOverlay,
@@ -28,9 +26,7 @@ export function CanvasToolbar({
   onToggleMinimap,
 }: CanvasToolbarProps) {
   const { 
-    layoutMode, 
     layoutDirection, 
-    toggleMode, 
     toggleDirection,
     snapToGrid,
     setSnapToGrid,
@@ -41,7 +37,6 @@ export function CanvasToolbar({
   const zoomPercent = Math.round(viewport.zoom * 100);
   
   const isHorizontal = layoutDirection === 'LR';
-  const isFixedMode = layoutMode === 'fixed';
   
   // Use CSS variables for theme-aware styling
   const buttonStyle: React.CSSProperties = {
@@ -61,23 +56,12 @@ export function CanvasToolbar({
   
   return (
     <div className="absolute top-2 left-2 z-10 flex gap-2">
-      {/* Layout Mode Toggle */}
-      <button
-        onClick={toggleMode}
-        className="px-3 py-1.5 border rounded text-sm flex items-center gap-2 hover:opacity-80 transition-opacity"
-        style={isFixedMode ? activeButtonStyle : buttonStyle}
-        title={`Layout Mode: ${isFixedMode ? 'Fixed (auto-arranged)' : 'Free (manual positioning)'}\nClick to switch to ${isFixedMode ? 'Free' : 'Fixed'} mode`}
-      >
-        <span>{isFixedMode ? '📐' : '✋'}</span>
-        {isFixedMode ? 'Fixed' : 'Free'}
-      </button>
-      
-      {/* Layout Direction Toggle */}
+      {/* Layout Direction Toggle - applies auto-layout */}
       <button
         onClick={toggleDirection}
         className="px-3 py-1.5 border rounded text-sm flex items-center gap-2 hover:opacity-80 transition-opacity"
         style={buttonStyle}
-        title={`Layout Direction: ${isHorizontal ? 'Horizontal (Left to Right)' : 'Vertical (Top to Bottom)'}\nClick to switch to ${isHorizontal ? 'Vertical' : 'Horizontal'} layout`}
+        title={`Layout: ${isHorizontal ? 'Horizontal (Left to Right)' : 'Vertical (Top to Bottom)'}\nClick to switch and auto-arrange nodes`}
       >
         <span>{isHorizontal ? '↔' : '↕'}</span>
         {isHorizontal ? 'LR' : 'TB'}
@@ -108,16 +92,6 @@ export function CanvasToolbar({
           ))}
         </select>
       )}
-      
-      {/* Auto Layout Button */}
-      <button
-        onClick={onAutoLayout}
-        className="px-3 py-1.5 border rounded text-sm flex items-center gap-2 hover:opacity-80 transition-opacity"
-        style={buttonStyle}
-        title="Apply auto-layout to arrange nodes (Ctrl+L)"
-      >
-        <span>⊞</span> Layout
-      </button>
       
       {/* Data Flow Overlay Toggle (v2.0) */}
       {/* @see Requirements 3.4: Toggle to show/hide data flow overlays */}

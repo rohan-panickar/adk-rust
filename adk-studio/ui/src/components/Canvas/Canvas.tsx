@@ -242,7 +242,7 @@ export function Canvas() {
     executionPath: executionPath.path,
     isExecuting: executionPath.isExecuting,
   });
-  const { applyLayout, toggleLayout, fitToView, zoomIn, zoomOut } = useLayout();
+  const { applyLayout, fitToView, zoomIn, zoomOut } = useLayout();
   const { createAgent, duplicateAgent, removeAgent } = useAgentActions();
   
   // v2.0: Undo/Redo MVP
@@ -375,7 +375,7 @@ export function Canvas() {
     onDuplicateNode: duplicateAgent,
     onSelectNode: selectNode,
     onSelectTool: selectTool,
-    onAutoLayout: toggleLayout,
+    onAutoLayout: applyLayout,
     onFitView: fitToView,
     onZoomIn: zoomIn,
     onZoomOut: zoomOut,
@@ -627,7 +627,6 @@ export function Canvas() {
             )}
           </ReactFlow>
           <CanvasToolbar 
-            onAutoLayout={toggleLayout} 
             onFitView={fitToView}
             showDataFlowOverlay={showDataFlowOverlay}
             onToggleDataFlowOverlay={handleToggleDataFlowOverlay}
