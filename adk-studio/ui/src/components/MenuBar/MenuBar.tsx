@@ -2,18 +2,26 @@ import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../../store';
 import { TEMPLATES, Template } from './templates';
 import { useTheme } from '../../hooks/useTheme';
+import { useWalkthrough } from '../../hooks/useWalkthrough';
+import { KEYBOARD_SHORTCUTS } from '../../hooks/useKeyboardShortcuts';
+import { TemplateGallery } from '../Templates';
+import type { Template as NewTemplate } from '../Templates/templates';
 
 interface MenuBarProps {
   onExportCode: () => void;
   onNewProject: () => void;
   onTemplateApplied?: () => void;
+  /** Callback when Run is requested after template load */
+  onRunTemplate?: () => void;
 }
 
-export function MenuBar({ onExportCode, onNewProject, onTemplateApplied }: MenuBarProps) {
+export function MenuBar({ onExportCode, onNewProject, onTemplateApplied, onRunTemplate }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { currentProject, addAgent, removeAgent, addEdge, removeEdge } = useStore();
   const { mode } = useTheme();
+  const { completed: walkthroughCompleted, show: showWalkthrough, reset: resetWalkthrough } = useWalkthrough();
   const isLight = mode === 'light';
 
   useEffect(() => {
@@ -48,6 +56,49 @@ export function MenuBar({ onExportCode, onNewProject, onTemplateApplied }: MenuB
     }
 
     setOpenMenu(null);
+  };
+
+  /**
+   * Apply template from the new TemplateGallery component
+   * Supports both old and new template formats
+   */
+  const applyNewTemplate = (template: NewTemplate) => {
+    if (!currentProject) return;
+
+    // Clear existing edges
+    (currentProject.workflow?.edges || []).forEach(e => removeEdge(e.from, e.to));
+
+    // Clear existing agents
+    Object.keys(currentProject.agents).forEach(id => removeAgent(id));
+
+    // Add all agents from template
+    Object.entries(template.agents).forEach(([id, agent]) => {
+      addAgent(id, agent);
+    });
+
+    // Add edges from template
+    template.edges.forEach(e => addEdge(e.from, e.to));
+
+    // Close gallery and apply layout
+    setShowTemplateGallery(false);
+    
+    if (onTemplateApplied) {
+      onTemplateApplied();
+    }
+  };
+
+  /**
+   * Apply template and immediately run it
+   * Requirements: 6.8
+   */
+  const applyAndRunTemplate = (template: NewTemplate) => {
+    applyNewTemplate(template);
+    
+    // Trigger run after template is applied
+    if (onRunTemplate) {
+      // Small delay to ensure template is fully loaded
+      setTimeout(() => onRunTemplate(), 200);
+    }
   };
 
   const menuButtonClass = isLight
@@ -106,8 +157,12 @@ export function MenuBar({ onExportCode, onNewProject, onTemplateApplied }: MenuB
       </Menu>
 
       <Menu name="Templates">
-        <div className="px-3 py-1 text-xs" style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border-default)' }}>Add to current project</div>
-        {TEMPLATES.map(t => (
+        <MenuItem onClick={() => { setShowTemplateGallery(true); setOpenMenu(null); }} disabled={!currentProject}>
+          🖼️ Browse Gallery...
+        </MenuItem>
+        <Divider />
+        <div className="px-3 py-1 text-xs" style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border-default)' }}>Quick templates</div>
+        {TEMPLATES.slice(0, 5).map(t => (
           <MenuItem key={t.id} onClick={() => applyTemplate(t)} disabled={!currentProject}>
             {t.icon} {t.name}
           </MenuItem>
@@ -117,14 +172,35 @@ export function MenuBar({ onExportCode, onNewProject, onTemplateApplied }: MenuB
       <Menu name="Help">
         <MenuItem onClick={() => window.open('https://github.com/zavora-ai/adk-rust', '_blank')}>📚 Documentation</MenuItem>
         <Divider />
+        <MenuItem onClick={() => { showWalkthrough(); setOpenMenu(null); }}>
+          🎓 {walkthroughCompleted ? 'Restart Tutorial' : 'Start Tutorial'}
+        </MenuItem>
+        {walkthroughCompleted && (
+          <MenuItem onClick={() => { resetWalkthrough(); setOpenMenu(null); }}>
+            🔄 Reset Tutorial Progress
+          </MenuItem>
+        )}
+        <Divider />
+        {/* Keyboard Shortcuts Reference - Requirement 11.9 */}
         <div className="px-3 py-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
-          <div className="font-semibold mb-1">Keyboard Shortcuts</div>
-          <div>Drag agents from left panel</div>
-          <div>Click agent to edit properties</div>
-          <div>Drag tools onto agents</div>
+          <div className="font-semibold mb-2">⌨️ Keyboard Shortcuts</div>
+          {/* Group shortcuts by category */}
+          {['Edit', 'Canvas'].map(category => (
+            <div key={category} className="mb-2">
+              <div className="font-medium mb-1" style={{ color: 'var(--text-muted)' }}>{category}</div>
+              {KEYBOARD_SHORTCUTS.filter(s => s.category === category).map(shortcut => (
+                <div key={shortcut.key} className="flex justify-between gap-4 py-0.5">
+                  <span style={{ color: 'var(--text-muted)' }}>{shortcut.description}</span>
+                  <span className="font-mono text-xs px-1 rounded" style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
+                    {shortcut.key}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
         <Divider />
-        <div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>ADK Studio v0.1.0</div>
+        <div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>ADK Studio v2.0.0</div>
       </Menu>
 
       <div className="flex-1" />
@@ -133,6 +209,16 @@ export function MenuBar({ onExportCode, onNewProject, onTemplateApplied }: MenuB
         <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Project: <span style={{ color: 'var(--text-primary)' }}>{currentProject.name}</span>
         </span>
+      )}
+
+      {/* Template Gallery Modal */}
+      {showTemplateGallery && (
+        <TemplateGallery
+          isModal
+          onSelect={applyNewTemplate}
+          onRun={applyAndRunTemplate}
+          onClose={() => setShowTemplateGallery(false)}
+        />
       )}
     </div>
   );

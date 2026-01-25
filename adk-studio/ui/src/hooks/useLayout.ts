@@ -10,9 +10,12 @@ import { useStore } from '../store';
  * 
  * In free mode: Nodes can be placed anywhere, manual positioning
  * In fixed mode: Nodes are auto-arranged using Dagre layout
+ * 
+ * @see Requirements 2.1-2.10: Canvas Layout Modes
+ * @see Requirements 8.5, 8.7, 8.10: Canvas Controls (fit-to-view, zoom)
  */
 export function useLayout() {
-  const { getNodes, getEdges, setNodes, fitView } = useReactFlow();
+  const { getNodes, getEdges, setNodes, fitView, zoomIn, zoomOut, getZoom } = useReactFlow();
   
   // Layout state from store
   const layoutMode = useStore(s => s.layoutMode);
@@ -84,9 +87,21 @@ export function useLayout() {
     doLayout(layoutDirection);
   }, [doLayout, layoutDirection]);
 
-  // Fit all nodes in view
+  /**
+   * Fit all nodes in view
+   * @see Requirements 8.5, 8.10: Fit-to-view functionality
+   * 
+   * Ensures all nodes are visible within the viewport with appropriate padding.
+   * Uses maxZoom to prevent over-zooming on small graphs.
+   */
   const fitToView = useCallback(() => {
-    fitView({ padding: getPadding(), duration: 300, maxZoom: 0.9 });
+    fitView({ 
+      padding: getPadding(), 
+      duration: 300, 
+      maxZoom: 0.9,
+      // Ensure all nodes are included
+      includeHiddenNodes: false,
+    });
   }, [fitView, getPadding]);
 
   // Snap position to grid
@@ -97,6 +112,29 @@ export function useLayout() {
       y: Math.round(y / gridSize) * gridSize,
     };
   }, [snapToGrid, gridSize]);
+
+  /**
+   * Zoom in by a step
+   * @see Requirements 8.7, 11.8: Keyboard shortcuts for zoom
+   */
+  const handleZoomIn = useCallback(() => {
+    zoomIn({ duration: 200 });
+  }, [zoomIn]);
+
+  /**
+   * Zoom out by a step
+   * @see Requirements 8.7, 11.8: Keyboard shortcuts for zoom
+   */
+  const handleZoomOut = useCallback(() => {
+    zoomOut({ duration: 200 });
+  }, [zoomOut]);
+
+  /**
+   * Get current zoom level
+   */
+  const getCurrentZoom = useCallback(() => {
+    return getZoom();
+  }, [getZoom]);
 
   return {
     // State
@@ -122,5 +160,11 @@ export function useLayout() {
     // Layout actions
     applyLayout,
     fitToView,
+    
+    // Zoom actions (v2.0)
+    // @see Requirements 8.7, 11.8
+    zoomIn: handleZoomIn,
+    zoomOut: handleZoomOut,
+    getZoom: getCurrentZoom,
   };
 }

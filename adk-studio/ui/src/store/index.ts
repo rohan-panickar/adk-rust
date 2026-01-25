@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Project, ProjectMeta, AgentSchema, ToolConfig } from '../types/project';
+import type { Project, ProjectMeta, AgentSchema, ToolConfig, Edge } from '../types/project';
 import type { LayoutDirection, LayoutMode } from '../types/layout';
 import { api } from '../api/client';
 
@@ -38,6 +38,7 @@ interface StudioState {
   removeAgent: (id: string) => void;
   addEdge: (from: string, to: string) => void;
   removeEdge: (from: string, to: string) => void;
+  setEdges: (edges: Edge[]) => void;
   addToolToAgent: (agentId: string, toolType: string) => void;
   removeToolFromAgent: (agentId: string, toolType: string) => void;
   addSubAgentToContainer: (containerId: string) => void;
@@ -263,6 +264,22 @@ export const useStore = create<StudioState>((set, get) => ({
           workflow: {
             ...s.currentProject.workflow,
             edges: s.currentProject.workflow.edges.filter((e) => !(e.from === from && e.to === to)),
+          },
+        },
+      };
+    });
+    setTimeout(() => get().saveProject(), 0);
+  },
+
+  setEdges: (edges) => {
+    set((s) => {
+      if (!s.currentProject) return s;
+      return {
+        currentProject: {
+          ...s.currentProject,
+          workflow: {
+            ...s.currentProject.workflow,
+            edges,
           },
         },
       };

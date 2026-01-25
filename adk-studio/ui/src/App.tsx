@@ -4,13 +4,30 @@ import { useStore } from './store';
 import { ProjectList } from './components/Projects/ProjectList';
 import { Canvas } from './components/Canvas/Canvas';
 import { ThemeProvider, ThemeToggle } from './components/Theme';
+import { WalkthroughModal } from './components/Overlays';
+import { useWalkthrough } from './hooks/useWalkthrough';
 
 export default function App() {
   const { currentProject, fetchProjects } = useStore();
+  const { 
+    isVisible: showWalkthrough, 
+    complete: completeWalkthrough, 
+    skip: skipWalkthrough, 
+    hide: hideWalkthrough,
+    shouldShowOnFirstRun,
+    show: openWalkthrough,
+  } = useWalkthrough();
 
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
+
+  // Show walkthrough on first run
+  useEffect(() => {
+    if (shouldShowOnFirstRun()) {
+      openWalkthrough();
+    }
+  }, [shouldShowOnFirstRun, openWalkthrough]);
 
   return (
     <ThemeProvider>
@@ -42,6 +59,15 @@ export default function App() {
             <ProjectList />
           )}
         </main>
+        
+        {/* Walkthrough Modal - shows on first run or when triggered from Help menu */}
+        {showWalkthrough && (
+          <WalkthroughModal
+            onComplete={completeWalkthrough}
+            onSkip={skipWalkthrough}
+            onClose={hideWalkthrough}
+          />
+        )}
       </div>
     </ThemeProvider>
   );

@@ -19,7 +19,8 @@ import { useCanvasState } from '../../hooks/useCanvasState';
 import { useBuild } from '../../hooks/useBuild';
 import { useTheme } from '../../hooks/useTheme';
 import { useExecutionPath } from '../../hooks/useExecutionPath';
-import type { FunctionToolConfig, AgentSchema, ToolConfig } from '../../types/project';
+import { useUndoRedo, useUndoRedoStore } from '../../hooks/useUndoRedo';
+import type { FunctionToolConfig, AgentSchema, ToolConfig, Edge as ProjectEdge } from '../../types/project';
 import { TEMPLATES } from '../MenuBar/templates';
 
 type FlowPhase = 'idle' | 'input' | 'output';
@@ -52,7 +53,7 @@ export function Canvas() {
   } = useStore();
 
   // Canvas UI state
-  const { showConsole, toggleConsole, showMinimap } = useCanvasState();
+  const { showConsole, toggleConsole, showMinimap, toggleMinimap } = useCanvasState();
   
   // Build state
   const { 
@@ -215,8 +216,102 @@ export function Canvas() {
     executionPath: executionPath.path,
     isExecuting: executionPath.isExecuting,
   });
-  const { applyLayout, toggleLayout, fitToView } = useLayout();
+  const { applyLayout, toggleLayout, fitToView, zoomIn, zoomOut } = useLayout();
   const { createAgent, duplicateAgent, removeAgent } = useAgentActions();
+  
+  // v2.0: Undo/Redo MVP
+  // @see Requirements 11.5, 11.6: Undo/Redo support
+  const { clearHistory: clearUndoHistory } = useUndoRedoStore();
+  
+  // Helper to get edges connected to a node
+  const getEdgesForNode = useCallback((nodeId: string) => {
+    if (!currentProject) return [];
+    return currentProject.workflow.edges.filter(
+      (e) => e.from === nodeId || e.to === nodeId
+    );
+  }, [currentProject]);
+  
+  // Helper to get all edges
+  const getAllEdges = useCallback(() => {
+    return currentProject?.workflow.edges || [];
+  }, [currentProject]);
+  
+  // Helper to get agent by ID
+  const getAgent = useCallback((nodeId: string) => {
+    return currentProject?.agents[nodeId];
+  }, [currentProject]);
+  
+  // Helper to set all edges (for undo/redo)
+  const setEdges = useCallback((edges: ProjectEdge[]) => {
+    useStore.getState().setEdges(edges);
+  }, []);
+  
+  // Undo/Redo hook with handlers
+  const undoRedo = useUndoRedo({
+    onAddNode: (nodeId, agent) => {
+      addAgent(nodeId, agent);
+    },
+    onRemoveNode: (nodeId) => {
+      // Use store's removeAgent directly to avoid recording again
+      useStore.getState().removeAgent(nodeId);
+    },
+    onAddEdge: addProjectEdge,
+    onRemoveEdge: removeProjectEdge,
+    onSetEdges: setEdges,
+    getAgent,
+    getEdgesForNode,
+    getAllEdges,
+  });
+  
+  // Wrapped createAgent that records for undo
+  const createAgentWithUndo = useCallback((agentType?: string) => {
+    // Capture the complete edge state BEFORE creating the agent
+    const edgesBefore = [...(currentProject?.workflow.edges || [])];
+    
+    // Create the agent
+    createAgent(agentType);
+    
+    // After creation, find the new agent and record it
+    // We need to defer this to get the updated state
+    setTimeout(() => {
+      const state = useStore.getState();
+      const project = state.currentProject;
+      if (!project) return;
+      
+      // Find the newly added edges (edges that exist now but didn't before)
+      const newEdges = project.workflow.edges.filter(
+        (e) => !edgesBefore.some((eb) => eb.from === e.from && eb.to === e.to)
+      );
+      
+      // The new agent is the source of edges to END or target of edges from START
+      const newAgentId = newEdges.find((e) => e.to === 'END')?.from;
+      if (newAgentId && project.agents[newAgentId]) {
+        // Record with both the new edges AND the complete previous edge state
+        undoRedo.recordAddNode(newAgentId, project.agents[newAgentId], newEdges, edgesBefore);
+      }
+    }, 0);
+  }, [createAgent, currentProject, undoRedo]);
+  
+  // Wrapped removeAgent that records for undo
+  const removeAgentWithUndo = useCallback((nodeId: string) => {
+    if (nodeId === 'START' || nodeId === 'END') return;
+    
+    // Capture the complete edge state BEFORE removing
+    const edgesBefore = [...(currentProject?.workflow.edges || [])];
+    
+    // Record before removing (with complete edge state)
+    undoRedo.recordDeleteNode(nodeId, edgesBefore);
+    
+    // Then remove
+    removeAgent(nodeId);
+  }, [removeAgent, undoRedo, currentProject]);
+  
+  // Clear undo history when project changes
+  const prevProjectIdRef = useRef<string | null>(null);
+  if (currentProject?.id !== prevProjectIdRef.current) {
+    prevProjectIdRef.current = currentProject?.id || null;
+    clearUndoHistory();
+  }
 
   // Thought bubble handler
   const handleThought = useCallback((agent: string, thought: string | null) => {
@@ -245,16 +340,23 @@ export function Canvas() {
   }, [storeUpdateToolConfig, invalidateBuild, debouncedSave]);
 
   // Keyboard shortcuts
+  // @see Requirements 11.1-11.10: Keyboard Shortcuts
   useKeyboardShortcuts({
     selectedNodeId, 
     selectedToolId,
-    onDeleteNode: removeAgent,
+    onDeleteNode: removeAgentWithUndo,
     onDeleteTool: removeToolFromAgent,
     onDuplicateNode: duplicateAgent,
     onSelectNode: selectNode,
     onSelectTool: selectTool,
     onAutoLayout: toggleLayout,
     onFitView: fitToView,
+    onZoomIn: zoomIn,
+    onZoomOut: zoomOut,
+    // v2.0: Undo/Redo MVP (Task 24)
+    // @see Requirements 11.5, 11.6
+    onUndo: undoRedo.undo,
+    onRedo: undoRedo.redo,
   });
 
   // Drag and drop handlers
@@ -277,16 +379,16 @@ export function Canvas() {
     }
     const type = e.dataTransfer.getData('application/reactflow');
     if (type) {
-      createAgent(type);
+      createAgentWithUndo(type);
       // Apply layout after adding node (only in fixed mode or always for initial setup)
       setTimeout(() => applyLayout(), 100);
     }
-  }, [createAgent, selectedNodeId, currentProject, addToolToAgent, applyLayout]);
+  }, [createAgentWithUndo, selectedNodeId, currentProject, addToolToAgent, applyLayout]);
 
   // Connection handlers
   const onConnect = useCallback((p: Connection) => p.source && p.target && addProjectEdge(p.source, p.target), [addProjectEdge]);
   const onEdgesDelete = useCallback((eds: Edge[]) => eds.forEach(e => removeProjectEdge(e.source, e.target)), [removeProjectEdge]);
-  const onNodesDelete = useCallback((nds: Node[]) => nds.forEach(n => n.id !== 'START' && n.id !== 'END' && removeAgent(n.id)), [removeAgent]);
+  const onNodesDelete = useCallback((nds: Node[]) => nds.forEach(n => n.id !== 'START' && n.id !== 'END' && removeAgentWithUndo(n.id)), [removeAgentWithUndo]);
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, e: Edge) => removeProjectEdge(e.source, e.target), [removeProjectEdge]);
   const onNodeClick = useCallback((_: React.MouseEvent, n: Node) => selectNode(n.id !== 'START' && n.id !== 'END' ? n.id : null), [selectNode]);
   const onPaneClick = useCallback(() => selectNode(null), [selectNode]);
@@ -324,7 +426,14 @@ export function Canvas() {
       <MenuBar 
         onExportCode={() => setShowCodeEditor(true)} 
         onNewProject={() => setShowNewProjectModal(true)} 
-        onTemplateApplied={() => setTimeout(() => applyLayout(), 100)} 
+        onTemplateApplied={() => setTimeout(() => applyLayout(), 100)}
+        onRunTemplate={() => {
+          // Show console and trigger build if needed
+          if (!showConsole) toggleConsole();
+          if (!builtBinaryPath) {
+            handleBuild();
+          }
+        }}
       />
       
       <div className="flex flex-1 overflow-hidden">
@@ -431,6 +540,18 @@ export function Canvas() {
             onFitView={fitToView}
             showDataFlowOverlay={showDataFlowOverlay}
             onToggleDataFlowOverlay={handleToggleDataFlowOverlay}
+            showMinimap={showMinimap}
+            onToggleMinimap={toggleMinimap}
+            isRunning={flowPhase !== 'idle'}
+            onRun={() => {
+              // Show console and trigger build if needed
+              if (!showConsole) toggleConsole();
+              // Focus on the chat input to prompt user to send a message
+            }}
+            onStop={() => {
+              // Stop is handled by TestConsole's cancel function
+              // This is a visual indicator - actual stop is in console
+            }}
           />
         </div>
 

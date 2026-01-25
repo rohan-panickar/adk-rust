@@ -7,9 +7,26 @@ interface CanvasToolbarProps {
   /** v2.0: Data flow overlay toggle */
   showDataFlowOverlay?: boolean;
   onToggleDataFlowOverlay?: () => void;
+  /** v2.0: Run/Stop execution controls (Requirements 10.8, 10.9) */
+  isRunning?: boolean;
+  onRun?: () => void;
+  onStop?: () => void;
+  /** v2.0: Minimap toggle (Requirements 8.1, 8.2) */
+  showMinimap?: boolean;
+  onToggleMinimap?: () => void;
 }
 
-export function CanvasToolbar({ onAutoLayout, onFitView, showDataFlowOverlay, onToggleDataFlowOverlay }: CanvasToolbarProps) {
+export function CanvasToolbar({ 
+  onAutoLayout, 
+  onFitView, 
+  showDataFlowOverlay, 
+  onToggleDataFlowOverlay,
+  isRunning,
+  onRun,
+  onStop,
+  showMinimap,
+  onToggleMinimap,
+}: CanvasToolbarProps) {
   const { 
     layoutMode, 
     layoutDirection, 
@@ -126,15 +143,63 @@ export function CanvasToolbar({ onAutoLayout, onFitView, showDataFlowOverlay, on
         <span>⊡</span> Fit
       </button>
       
+      {/* Minimap Toggle (v2.0) */}
+      {/* @see Requirements 8.1, 8.2: Configurable minimap, toggleable via toolbar */}
+      {onToggleMinimap && (
+        <button
+          onClick={onToggleMinimap}
+          className="px-3 py-1.5 border rounded text-sm flex items-center gap-2 hover:opacity-80 transition-opacity"
+          style={showMinimap ? activeButtonStyle : buttonStyle}
+          title={`Minimap: ${showMinimap ? 'On' : 'Off'}\nShows overview of entire workflow`}
+        >
+          <span>🗺️</span>
+          Map
+        </button>
+      )}
+      
       {/* Zoom Level Display */}
       <div
         className="px-3 py-1.5 border rounded text-sm flex items-center gap-1 cursor-default"
         style={buttonStyle}
-        title="Current zoom level"
+        title="Current zoom level (Ctrl+Plus/Minus to zoom)"
       >
         <span>🔍</span>
         {zoomPercent}%
       </div>
+      
+      {/* Separator */}
+      <div className="w-px h-6 self-center" style={{ backgroundColor: 'var(--border-default)' }} />
+      
+      {/* Run/Stop Buttons (v2.0) */}
+      {/* @see Requirements 10.8, 10.9: Run and Stop buttons */}
+      {onRun && !isRunning && (
+        <button
+          onClick={onRun}
+          className="px-3 py-1.5 border rounded text-sm flex items-center gap-2 hover:opacity-80 transition-opacity"
+          style={{ 
+            backgroundColor: 'var(--accent-success)', 
+            borderColor: 'var(--accent-success)', 
+            color: 'white' 
+          }}
+          title="Run the workflow"
+        >
+          <span>▶️</span> Run
+        </button>
+      )}
+      {onStop && isRunning && (
+        <button
+          onClick={onStop}
+          className="px-3 py-1.5 border rounded text-sm flex items-center gap-2 hover:opacity-80 transition-opacity"
+          style={{ 
+            backgroundColor: 'var(--accent-error)', 
+            borderColor: 'var(--accent-error)', 
+            color: 'white' 
+          }}
+          title="Stop execution"
+        >
+          <span>⏹️</span> Stop
+        </button>
+      )}
     </div>
   );
 }

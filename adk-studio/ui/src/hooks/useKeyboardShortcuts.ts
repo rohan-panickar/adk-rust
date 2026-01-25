@@ -1,5 +1,9 @@
 import { useEffect } from 'react';
 
+/**
+ * Keyboard shortcuts configuration for ADK Studio
+ * @see Requirements 11.1-11.10: Keyboard Shortcuts
+ */
 interface Props {
   selectedNodeId: string | null;
   selectedToolId: string | null;
@@ -10,17 +14,76 @@ interface Props {
   onSelectTool: (id: string | null) => void;
   onAutoLayout?: () => void;
   onFitView?: () => void;
+  /** v2.0: Zoom in handler (Ctrl/Cmd + Plus) */
+  onZoomIn?: () => void;
+  /** v2.0: Zoom out handler (Ctrl/Cmd + Minus) */
+  onZoomOut?: () => void;
+  /** v2.0: Undo handler (Ctrl/Cmd + Z) - for future use */
+  onUndo?: () => void;
+  /** v2.0: Redo handler (Ctrl/Cmd + Shift + Z) - for future use */
+  onRedo?: () => void;
 }
 
-export function useKeyboardShortcuts({ selectedNodeId, selectedToolId, onDeleteNode, onDeleteTool, onDuplicateNode, onSelectNode, onSelectTool, onAutoLayout, onFitView }: Props) {
+/**
+ * Keyboard shortcuts reference for Help menu
+ * @see Requirements 11.9: Display keyboard shortcuts in Help menu
+ */
+export const KEYBOARD_SHORTCUTS = [
+  { key: 'Delete / Backspace', description: 'Delete selected node or tool', category: 'Edit' },
+  { key: 'Ctrl/Cmd + D', description: 'Duplicate selected node', category: 'Edit' },
+  { key: 'Escape', description: 'Deselect all', category: 'Edit' },
+  { key: 'Ctrl/Cmd + Z', description: 'Undo', category: 'Edit' },
+  { key: 'Ctrl/Cmd + Shift + Z', description: 'Redo', category: 'Edit' },
+  { key: 'Ctrl/Cmd + L', description: 'Apply auto-layout', category: 'Canvas' },
+  { key: 'Ctrl/Cmd + 0', description: 'Fit all nodes in view', category: 'Canvas' },
+  { key: 'Ctrl/Cmd + Plus', description: 'Zoom in', category: 'Canvas' },
+  { key: 'Ctrl/Cmd + Minus', description: 'Zoom out', category: 'Canvas' },
+] as const;
+
+/**
+ * Hook for handling keyboard shortcuts in ADK Studio
+ * @see Requirements 11.1-11.10: Keyboard Shortcuts
+ * 
+ * Implemented shortcuts:
+ * - Delete/Backspace: Delete selected node (11.1)
+ * - Ctrl+D: Duplicate selected node (11.2)
+ * - Ctrl+L: Trigger auto-layout (11.3)
+ * - Ctrl+0: Fit-to-view (11.4)
+ * - Ctrl+Z: Undo (11.5) - placeholder for Task 24
+ * - Ctrl+Shift+Z: Redo (11.6) - placeholder for Task 24
+ * - Escape: Deselect all nodes (11.7)
+ * - Ctrl+Plus/Minus: Zoom in/out (11.8)
+ * - Ignores shortcuts when in input fields (11.10)
+ */
+export function useKeyboardShortcuts({ 
+  selectedNodeId, 
+  selectedToolId, 
+  onDeleteNode, 
+  onDeleteTool, 
+  onDuplicateNode, 
+  onSelectNode, 
+  onSelectTool, 
+  onAutoLayout, 
+  onFitView,
+  onZoomIn,
+  onZoomOut,
+  onUndo,
+  onRedo,
+}: Props) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement;
-      if (active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA') return;
+      
+      // Requirement 11.10: Ignore shortcuts when typing in input fields
+      if (active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA' || 
+          (active as HTMLElement)?.isContentEditable) {
+        return;
+      }
 
       const isMod = e.metaKey || e.ctrlKey;
+      const isShift = e.shiftKey;
 
-      // Delete: remove selected tool or node
+      // Requirement 11.1: Delete/Backspace - remove selected tool or node
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedToolId && selectedNodeId) {
           const parts = selectedToolId.split('_');
@@ -34,7 +97,7 @@ export function useKeyboardShortcuts({ selectedNodeId, selectedToolId, onDeleteN
         return;
       }
 
-      // Ctrl+D: Duplicate
+      // Requirement 11.2: Ctrl+D - Duplicate selected node
       if (isMod && e.key === 'd' && selectedNodeId && onDuplicateNode) {
         e.preventDefault();
         const newId = onDuplicateNode(selectedNodeId);
@@ -42,28 +105,72 @@ export function useKeyboardShortcuts({ selectedNodeId, selectedToolId, onDeleteN
         return;
       }
 
-      // Ctrl+L: Auto layout
+      // Requirement 11.3: Ctrl+L - Auto layout
       if (isMod && e.key === 'l' && onAutoLayout) {
         e.preventDefault();
         onAutoLayout();
         return;
       }
 
-      // Ctrl+0: Fit view
+      // Requirement 11.4: Ctrl+0 - Fit view
       if (isMod && e.key === '0' && onFitView) {
         e.preventDefault();
         onFitView();
         return;
       }
 
-      // Escape: Deselect
+      // Requirement 11.5: Ctrl+Z - Undo (placeholder for Task 24)
+      if (isMod && !isShift && e.key === 'z' && onUndo) {
+        e.preventDefault();
+        onUndo();
+        return;
+      }
+
+      // Requirement 11.6: Ctrl+Shift+Z - Redo (placeholder for Task 24)
+      if (isMod && isShift && (e.key === 'z' || e.key === 'Z') && onRedo) {
+        e.preventDefault();
+        onRedo();
+        return;
+      }
+
+      // Requirement 11.7: Escape - Deselect all
       if (e.key === 'Escape') {
         onSelectNode(null);
         onSelectTool(null);
+        return;
+      }
+
+      // Requirement 11.8: Ctrl+Plus - Zoom in
+      // Note: '+' key is '=' on most keyboards, and numpad '+' is 'NumpadAdd'
+      if (isMod && (e.key === '+' || e.key === '=' || e.key === 'NumpadAdd') && onZoomIn) {
+        e.preventDefault();
+        onZoomIn();
+        return;
+      }
+
+      // Requirement 11.8: Ctrl+Minus - Zoom out
+      if (isMod && (e.key === '-' || e.key === 'NumpadSubtract') && onZoomOut) {
+        e.preventDefault();
+        onZoomOut();
+        return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodeId, selectedToolId, onDeleteNode, onDeleteTool, onDuplicateNode, onSelectNode, onSelectTool, onAutoLayout, onFitView]);
+  }, [
+    selectedNodeId, 
+    selectedToolId, 
+    onDeleteNode, 
+    onDeleteTool, 
+    onDuplicateNode, 
+    onSelectNode, 
+    onSelectTool, 
+    onAutoLayout, 
+    onFitView,
+    onZoomIn,
+    onZoomOut,
+    onUndo,
+    onRedo,
+  ]);
 }
