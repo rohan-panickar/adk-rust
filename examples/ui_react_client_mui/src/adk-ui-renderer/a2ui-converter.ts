@@ -45,10 +45,14 @@ export function convertA2UIComponent(a2ui: A2UIComponent): Component | null {
       };
 
     case 'Button':
+      // A2UI buttons use 'child' to reference a Text component for the label
+      // We need to resolve this in the App.tsx, but for now extract what we can
+      const buttonLabel = props.label || props.text || props.child || 'Button';
       return {
         type: 'button',
         id,
-        label: extractText(props.label || props.text),
+        label: typeof buttonLabel === 'string' ? buttonLabel : extractText(buttonLabel),
+        child_id: props.child, // Keep reference for resolution
         action_id: props.actionId || props.action?.event?.name || id,
         variant: props.variant as any,
         disabled: props.disabled,

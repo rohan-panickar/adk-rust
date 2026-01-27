@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
     let mut builder = LlmAgentBuilder::new("ui_working_support")
         .description("Support intake agent with working UI flows")
         .instruction(&format!("{}\n\n{}", A2UI_AGENT_PROMPT, INSTRUCTION))
-        .model(Arc::new(GeminiModel::new(&api_key, "gemini-2.5-flash")?));
+        .model(Arc::new(GeminiModel::new(&api_key, "gemini-3-flash-preview")?));
 
     for tool in ui_tools {
         builder = builder.tool(tool);

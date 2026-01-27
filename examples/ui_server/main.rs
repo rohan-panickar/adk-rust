@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     let mut builder = LlmAgentBuilder::new("ui_demo")
         .description("An agent that uses A2UI v0.9 components to interact with users")
         .instruction(A2UI_AGENT_PROMPT)
-        .model(Arc::new(GeminiModel::new(&api_key, "gemini-2.5-flash")?));
+        .model(Arc::new(GeminiModel::new(&api_key, "gemini-3-flash-preview")?));
 
     // Add each tool individually
     for tool in ui_tools {

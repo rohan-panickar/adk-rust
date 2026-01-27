@@ -192,8 +192,9 @@ const ComponentRenderer: React.FC<{ component: Component }> = ({ component }) =>
                 'flex-col': component.direction === 'vertical',
                 'flex-row': component.direction === 'horizontal',
             });
+            const gapValue = typeof component.gap === 'number' ? component.gap * 4 : 16;
             return (
-                <div className={stackClasses} style={{ gap: (component.gap || 4) * 4 }}>
+                <div className={stackClasses} style={{ gap: gapValue }}>
                     {component.children.map((child, i) => <ComponentRenderer key={i} component={child} />)}
                 </div>
             );

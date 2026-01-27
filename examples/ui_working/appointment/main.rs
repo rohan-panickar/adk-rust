@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
         .instruction(&format!("{}
 
 {}", A2UI_AGENT_PROMPT, INSTRUCTION))
-        .model(Arc::new(GeminiModel::new(&api_key, "gemini-2.5-flash")?));
+        .model(Arc::new(GeminiModel::new(&api_key, "gemini-3-flash-preview")?));
 
     for tool in ui_tools {
         builder = builder.tool(tool);
