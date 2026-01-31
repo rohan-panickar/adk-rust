@@ -294,8 +294,13 @@ export function TriggerPanel({ node, onChange }: TriggerPanelProps) {
           >
             <textarea
               className="trigger-panel-textarea"
-              value={node.manual?.defaultPrompt || DEFAULT_MANUAL_TRIGGER_CONFIG.defaultPrompt}
+              value={node.manual?.defaultPrompt ?? DEFAULT_MANUAL_TRIGGER_CONFIG.defaultPrompt}
               onChange={(e) => updateManual({ defaultPrompt: e.target.value })}
+              onFocus={(e) => {
+                if (e.target.value === DEFAULT_MANUAL_TRIGGER_CONFIG.defaultPrompt) {
+                  updateManual({ defaultPrompt: '' });
+                }
+              }}
               placeholder="Placeholder text for input field"
               rows={3}
             />
