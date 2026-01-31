@@ -13,6 +13,9 @@ interface CanvasToolbarProps {
   /** v2.0: Minimap toggle (Requirements 8.1, 8.2) */
   showMinimap?: boolean;
   onToggleMinimap?: () => void;
+  /** Build state - Run is disabled when not built or during build */
+  isBuilt?: boolean;
+  isBuilding?: boolean;
 }
 
 export function CanvasToolbar({ 
@@ -24,6 +27,8 @@ export function CanvasToolbar({
   onStop,
   showMinimap,
   onToggleMinimap,
+  isBuilt,
+  isBuilding,
 }: CanvasToolbarProps) {
   const { 
     layoutDirection, 
@@ -146,18 +151,24 @@ export function CanvasToolbar({
       
       {/* Run/Stop Buttons (v2.0) */}
       {/* @see Requirements 10.8, 10.9: Run and Stop buttons */}
+      {/* Run is disabled when not built or during build */}
       {onRun && !isRunning && (
         <button
           onClick={onRun}
-          className="px-3 py-1.5 border rounded text-sm flex items-center gap-2 hover:opacity-80 transition-opacity"
+          disabled={!isBuilt || isBuilding}
+          className={`px-3 py-1.5 border rounded text-sm flex items-center gap-2 transition-opacity ${
+            !isBuilt || isBuilding 
+              ? 'opacity-50 cursor-not-allowed' 
+              : 'hover:opacity-80'
+          }`}
           style={{ 
-            backgroundColor: 'var(--accent-success)', 
-            borderColor: 'var(--accent-success)', 
-            color: 'white' 
+            backgroundColor: !isBuilt || isBuilding ? 'var(--bg-secondary)' : 'var(--accent-success)', 
+            borderColor: !isBuilt || isBuilding ? 'var(--border-default)' : 'var(--accent-success)', 
+            color: !isBuilt || isBuilding ? 'var(--text-muted)' : 'white' 
           }}
-          title="Run the workflow"
+          title={isBuilding ? 'Building...' : !isBuilt ? 'Build the project first' : 'Run the workflow'}
         >
-          <span>▶️</span> Run
+          <span>{isBuilding ? '⏳' : '▶️'}</span> {isBuilding ? 'Building...' : 'Run'}
         </button>
       )}
       {onStop && isRunning && (

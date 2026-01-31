@@ -939,6 +939,8 @@ export function Canvas() {
             showMinimap={showMinimap}
             onToggleMinimap={toggleMinimap}
             isRunning={flowPhase !== 'idle'}
+            isBuilt={!!builtBinaryPath}
+            isBuilding={building}
             onRun={() => {
               // Show console and trigger build if needed
               if (!showConsole) toggleConsole();
