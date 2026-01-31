@@ -575,7 +575,7 @@ describe('Trigger Input Flow Properties', () => {
   describe('Default Values', () => {
     it('should have sensible default manual trigger config', () => {
       expect(DEFAULT_MANUAL_TRIGGER_CONFIG.inputLabel).toBe('Enter your message');
-      expect(DEFAULT_MANUAL_TRIGGER_CONFIG.defaultPrompt).toBe('Type a message to start...');
+      expect(DEFAULT_MANUAL_TRIGGER_CONFIG.defaultPrompt).toBe('What can you help me build with ADK-Rust today?');
     });
 
     it('should return null for project without manual trigger', () => {

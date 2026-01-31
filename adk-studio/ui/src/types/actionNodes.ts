@@ -38,7 +38,7 @@ export interface ManualTriggerConfig {
  */
 export const DEFAULT_MANUAL_TRIGGER_CONFIG: ManualTriggerConfig = {
   inputLabel: 'Enter your message',
-  defaultPrompt: 'Type a message to start...',
+  defaultPrompt: 'What can you help me build with ADK-Rust today?',
 };
 
 /**
