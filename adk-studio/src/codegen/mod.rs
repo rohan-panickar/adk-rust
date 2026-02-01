@@ -226,6 +226,30 @@ fn truncate_instruction(instruction: &str, max_len: usize) -> String {
     }
 }
 
+/// Strip {{var}} template variables from instruction text
+/// 
+/// This is needed because the agent's template system looks at session state,
+/// but Set nodes update graph state. By stripping the template variables from
+/// the instruction and injecting them via the input_mapper instead, we ensure
+/// the variables are properly resolved from graph state.
+fn strip_template_variables(instruction: &str) -> String {
+    let mut result = instruction.to_string();
+    // Find and remove all {{var}} patterns
+    while let Some(start) = result.find("{{") {
+        if let Some(end) = result[start..].find("}}") {
+            let end_pos = start + end + 2;
+            result = format!("{}{}", &result[..start], &result[end_pos..]);
+        } else {
+            break;
+        }
+    }
+    // Clean up any double spaces left behind
+    while result.contains("  ") {
+        result = result.replace("  ", " ");
+    }
+    result.trim().to_string()
+}
+
 /// Generate a simple ASCII flow diagram
 fn generate_flow_diagram(project: &ProjectSchema) -> String {
     let mut diagram = String::new();
@@ -389,34 +413,34 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
     let top_level: Vec<_> =
         project.agents.keys().filter(|id| !all_sub_agents.contains(*id)).collect();
 
-    // Find first node connected from START (could be trigger or agent)
-    let first_from_start: Option<&str> =
-        project.workflow.edges.iter().find(|e| e.from == "START").map(|e| e.to.as_str());
-    
-    // Check if first node is a trigger (action node) - if so, find the actual first agent
-    let first_agent: Option<&str> = if let Some(first) = first_from_start {
-        if project.action_nodes.contains_key(first) {
-            // First node is a trigger - find what it connects to
-            project.workflow.edges.iter()
-                .find(|e| e.from == first)
-                .map(|e| e.to.as_str())
-        } else {
-            Some(first)
+    // Build predecessor map from workflow edges
+    // This tells us what node comes before each node in the workflow
+    let mut predecessor_map: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for edge in &project.workflow.edges {
+        // Skip trigger nodes - they're entry points, not execution nodes
+        use crate::codegen::action_nodes::ActionNodeConfig;
+        let from_is_trigger = project.action_nodes.get(&edge.from)
+            .map(|n| matches!(n, ActionNodeConfig::Trigger(_)))
+            .unwrap_or(false);
+        
+        if !from_is_trigger && edge.from != "START" && edge.to != "END" {
+            predecessor_map.insert(edge.to.as_str(), edge.from.as_str());
+        } else if edge.from == "START" {
+            // START connects to first node - mark it as having no predecessor (reads from "message")
+            predecessor_map.insert(edge.to.as_str(), "START");
         }
-    } else {
-        None
-    };
+    }
 
-    // Generate all agent nodes
+    // Generate all agent nodes with their predecessors
     for agent_id in &top_level {
         if let Some(agent) = project.agents.get(*agent_id) {
-            let is_first = first_agent == Some(agent_id.as_str());
+            let predecessor = predecessor_map.get(agent_id.as_str()).copied();
             match agent.agent_type {
                 AgentType::Router => {
                     code.push_str(&generate_router_node(agent_id, agent));
                 }
                 AgentType::Llm => {
-                    code.push_str(&generate_llm_node(agent_id, agent, project, is_first));
+                    code.push_str(&generate_llm_node_v2(agent_id, agent, project, predecessor));
                 }
                 _ => {
                     // Sequential/Loop/Parallel - generate as single node wrapping container
@@ -426,42 +450,85 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
         }
     }
 
+    // Generate action node functions (Set, Transform, etc.) - excluding Trigger which is just an entry point
+    let executable_action_nodes: Vec<_> = project.action_nodes.iter()
+        .filter(|(_, node)| {
+            use crate::codegen::action_nodes::ActionNodeConfig;
+            !matches!(node, ActionNodeConfig::Trigger(_))
+        })
+        .collect();
+    
+    for (node_id, node) in &executable_action_nodes {
+        code.push_str(&generate_action_node_function(node_id, node));
+    }
+
     // Build graph
     code.push_str("    // Build the graph\n");
     code.push_str("    let graph = StateGraph::with_channels(&[\"message\", \"classification\", \"response\"])\n");
 
-    // Add all nodes
+    // Add all agent nodes
     for agent_id in &top_level {
         code.push_str(&format!("        .add_node({}_node)\n", agent_id));
     }
+    
+    // Add action nodes (Set, Transform, etc.) - excluding Trigger
+    for (node_id, _) in &executable_action_nodes {
+        code.push_str(&format!("        .add_node({}_node)\n", node_id));
+    }
 
-    // Add edges from workflow, skipping action nodes (trigger, etc.)
-    // Action nodes are entry points that don't participate in the graph execution
+    // Add edges from workflow
+    // Now we properly include action nodes in the graph execution
+    // First, find what START connects to (may be a trigger that we need to skip)
+    let start_target = project.workflow.edges.iter()
+        .find(|e| e.from == "START")
+        .map(|e| e.to.as_str());
+    
+    // Check if START connects to a trigger - if so, find what the trigger connects to
+    use crate::codegen::action_nodes::ActionNodeConfig;
+    let actual_start_target = if let Some(target) = start_target {
+        if project.action_nodes.get(target)
+            .map(|n| matches!(n, ActionNodeConfig::Trigger(_)))
+            .unwrap_or(false) 
+        {
+            // Find what the trigger connects to
+            project.workflow.edges.iter()
+                .find(|e| e.from == target)
+                .map(|e| e.to.as_str())
+        } else {
+            Some(target)
+        }
+    } else {
+        None
+    };
+    
     for edge in &project.workflow.edges {
-        // Skip edges involving action nodes - they're just entry point markers
-        let from_is_action = project.action_nodes.contains_key(&edge.from);
-        let to_is_action = project.action_nodes.contains_key(&edge.to);
+        // Skip edges from trigger nodes (they're entry points, not execution nodes)
+        let from_is_trigger = project.action_nodes.get(&edge.from)
+            .map(|n| matches!(n, ActionNodeConfig::Trigger(_)))
+            .unwrap_or(false);
         
-        // If source is an action node, skip this edge (we'll connect START directly to the target)
-        if from_is_action {
+        // Skip edges to trigger nodes (shouldn't happen)
+        let to_is_trigger = project.action_nodes.get(&edge.to)
+            .map(|n| matches!(n, ActionNodeConfig::Trigger(_)))
+            .unwrap_or(false);
+        
+        if from_is_trigger {
             continue;
         }
         
-        // If target is an action node, skip (shouldn't happen in normal workflows)
-        if to_is_action && edge.to != "END" {
+        if to_is_trigger && edge.to != "END" {
             continue;
         }
         
-        // If START connects to an action node, connect START to the action node's target instead
-        let (from, to) = if edge.from == "START" && first_from_start.map(|f| project.action_nodes.contains_key(f)).unwrap_or(false) {
-            // START -> trigger -> agent becomes START -> agent
-            if let Some(actual_first) = first_agent {
-                ("START".to_string(), format!("\"{}\"", actual_first))
+        // Handle START edge - connect to actual first node (skipping trigger if present)
+        let (from, to) = if edge.from == "START" {
+            if let Some(actual_target) = actual_start_target {
+                ("START".to_string(), format!("\"{}\"", actual_target))
             } else {
                 continue; // No valid target
             }
         } else {
-            let from = if edge.from == "START" { "START".to_string() } else { format!("\"{}\"", edge.from) };
+            let from = format!("\"{}\"", edge.from);
             let to = if edge.to == "END" { "END".to_string() } else { format!("\"{}\"", edge.to) };
             (from, to)
         };
@@ -776,7 +843,227 @@ fn generate_llm_node(
         code.push_str("                .or_else(|| state.get(\"message\").and_then(|v| v.as_str())).unwrap_or(\"\");\n");
     }
 
-    code.push_str("            adk_core::Content::new(\"user\").with_text(msg.to_string())\n");
+    // Check if instruction references state variables ({{var}}) and include them in the message
+    let var_refs: Vec<&str> = agent.instruction
+        .match_indices("{{")
+        .filter_map(|(start, _)| {
+            let rest = &agent.instruction[start + 2..];
+            rest.find("}}").map(|end| &rest[..end])
+        })
+        .collect();
+    
+    if !var_refs.is_empty() {
+        // Build a message that includes state variables
+        code.push_str("            // Include state variables referenced in instruction\n");
+        code.push_str("            let mut full_msg = msg.to_string();\n");
+        for var in &var_refs {
+            // Skip common variables that are already handled
+            if *var == "message" || *var == "response" {
+                continue;
+            }
+            code.push_str(&format!("            if let Some(v) = state.get(\"{}\") {{\n", var));
+            code.push_str(&format!("                full_msg = format!(\"{{}}\\n\\n{}: {{}}\", full_msg, v.as_str().unwrap_or(&v.to_string()));\n", var));
+            code.push_str("            }\n");
+        }
+        code.push_str("            adk_core::Content::new(\"user\").with_text(full_msg)\n");
+    } else {
+        code.push_str("            adk_core::Content::new(\"user\").with_text(msg.to_string())\n");
+    }
+    code.push_str("        })\n");
+    code.push_str("        .with_output_mapper(|events| {\n");
+    code.push_str("            let mut updates = std::collections::HashMap::new();\n");
+    code.push_str("            let mut full_text = String::new();\n");
+    code.push_str("            for event in events {\n");
+    code.push_str("                if let Some(content) = event.content() {\n");
+    code.push_str("                    for part in &content.parts {\n");
+    code.push_str("                        if let Some(text) = part.text() {\n");
+    code.push_str("                            full_text.push_str(text);\n");
+    code.push_str("                        }\n");
+    code.push_str("                    }\n");
+    code.push_str("                }\n");
+    code.push_str("            }\n");
+    code.push_str("            if !full_text.is_empty() {\n");
+    code.push_str("                updates.insert(\"response\".to_string(), json!(full_text));\n");
+    code.push_str("            }\n");
+    code.push_str("            updates\n");
+    code.push_str("        });\n\n");
+
+    code
+}
+
+/// Generate LLM node with predecessor-based input mapping
+/// 
+/// This version uses the workflow edges to determine what each agent reads from:
+/// - If predecessor is START or a trigger: read from "message"
+/// - If predecessor is another agent: read from "response"
+/// - If predecessor is an action node (Set, Transform): read from "response" (action nodes pass through)
+fn generate_llm_node_v2(
+    id: &str,
+    agent: &AgentSchema,
+    project: &ProjectSchema,
+    predecessor: Option<&str>,
+) -> String {
+    let mut code = String::new();
+    let model = agent.model.as_deref().unwrap_or("gemini-2.0-flash");
+
+    code.push_str(&format!("    // Agent: {}\n", id));
+
+    // Generate MCP toolsets for all MCP tools (mcp, mcp_1, mcp_2, etc.)
+    let mcp_tools: Vec<_> =
+        agent.tools.iter().filter(|t| *t == "mcp" || t.starts_with("mcp_")).collect();
+
+    for (idx, mcp_tool) in mcp_tools.iter().enumerate() {
+        let tool_id = format!("{}_{}", id, mcp_tool);
+        if let Some(ToolConfig::Mcp(config)) = project.tool_configs.get(&tool_id) {
+            let cmd = &config.server_command;
+            let var_suffix = if idx == 0 { "mcp".to_string() } else { format!("mcp_{}", idx + 1) };
+            code.push_str(&format!(
+                "    let mut {}_{}_cmd = Command::new(\"{}\");\n",
+                id, var_suffix, cmd
+            ));
+            for arg in &config.server_args {
+                code.push_str(&format!("    {}_{}_cmd.arg(\"{}\");\n", id, var_suffix, arg));
+            }
+            code.push_str(&format!(
+                "    let {}_{}_client = tokio::time::timeout(\n",
+                id, var_suffix
+            ));
+            code.push_str("        std::time::Duration::from_secs(10),\n");
+            code.push_str(&format!(
+                "        ().serve(TokioChildProcess::new({}_{}_cmd)?)\n",
+                id, var_suffix
+            ));
+            code.push_str(&format!("    ).await.map_err(|_| anyhow::anyhow!(\"MCP server '{}' failed to start within 10s\"))??;\n", cmd));
+            code.push_str(&format!(
+                "    let {}_{}_toolset = McpToolset::new({}_{}_client)",
+                id, var_suffix, id, var_suffix
+            ));
+            if !config.tool_filter.is_empty() {
+                code.push_str(&format!(
+                    ".with_tools(&[{}])",
+                    config
+                        .tool_filter
+                        .iter()
+                        .map(|t| format!("\"{}\"", t))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+            code.push_str(";\n");
+            code.push_str(&format!("    let {}_{}_tools = {}_{}_toolset.tools(Arc::new(MinimalContext::new())).await?;\n", id, var_suffix, id, var_suffix));
+            code.push_str(&format!(
+                "    eprintln!(\"Loaded {{}} tools from MCP server '{}'\", {}_{}_tools.len());\n\n",
+                cmd, id, var_suffix
+            ));
+        }
+    }
+
+    code.push_str(&format!("    let mut {}_builder = LlmAgentBuilder::new(\"{}\")\n", id, id));
+    code.push_str(&format!(
+        "        .model(Arc::new(GeminiModel::new(&api_key, \"{}\")?));\n",
+        model
+    ));
+
+    if !agent.instruction.is_empty() {
+        // Strip {{var}} template variables from instruction - they'll be injected via input_mapper
+        // This avoids the session state vs graph state mismatch where the agent's template
+        // system looks at session state but Set nodes update graph state
+        let instruction_clean = strip_template_variables(&agent.instruction);
+        let escaped =
+            instruction_clean.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+        code.push_str(&format!(
+            "    {}_builder = {}_builder.instruction(\"{}\");\n",
+            id, id, escaped
+        ));
+    }
+
+    // Add MCP tools if present
+    for (idx, mcp_tool) in mcp_tools.iter().enumerate() {
+        let tool_id = format!("{}_{}", id, mcp_tool);
+        if project.tool_configs.contains_key(&tool_id) {
+            let var_suffix = if idx == 0 { "mcp".to_string() } else { format!("mcp_{}", idx + 1) };
+            code.push_str(&format!("    for tool in {}_{}_tools {{\n", id, var_suffix));
+            code.push_str(&format!("        {}_builder = {}_builder.tool(tool);\n", id, id));
+            code.push_str("    }\n");
+        }
+    }
+
+    for tool_type in &agent.tools {
+        if tool_type.starts_with("function") {
+            let tool_id = format!("{}_{}", id, tool_type);
+            if let Some(ToolConfig::Function(config)) = project.tool_configs.get(&tool_id) {
+                let struct_name = to_pascal_case(&config.name);
+                code.push_str(&format!("    {}_builder = {}_builder.tool(Arc::new(FunctionTool::new(\"{}\", \"{}\", {}_fn).with_parameters_schema::<{}Args>()));\n", 
+                    id, id, config.name, config.description.replace('"', "\\\""), config.name, struct_name));
+            }
+        } else if !tool_type.starts_with("mcp") {
+            match tool_type.as_str() {
+                "google_search" => code.push_str(&format!(
+                    "    {}_builder = {}_builder.tool(Arc::new(GoogleSearchTool::new()));\n",
+                    id, id
+                )),
+                "exit_loop" => code.push_str(&format!(
+                    "    {}_builder = {}_builder.tool(Arc::new(ExitLoopTool::new()));\n",
+                    id, id
+                )),
+                "load_artifact" => code.push_str(&format!(
+                    "    {}_builder = {}_builder.tool(Arc::new(LoadArtifactsTool::new()));\n",
+                    id, id
+                )),
+                "browser" => {
+                    code.push_str("    for tool in browser_toolset.tools(Arc::new(MinimalContext::new())).await? {\n");
+                    code.push_str(&format!(
+                        "        {}_builder = {}_builder.tool(tool);\n",
+                        id, id
+                    ));
+                    code.push_str("    }\n");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    code.push_str(&format!("    let {}_llm = Arc::new({}_builder.build()?);\n\n", id, id));
+
+    code.push_str(&format!("    let {}_node = AgentNode::new({}_llm)\n", id, id));
+    code.push_str("        .with_input_mapper(|state| {\n");
+
+    // Determine what to read based on predecessor
+    let is_first = predecessor == Some("START") || predecessor.is_none();
+    
+    if is_first {
+        code.push_str("            // First node: read from original message\n");
+        code.push_str("            let msg = state.get(\"message\").and_then(|v| v.as_str()).unwrap_or(\"\");\n");
+    } else {
+        code.push_str(&format!("            // Predecessor: {} - read from response\n", predecessor.unwrap_or("unknown")));
+        code.push_str("            let msg = state.get(\"response\").and_then(|v| v.as_str())\n");
+        code.push_str("                .or_else(|| state.get(\"message\").and_then(|v| v.as_str())).unwrap_or(\"\");\n");
+    }
+
+    // Check if instruction references state variables
+    let var_refs: Vec<&str> = agent.instruction
+        .match_indices("{{")
+        .filter_map(|(start, _)| {
+            let rest = &agent.instruction[start + 2..];
+            rest.find("}}").map(|end| &rest[..end])
+        })
+        .collect();
+    
+    if !var_refs.is_empty() {
+        code.push_str("            // Include state variables referenced in instruction\n");
+        code.push_str("            let mut full_msg = msg.to_string();\n");
+        for var in &var_refs {
+            if *var == "message" || *var == "response" {
+                continue;
+            }
+            code.push_str(&format!("            if let Some(v) = state.get(\"{}\") {{\n", var));
+            code.push_str(&format!("                full_msg = format!(\"{{}}\\n\\n{}: {{}}\", full_msg, v.as_str().unwrap_or(&v.to_string()));\n", var));
+            code.push_str("            }\n");
+        }
+        code.push_str("            adk_core::Content::new(\"user\").with_text(full_msg)\n");
+    } else {
+        code.push_str("            adk_core::Content::new(\"user\").with_text(msg.to_string())\n");
+    }
     code.push_str("        })\n");
     code.push_str("        .with_output_mapper(|events| {\n");
     code.push_str("            let mut updates = std::collections::HashMap::new();\n");
@@ -1065,6 +1352,87 @@ fn to_pascal_case(s: &str) -> String {
             }
         })
         .collect()
+}
+
+/// Generate a graph node function for an action node (Set, Transform, etc.)
+fn generate_action_node_function(node_id: &str, node: &crate::codegen::action_nodes::ActionNodeConfig) -> String {
+    use crate::codegen::action_nodes::ActionNodeConfig;
+    
+    let mut code = String::new();
+    
+    match node {
+        ActionNodeConfig::Set(config) => {
+            code.push_str(&format!("    // Action Node: {} (Set)\n", config.standard.name));
+            code.push_str(&format!("    let {}_node = adk_graph::node::FunctionNode::new(\"{}\", |ctx| async move {{\n", node_id, node_id));
+            code.push_str("        let mut output = NodeOutput::new();\n");
+            
+            // Generate variable setting logic
+            for var in &config.variables {
+                let key = &var.key;
+                match var.value_type.as_str() {
+                    "expression" => {
+                        // Expression type - interpolate variables from state
+                        let expr = var.value.as_str().unwrap_or("");
+                        // Simple variable interpolation: replace {{var}} with state value
+                        code.push_str(&format!("        // Set {} from expression\n", key));
+                        code.push_str(&format!("        let mut {}_value = \"{}\".to_string();\n", key, expr.replace('"', "\\\"")));
+                        code.push_str("        // Interpolate variables from state\n");
+                        code.push_str("        for (k, v) in ctx.state.iter() {\n");
+                        code.push_str("            let pattern = format!(\"{{{{{}}}}}\", k);\n");
+                        code.push_str("            if let Some(s) = v.as_str() {\n");
+                        code.push_str(&format!("                {}_value = {}_value.replace(&pattern, s);\n", key, key));
+                        code.push_str("            } else {\n");
+                        code.push_str(&format!("                {}_value = {}_value.replace(&pattern, &v.to_string());\n", key, key));
+                        code.push_str("            }\n");
+                        code.push_str("        }\n");
+                        code.push_str(&format!("        output = output.with_update(\"{}\", json!({}_value));\n", key, key));
+                    }
+                    "json" => {
+                        // JSON type - use value directly
+                        code.push_str(&format!("        output = output.with_update(\"{}\", json!({}));\n", key, var.value));
+                    }
+                    _ => {
+                        // String or other types
+                        code.push_str(&format!("        output = output.with_update(\"{}\", json!({}));\n", key, var.value));
+                    }
+                }
+            }
+            
+            code.push_str("        Ok(output)\n");
+            code.push_str("    });\n\n");
+        }
+        ActionNodeConfig::Transform(config) => {
+            code.push_str(&format!("    // Action Node: {} (Transform)\n", config.standard.name));
+            code.push_str(&format!("    let {}_node = adk_graph::node::FunctionNode::new(\"{}\", |ctx| async move {{\n", node_id, node_id));
+            
+            // Simple template transformation
+            let expr = &config.expression;
+            code.push_str(&format!("        let mut result = \"{}\".to_string();\n", expr.replace('"', "\\\"")));
+            code.push_str("        for (k, v) in ctx.state.iter() {\n");
+            code.push_str("            let pattern = format!(\"{{{{{}}}}}\", k);\n");
+            code.push_str("            if let Some(s) = v.as_str() {\n");
+            code.push_str("                result = result.replace(&pattern, s);\n");
+            code.push_str("            } else {\n");
+            code.push_str("                result = result.replace(&pattern, &v.to_string());\n");
+            code.push_str("            }\n");
+            code.push_str("        }\n");
+            
+            let output_key = &config.standard.mapping.output_key;
+            code.push_str(&format!("        Ok(NodeOutput::new().with_update(\"{}\", json!(result)))\n", output_key));
+            code.push_str("    });\n\n");
+        }
+        // Other action node types can be added here
+        _ => {
+            // For unsupported action nodes, generate a pass-through node
+            let standard = node.standard();
+            code.push_str(&format!("    // Action Node: {} ({})\n", standard.name, node.node_type()));
+            code.push_str(&format!("    let {}_node = adk_graph::node::FunctionNode::new(\"{}\", |_ctx| async move {{\n", node_id, node_id));
+            code.push_str("        Ok(NodeOutput::new())\n");
+            code.push_str("    });\n\n");
+        }
+    }
+    
+    code
 }
 
 fn generate_cargo_toml(project: &ProjectSchema) -> String {
