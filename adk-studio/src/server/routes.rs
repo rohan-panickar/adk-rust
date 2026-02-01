@@ -33,4 +33,7 @@ pub fn api_routes() -> Router<AppState> {
         // Webhook notification SSE endpoint - UI subscribes to receive webhook events
         // GET /api/projects/{id}/webhook-events - SSE stream of webhook notifications
         .route("/projects/:id/webhook-events", get(sse::webhook_events_handler))
+        // Event trigger endpoint - external systems send events to trigger workflows
+        // POST /api/projects/{id}/events - Trigger workflow via event (matches source + eventType)
+        .route("/projects/:id/events", post(handlers::event_trigger))
 }

@@ -186,6 +186,9 @@ pub struct ScheduleConfig {
 pub struct EventConfig {
     pub source: String,
     pub event_type: String,
+    /// Optional JSONPath filter expression
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

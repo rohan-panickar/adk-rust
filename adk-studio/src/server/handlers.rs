@@ -1154,3 +1154,283 @@ pub async fn subscribe_webhook_notifications(project_id: &str) -> tokio::sync::b
     let sender = get_webhook_channel(project_id).await;
     sender.subscribe()
 }
+
+
+// ============================================
+// Event Trigger Endpoints
+// ============================================
+// Event triggers allow external systems to send events that trigger workflows.
+// Unlike webhooks which match on path, events match on source and eventType.
+
+/// Request body for event trigger.
+#[derive(Debug, Deserialize)]
+pub struct EventTriggerRequest {
+    /// Event source identifier (e.g., "my-system", "payment-service")
+    pub source: String,
+    /// Event type (e.g., "user.created", "order.completed")
+    #[serde(rename = "eventType")]
+    pub event_type: String,
+    /// Event payload data
+    #[serde(default)]
+    pub data: serde_json::Value,
+}
+
+/// Response from event trigger endpoint.
+#[derive(Debug, Serialize)]
+pub struct EventTriggerResponse {
+    /// Whether the event was accepted
+    pub success: bool,
+    /// Session ID for streaming the workflow execution
+    pub session_id: String,
+    /// Message describing the result
+    pub message: String,
+    /// The event source that was matched
+    pub source: String,
+    /// The event type that was matched
+    pub event_type: String,
+    /// Instructions for streaming the response
+    pub stream_url: String,
+    /// Path to the built binary (if available)
+    pub binary_path: Option<String>,
+}
+
+/// Event trigger configuration extracted from project.
+#[derive(Debug, Clone)]
+struct EventTriggerConfig {
+    source: String,
+    event_type: String,
+    filter: Option<String>,
+}
+
+/// Find an event trigger in the project that matches the source and event type.
+fn find_event_trigger(
+    project: &ProjectSchema,
+    source: &str,
+    event_type: &str,
+) -> Option<EventTriggerConfig> {
+    use crate::codegen::action_nodes::{ActionNodeConfig, TriggerType};
+    
+    // Check action nodes for trigger nodes with event type
+    for (_node_id, node) in &project.action_nodes {
+        if let ActionNodeConfig::Trigger(trigger_config) = node {
+            if trigger_config.trigger_type == TriggerType::Event {
+                if let Some(event) = &trigger_config.event {
+                    // Match source and event_type
+                    // Empty source or event_type in config means "match any"
+                    let source_matches = event.source.is_empty() || event.source == source;
+                    let type_matches = event.event_type.is_empty() || event.event_type == event_type;
+                    
+                    if source_matches && type_matches {
+                        return Some(EventTriggerConfig {
+                            source: event.source.clone(),
+                            event_type: event.event_type.clone(),
+                            filter: event.filter.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Apply JSONPath filter to event data.
+/// Returns true if the filter matches or if no filter is configured.
+fn apply_event_filter(filter: Option<&str>, data: &serde_json::Value) -> bool {
+    match filter {
+        None | Some("") => true, // No filter = match all
+        Some(filter_expr) => {
+            // Simple filter implementation for common patterns
+            // Full JSONPath would require a library like jsonpath-rust
+            // For now, support basic patterns like "$.data.status == 'active'"
+            
+            // Parse simple equality expressions: $.path.to.field == 'value'
+            if let Some(eq_pos) = filter_expr.find("==") {
+                let path_part = filter_expr[..eq_pos].trim();
+                let value_part = filter_expr[eq_pos + 2..].trim().trim_matches('\'').trim_matches('"');
+                
+                // Navigate the JSON path
+                let path_parts: Vec<&str> = path_part
+                    .trim_start_matches("$.")
+                    .split('.')
+                    .collect();
+                
+                let mut current = data;
+                for part in path_parts {
+                    match current.get(part) {
+                        Some(v) => current = v,
+                        None => return false,
+                    }
+                }
+                
+                // Compare the value
+                match current {
+                    serde_json::Value::String(s) => s == value_part,
+                    serde_json::Value::Number(n) => n.to_string() == value_part,
+                    serde_json::Value::Bool(b) => b.to_string() == value_part,
+                    _ => false,
+                }
+            } else {
+                // Unsupported filter expression, default to match
+                tracing::warn!(filter = %filter_expr, "Unsupported filter expression, allowing event");
+                true
+            }
+        }
+    }
+}
+
+/// Event trigger endpoint.
+///
+/// This endpoint allows external systems to send events that trigger workflows.
+/// Events are matched based on source and eventType fields, with optional
+/// JSONPath filtering on the event data.
+///
+/// ## Endpoint
+/// `POST /api/projects/{id}/events`
+///
+/// ## Request Body
+/// ```json
+/// {
+///   "source": "payment-service",
+///   "eventType": "payment.completed",
+///   "data": {
+///     "orderId": "12345",
+///     "amount": 99.99,
+///     "status": "success"
+///   }
+/// }
+/// ```
+///
+/// ## Response
+/// ```json
+/// {
+///   "success": true,
+///   "session_id": "abc123",
+///   "message": "Event accepted. Trigger matched: payment-service/payment.completed",
+///   "source": "payment-service",
+///   "event_type": "payment.completed",
+///   "stream_url": "/api/projects/{id}/stream?input=__event__&session_id=abc123"
+/// }
+/// ```
+///
+/// ## Matching Rules
+/// - Source and eventType must match the trigger configuration
+/// - Empty source or eventType in config means "match any"
+/// - Optional JSONPath filter can further restrict matching
+pub async fn event_trigger(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<EventTriggerRequest>,
+) -> ApiResult<EventTriggerResponse> {
+    // Get the project
+    let storage = state.storage.read().await;
+    let project = storage
+        .get(id)
+        .await
+        .map_err(|e| err(StatusCode::NOT_FOUND, e.to_string()))?;
+
+    // Find matching event trigger
+    let trigger = find_event_trigger(&project, &req.source, &req.event_type);
+
+    // Check if we found a matching trigger
+    let trigger_config = match trigger {
+        Some(config) => config,
+        None => {
+            return Err(err(
+                StatusCode::NOT_FOUND,
+                format!(
+                    "No event trigger found matching source='{}' eventType='{}'",
+                    req.source, req.event_type
+                ),
+            ));
+        }
+    };
+
+    // Apply filter if configured
+    // Build a wrapper object so filters like $.data.status work correctly
+    let filter_data = serde_json::json!({
+        "source": req.source,
+        "eventType": req.event_type,
+        "data": req.data,
+    });
+    if !apply_event_filter(trigger_config.filter.as_deref(), &filter_data) {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Event data did not match filter: {}",
+                trigger_config.filter.as_deref().unwrap_or("")
+            ),
+        ));
+    }
+
+    // Generate a session ID for this event execution
+    let session_id = uuid::Uuid::new_v4().to_string();
+
+    // Build the full event payload
+    let event_payload = serde_json::json!({
+        "source": req.source,
+        "eventType": req.event_type,
+        "data": req.data,
+        "timestamp": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+    });
+
+    // Store the event payload for the stream handler
+    store_webhook_payload(&session_id, &format!("event:{}/{}", req.source, req.event_type), "EVENT", event_payload.clone()).await;
+
+    // Find the binary path for this project
+    let binary_path = get_project_binary_path(&project.name);
+    let binary_exists = is_project_built(&project.name);
+
+    let stream_url = format!(
+        "/api/projects/{}/stream?input=__webhook__&session_id={}&binary_path={}",
+        id, session_id, percent_encode(&binary_path)
+    );
+
+    // Notify UI clients that an event was received
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    notify_webhook(&id.to_string(), WebhookNotification {
+        session_id: session_id.clone(),
+        path: format!("event:{}/{}", req.source, req.event_type),
+        method: "EVENT".to_string(),
+        payload: event_payload.clone(),
+        timestamp,
+        binary_path: if binary_exists { Some(binary_path.clone()) } else { None },
+    }).await;
+
+    tracing::info!(
+        project_id = %id,
+        source = %req.source,
+        event_type = %req.event_type,
+        session_id = %session_id,
+        data = %serde_json::to_string(&req.data).unwrap_or_default(),
+        binary_path = %binary_path,
+        binary_exists = %binary_exists,
+        "Event trigger received"
+    );
+
+    Ok(Json(EventTriggerResponse {
+        success: true,
+        session_id: session_id.clone(),
+        message: format!(
+            "Event accepted. Trigger matched: {}/{}{}",
+            if trigger_config.source.is_empty() { "*" } else { &trigger_config.source },
+            if trigger_config.event_type.is_empty() { "*" } else { &trigger_config.event_type },
+            if !binary_exists {
+                ". WARNING: Project not built. Build the project first."
+            } else {
+                ""
+            }
+        ),
+        source: req.source,
+        event_type: req.event_type,
+        stream_url,
+        binary_path: if binary_exists { Some(binary_path) } else { None },
+    }))
+}

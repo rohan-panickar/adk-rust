@@ -293,6 +293,7 @@ export function TestConsole({
     }
     
     const isScheduleTrigger = notification.method === 'SCHEDULE';
+    const isEventTrigger = notification.method === 'EVENT';
     const payload = notification.payload as Record<string, unknown>;
     
     // Extract input from payload (for schedule triggers, this is the default prompt)
@@ -303,8 +304,8 @@ export function TestConsole({
       ? notification.payload 
       : JSON.stringify(notification.payload, null, 2);
     
-    const triggerIcon = isScheduleTrigger ? '⏰' : '🔗';
-    const triggerLabel = isScheduleTrigger ? 'Schedule triggered' : 'Webhook received';
+    const triggerIcon = isScheduleTrigger ? '⏰' : isEventTrigger ? '⚡' : '🔗';
+    const triggerLabel = isScheduleTrigger ? 'Schedule triggered' : isEventTrigger ? 'Event received' : 'Webhook received';
     
     setMessages((m) => [...m, { 
       role: 'user', 
@@ -326,7 +327,7 @@ export function TestConsole({
     }, 500);
     
     // For schedule triggers with an input, send the input directly
-    // For webhooks, use __webhook__ marker so SSE handler retrieves stored payload
+    // For webhooks and events, use __webhook__ marker so SSE handler retrieves stored payload
     const inputToSend = isScheduleTrigger && inputFromPayload 
       ? inputFromPayload 
       : '__webhook__';
