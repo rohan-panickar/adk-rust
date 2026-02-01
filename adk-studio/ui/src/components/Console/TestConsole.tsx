@@ -6,7 +6,7 @@ import { useWebhookEvents, WebhookNotification } from '../../hooks/useWebhookEve
 import type { StateSnapshot, InterruptData } from '../../types/execution';
 import type { Project } from '../../types/project';
 import { ConsoleFilters, EventFilter } from './ConsoleFilters';
-import { DEFAULT_MANUAL_TRIGGER_CONFIG, type ManualTriggerConfig, type TriggerNodeConfig } from '../../types/actionNodes';
+import { DEFAULT_MANUAL_TRIGGER_CONFIG, type ManualTriggerConfig, type TriggerNodeConfig, type TriggerType } from '../../types/actionNodes';
 
 interface Message {
   role: 'user' | 'assistant' | 'interrupt';
@@ -60,20 +60,73 @@ function getPlaceholderText(state: WorkflowState, buildStatus: BuildStatus): str
 }
 
 /**
+ * Trigger configuration result with type information.
+ */
+interface TriggerConfigResult {
+  /** The trigger type */
+  triggerType: TriggerType;
+  /** Input label for the chat input */
+  inputLabel: string;
+  /** Default prompt/placeholder */
+  defaultPrompt: string;
+}
+
+/**
  * Get trigger configuration from project.
- * Finds the manual trigger node and returns its configuration.
+ * Returns the appropriate config based on the trigger type (manual, webhook, or schedule).
  * @see trigger-input-flow Requirements 1.1, 1.2, 2.1
  */
-function getTriggerConfig(project: Project | null): ManualTriggerConfig | null {
+function getTriggerConfig(project: Project | null): TriggerConfigResult | null {
   if (!project) return null;
   
   const actionNodes = project.actionNodes || {};
   const trigger = Object.values(actionNodes)
-    .find(node => node.type === 'trigger' && node.triggerType === 'manual');
+    .find(node => node.type === 'trigger');
   
   if (!trigger || trigger.type !== 'trigger') return null;
   
-  return trigger.manual || DEFAULT_MANUAL_TRIGGER_CONFIG;
+  const triggerType = trigger.triggerType;
+  
+  switch (triggerType) {
+    case 'manual':
+      return {
+        triggerType: 'manual',
+        inputLabel: trigger.manual?.inputLabel || DEFAULT_MANUAL_TRIGGER_CONFIG.inputLabel,
+        defaultPrompt: trigger.manual?.defaultPrompt || DEFAULT_MANUAL_TRIGGER_CONFIG.defaultPrompt,
+      };
+    
+    case 'webhook':
+      return {
+        triggerType: 'webhook',
+        inputLabel: 'Webhook Input',
+        defaultPrompt: trigger.webhook?.path 
+          ? `Webhook payload for ${trigger.webhook.path}` 
+          : 'Enter webhook test payload...',
+      };
+    
+    case 'schedule':
+      return {
+        triggerType: 'schedule',
+        inputLabel: 'Schedule Input',
+        defaultPrompt: trigger.schedule?.defaultPrompt || 'Scheduled trigger fired',
+      };
+    
+    case 'event':
+      return {
+        triggerType: 'event',
+        inputLabel: 'Event Input',
+        defaultPrompt: trigger.event?.eventType 
+          ? `Event: ${trigger.event.eventType}` 
+          : 'Enter event payload...',
+      };
+    
+    default:
+      return {
+        triggerType: 'manual',
+        inputLabel: DEFAULT_MANUAL_TRIGGER_CONFIG.inputLabel,
+        defaultPrompt: DEFAULT_MANUAL_TRIGGER_CONFIG.defaultPrompt,
+      };
+  }
 }
 
 /**
@@ -96,7 +149,7 @@ interface InputContext {
 function getInputContext(
   workflowState: WorkflowState,
   buildStatus: BuildStatus,
-  triggerConfig: ManualTriggerConfig | null,
+  triggerConfig: TriggerConfigResult | null,
   interrupt: InterruptData | null
 ): InputContext {
   // If there's an active interrupt, show interrupt-specific context
@@ -596,6 +649,7 @@ export function TestConsole({
     cancel();
     onFlowPhase?.('idle');
     setRunStatus('idle');
+    sendingRef.current = false; // Reset so Run button works again
   }, [cancel, onFlowPhase]);
 
   // Expose cancel function to parent (for Stop button in toolbar)
