@@ -554,6 +554,15 @@ pub async fn stream_handler(
                         for event_json in exec_ctx.emit_pending_node_ends() {
                             yield Ok(Event::default().event("trace").data(event_json));
                         }
+                        
+                        // Also pass through the original trace for backward compatibility
+                        yield Ok(Event::default().event("trace").data(trace));
+                        
+                        // For action-node-only workflows (no LLM response), emit end event here
+                        // This ensures the UI knows the workflow completed
+                        yield Ok(Event::default().event("trace").data(exec_ctx.done()));
+                        yield Ok(Event::default().event("end").data(""));
+                        break;
                     }
                     
                     // Also pass through the original trace for backward compatibility
