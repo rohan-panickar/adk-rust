@@ -215,10 +215,13 @@ pub enum Error {
     #[snafu(display("google cloud authentication is required for this configuration"))]
     MissingGoogleCloudAuth,
 
+    #[snafu(display("service account JSON is missing required field 'project_id'"))]
+    MissingGoogleCloudProjectId,
+
     #[snafu(display("api key is required for this configuration"))]
     MissingApiKey,
 
-    #[snafu(display("operation '{operation}' is not supported with the google cloud sdk backend"))]
+    #[snafu(display("operation '{operation}' is not supported with the google cloud sdk backend (PredictionService currently exposes generateContent/embedContent only)"))]
     GoogleCloudUnsupported {
         operation: &'static str,
     },
@@ -227,6 +230,9 @@ pub enum Error {
     TokioRuntime {
         source: std::io::Error,
     },
+
+    #[snafu(display("google cloud client initialization thread panicked"))]
+    GoogleCloudInitThreadPanicked,
 
     #[snafu(display("I/O error during file operations"))]
     Io {
@@ -784,26 +790,23 @@ impl GeminiClient {
         let upload_url = self.create_upload(file_bytes.len(), display_name, mime_type).await?;
 
         // Step 2: Upload file content
-        let upload_response = self
-            .rest_client("upload")?
-            .http_client
-            .post(upload_url.clone())
-            .header("X-Goog-Upload-Command", "upload, finalize")
-            .header("X-Goog-Upload-Offset", "0")
-            .body(file_bytes)
-            .send()
-            .await
-            .map_err(|e| Error::PerformRequest { source: e, url: upload_url })?;
-
-        let final_response = Self::check_response(upload_response).await?;
-
         #[derive(serde::Deserialize)]
         struct UploadResponse {
             file: File,
         }
 
-        let upload_response: UploadResponse =
-            final_response.json().await.context(DecodeResponseSnafu)?;
+        let upload_response: UploadResponse = self
+            .perform_request(
+                |c| {
+                    c.post(upload_url.clone())
+                        .header("X-Goog-Upload-Command", "upload, finalize")
+                        .header("X-Goog-Upload-Offset", "0")
+                        .body(file_bytes)
+                },
+                async |r| r.json().await.context(DecodeResponseSnafu),
+            )
+            .await?;
+
         Ok(upload_response.file)
     }
 
@@ -812,6 +815,10 @@ impl GeminiClient {
         file.name = name,
     ))]
     pub(crate) async fn get_file(&self, name: &str) -> Result<File, Error> {
+        if matches!(self.backend, GeminiBackend::Vertex(_)) {
+            return GoogleCloudUnsupportedSnafu { operation: "getFile" }.fail();
+        }
+
         let url = self.build_files_url(Some(name))?;
         self.get_json(url).await
     }
@@ -821,6 +828,10 @@ impl GeminiClient {
         file.name = name,
     ))]
     pub(crate) async fn delete_file(&self, name: &str) -> Result<(), Error> {
+        if matches!(self.backend, GeminiBackend::Vertex(_)) {
+            return GoogleCloudUnsupportedSnafu { operation: "deleteFile" }.fail();
+        }
+
         let url = self.build_files_url(Some(name))?;
         self.perform_request(|c| c.delete(url), async |_r| Ok(())).await
     }
@@ -849,12 +860,20 @@ impl GeminiClient {
         &self,
         cached_content: CreateCachedContentRequest,
     ) -> Result<CachedContent, Error> {
+        if matches!(self.backend, GeminiBackend::Vertex(_)) {
+            return GoogleCloudUnsupportedSnafu { operation: "createCachedContent" }.fail();
+        }
+
         let url = self.build_cache_url(None)?;
         self.post_json(url, &cached_content).await
     }
 
     /// Get cached content
     pub(crate) async fn get_cached_content(&self, name: &str) -> Result<CachedContent, Error> {
+        if matches!(self.backend, GeminiBackend::Vertex(_)) {
+            return GoogleCloudUnsupportedSnafu { operation: "getCachedContent" }.fail();
+        }
+
         let url = self.build_cache_url(Some(name))?;
         self.get_json(url).await
     }
@@ -865,6 +884,10 @@ impl GeminiClient {
         name: &str,
         expiration: CacheExpirationRequest,
     ) -> Result<CachedContent, Error> {
+        if matches!(self.backend, GeminiBackend::Vertex(_)) {
+            return GoogleCloudUnsupportedSnafu { operation: "updateCachedContent" }.fail();
+        }
+
         let url = self.build_cache_url(Some(name))?;
 
         // Create a minimal update payload with just the expiration
@@ -884,6 +907,10 @@ impl GeminiClient {
 
     /// Delete cached content
     pub(crate) async fn delete_cached_content(&self, name: &str) -> Result<(), Error> {
+        if matches!(self.backend, GeminiBackend::Vertex(_)) {
+            return GoogleCloudUnsupportedSnafu { operation: "deleteCachedContent" }.fail();
+        }
+
         let url = self.build_cache_url(Some(name))?;
         self.perform_request(|c| c.delete(url.clone()), async |_r| Ok(())).await
     }
@@ -894,6 +921,10 @@ impl GeminiClient {
         page_size: Option<i32>,
         page_token: Option<String>,
     ) -> Result<ListCachedContentsResponse, Error> {
+        if matches!(self.backend, GeminiBackend::Vertex(_)) {
+            return GoogleCloudUnsupportedSnafu { operation: "listCachedContents" }.fail();
+        }
+
         let mut url = self.build_cache_url(None)?;
 
         if let Some(size) = page_size {
@@ -959,6 +990,49 @@ impl GoogleCloudConfig {
     fn endpoint(&self) -> String {
         format!("https://{}-aiplatform.googleapis.com", self.location)
     }
+}
+
+fn extract_service_account_project_id(service_account_json: &str) -> Result<String, Error> {
+    let value: serde_json::Value =
+        serde_json::from_str(service_account_json).context(GoogleCloudCredentialParseSnafu)?;
+
+    let project_id = value
+        .get("project_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or(Error::MissingGoogleCloudProjectId)?;
+
+    Ok(project_id.to_string())
+}
+
+fn build_vertex_prediction_service(
+    endpoint: String,
+    credentials: Credentials,
+) -> Result<PredictionService, Error> {
+    let build_in_runtime =
+        |endpoint: String, credentials: Credentials| -> Result<PredictionService, Error> {
+            let runtime = tokio::runtime::Runtime::new().context(TokioRuntimeSnafu)?;
+            runtime
+                .block_on(
+                    PredictionService::builder()
+                        .with_endpoint(endpoint)
+                        .with_credentials(credentials)
+                        .build(),
+                )
+                .context(GoogleCloudClientBuildSnafu)
+        };
+
+    if tokio::runtime::Handle::try_current().is_ok() {
+        let worker = std::thread::Builder::new()
+            .name("adk-gemini-vertex-init".to_string())
+            .spawn(move || build_in_runtime(endpoint, credentials))
+            .map_err(|source| Error::TokioRuntime { source })?;
+
+        return worker.join().map_err(|_| Error::GoogleCloudInitThreadPanicked)?;
+    }
+
+    build_in_runtime(endpoint, credentials)
 }
 
 /// A builder for the `Gemini` client.
@@ -1096,15 +1170,7 @@ impl GeminiBuilder {
             };
             let credentials = google_cloud_auth.credentials()?;
             let endpoint = config.endpoint();
-            let runtime = tokio::runtime::Runtime::new().context(TokioRuntimeSnafu)?;
-            let prediction = runtime
-                .block_on(
-                    PredictionService::builder()
-                        .with_endpoint(endpoint)
-                        .with_credentials(credentials)
-                        .build(),
-                )
-                .context(GoogleCloudClientBuildSnafu)?;
+            let prediction = build_vertex_prediction_service(endpoint, credentials)?;
 
             return Ok(Gemini { client: Arc::new(GeminiClient::with_vertex(model, prediction)) });
         }
@@ -1227,21 +1293,25 @@ impl Gemini {
 
     /// Create a new client using a service account JSON key.
     ///
-    /// Note: this requires configuring Google Cloud endpoints via `with_google_cloud(...)`.
+    /// This infers `project_id` from the service account JSON and defaults location to
+    /// `us-central1`. Use `with_google_cloud_service_account_json(...)` for explicit location.
     pub fn with_service_account_json(service_account_json: &str) -> Result<Self, Error> {
         Self::with_service_account_json_model(service_account_json, Model::default())
     }
 
     /// Create a new client using a service account JSON key and a specific model.
     ///
-    /// Note: this requires configuring Google Cloud endpoints via `with_google_cloud(...)`.
+    /// This infers `project_id` from the service account JSON and defaults location to
+    /// `us-central1`. Use `with_google_cloud_service_account_json(...)` for explicit location.
     pub fn with_service_account_json_model<M: Into<Model>>(
         service_account_json: &str,
         model: M,
     ) -> Result<Self, Error> {
+        let project_id = extract_service_account_project_id(service_account_json)?;
         GeminiBuilder::new("")
             .with_model(model)
             .with_service_account_json(service_account_json)?
+            .with_google_cloud(project_id, "us-central1")
             .build()
     }
 
@@ -1400,5 +1470,39 @@ impl Gemini {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod client_tests {
+    use super::{extract_service_account_project_id, Error};
+
+    #[test]
+    fn extract_service_account_project_id_reads_project_id() {
+        let json = r#"{
+            "type": "service_account",
+            "project_id": "test-project-123",
+            "private_key_id": "key-id"
+        }"#;
+
+        let project_id = extract_service_account_project_id(json).expect("project id should parse");
+        assert_eq!(project_id, "test-project-123");
+    }
+
+    #[test]
+    fn extract_service_account_project_id_missing_field_errors() {
+        let json = r#"{
+            "type": "service_account",
+            "private_key_id": "key-id"
+        }"#;
+
+        let err = extract_service_account_project_id(json).expect_err("missing project_id should fail");
+        assert!(matches!(err, Error::MissingGoogleCloudProjectId));
+    }
+
+    #[test]
+    fn extract_service_account_project_id_invalid_json_errors() {
+        let err = extract_service_account_project_id("not-json").expect_err("invalid json should fail");
+        assert!(matches!(err, Error::GoogleCloudCredentialParse { .. }));
     }
 }
