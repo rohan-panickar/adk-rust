@@ -497,6 +497,57 @@ pub async fn stream_handler(
             }
         }
 
+        // Drain stale output from previous execution.
+        // When the session process is reused across turns, the previous execution's
+        // trailing output (e.g. Done TRACE event after RESPONSE) may still be in the
+        // stdout/stderr channels. We must discard it before reading the new execution's
+        // output, otherwise the handler would see the old Done event and break immediately.
+        {
+            let drain_deadline = tokio::time::Instant::now() + tokio::time::Duration::from_millis(200);
+            loop {
+                if tokio::time::Instant::now() > drain_deadline {
+                    break;
+                }
+                let (stdout_msg, stderr_msg) = {
+                    let mut sessions = SESSIONS.lock().await;
+                    match sessions.get_mut(&session_id) {
+                        Some(s) => (s.stdout_rx.try_recv().ok(), s.stderr_rx.try_recv().ok()),
+                        None => (None, None),
+                    }
+                };
+                // Drain stderr silently
+                let _ = stderr_msg;
+                
+                match stdout_msg {
+                    Some(line) => {
+                        let trimmed = line.trim_start_matches("> ");
+                        // If we see a node_start for step 0, this is the NEW execution starting.
+                        if trimmed.starts_with("TRACE:") {
+                            if let Ok(ev) = serde_json::from_str::<serde_json::Value>(trimmed.trim_start_matches("TRACE:")) {
+                                let is_new_start = ev.get("type").and_then(|v| v.as_str()) == Some("node_start")
+                                    && ev.get("step").and_then(|v| v.as_u64()) == Some(0);
+                                if is_new_start {
+                                    // This belongs to the new execution — process it and continue to main loop
+                                    let trace = trimmed.trim_start_matches("TRACE:");
+                                    let (node_end_event, _is_done) = exec_ctx.process_stream_event(trace);
+                                    if let Some(event_json) = node_end_event {
+                                        yield Ok(Event::default().event("trace").data(event_json));
+                                    }
+                                    yield Ok(Event::default().event("trace").data(trace));
+                                    break;
+                                }
+                            }
+                        }
+                        // Otherwise it's stale output from previous turn — discard it
+                    }
+                    None => {
+                        // No more buffered output — wait a bit for new data
+                        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                    }
+                }
+            }
+        }
+
         // Timeout is configurable via ADK_STUDIO_STREAM_TIMEOUT_SECS env var (default: 300s / 5 min)
         let timeout_secs: u64 = std::env::var("ADK_STUDIO_STREAM_TIMEOUT_SECS")
             .ok()
