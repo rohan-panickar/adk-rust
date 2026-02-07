@@ -333,28 +333,24 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
       .find(([_, node]) => node.type === 'trigger')?.[0];
     
     setEdges(project.workflow.edges.map((e: WorkflowEdge, i: number) => {
-      // Animate edges based on flow phase:
-      // - trigger_input: Animate trigger→START edge (user submitting input)
-      // - input: Animate START→agent edges (data flowing to agents)
-      // - output: Animate agent→END edges (response flowing to output)
+      // Edge animation is driven by the execution path, which tracks the actual
+      // sequence of node executions (set → transform → agent, etc.).
+      // The flowPhase only controls the trigger→START and agent→END animations.
       // @see trigger-input-flow Requirements 2.2, 2.3
       const isTriggerToStart = flowPhase === 'trigger_input' && e.from === triggerNodeId && e.to === 'START';
-      const isStartToAgent = flowPhase === 'input' && e.from === 'START';
-      const isAgentToEnd = flowPhase === 'output' && e.to === 'END';
-      const isActiveAgentEdge = activeAgent && e.to === activeAgent;
       
-      const animated = isTriggerToStart || isStartToAgent || isAgentToEnd || isActiveAgentEdge;
-      
-      // v2.0: Get state keys for this edge from the source node
-      // @see Requirements 3.3: State keys from runtime execution events
-      const edgeStateKeys = stateKeys?.get(e.from) || [];
-      
-      // v2.0: Check if edge is in execution path
+      // v2.0: Check if edge is in execution path (completed segments)
       // @see Requirement 10.3, 10.5: Highlight execution path
       const sourceIndex = executionPath.indexOf(e.from);
       const targetIndex = executionPath.indexOf(e.to);
       const isInPath = sourceIndex !== -1 && targetIndex !== -1 && targetIndex === sourceIndex + 1;
-      const isAnimatedPath = isExecuting && animated;
+      
+      // Edge is animated if it leads TO the currently active node from a node in the path
+      const isLeadingToActive = isExecuting && activeAgent && e.to === activeAgent && executionPath.includes(e.from);
+      // Also animate agent→END when we're in output phase
+      const isAgentToEnd = flowPhase === 'output' && e.to === 'END';
+      
+      const animated = isTriggerToStart || isLeadingToActive || isAgentToEnd;
       
       // Determine source and target handles
       // For multi-port nodes (Switch, Merge), use the port names from edge
@@ -398,14 +394,14 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
         // Use dataflow edge type when overlay is enabled, otherwise animated
         type: showDataFlowOverlay ? 'dataflow' : 'animated', 
         data: { 
-          animated: animated || isAnimatedPath,
+          animated,
           // v2.0: Data flow overlay data
-          stateKeys: edgeStateKeys,
+          stateKeys: stateKeys?.get(e.from) || [],
           showOverlay: showDataFlowOverlay,
           highlightedKey,
           onKeyHover,
-          // v2.0: Execution path data
-          isExecutionPath: isInPath && !isAnimatedPath,
+          // v2.0: Execution path data — completed path segments (not currently animated)
+          isExecutionPath: isInPath && !animated,
         },
         // Use port-specific handles if specified, otherwise use defaults
         sourceHandle: e.fromPort || defaultSourceHandle,
