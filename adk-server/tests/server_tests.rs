@@ -5,6 +5,8 @@ use adk_session::{
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use futures::stream;
+use std::pin::Pin;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -111,6 +113,37 @@ impl adk_session::Events for MockEvents {
     }
     fn at(&self, _index: usize) -> Option<&Event> {
         None
+    }
+}
+
+struct StreamingTestAgent;
+
+#[async_trait]
+impl adk_core::Agent for StreamingTestAgent {
+    fn name(&self) -> &str {
+        "stream-test-agent"
+    }
+
+    fn description(&self) -> &str {
+        "Streaming test agent"
+    }
+
+    fn sub_agents(&self) -> &[Arc<dyn adk_core::Agent>] {
+        &[]
+    }
+
+    async fn run(
+        &self,
+        ctx: Arc<dyn adk_core::InvocationContext>,
+    ) -> adk_core::Result<Pin<Box<dyn futures::Stream<Item = adk_core::Result<Event>> + Send>>> {
+        let invocation_id = ctx.invocation_id().to_string();
+        let output = stream::once(async move {
+            let mut event = Event::new(invocation_id);
+            event.author = "stream-test-agent".to_string();
+            event.set_content(adk_core::Content::new("model").with_text("hello from stream"));
+            Ok(event)
+        });
+        Ok(Box::pin(output))
     }
 }
 
@@ -257,4 +290,122 @@ async fn test_run_path_rejects_unknown_ui_protocol_header() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_run_sse_compat_emits_profile_wrapped_event() {
+    let agent = Arc::new(StreamingTestAgent);
+    let config = adk_server::ServerConfig::new(
+        Arc::new(adk_core::SingleAgentLoader::new(agent)),
+        Arc::new(adk_session::InMemorySessionService::new()),
+    );
+    let app = create_app(config);
+
+    let body = serde_json::json!({
+        "appName": "stream-test-agent",
+        "userId": "user1",
+        "sessionId": "session1",
+        "newMessage": {
+            "role": "user",
+            "parts": [{ "text": "hello" }]
+        },
+        "uiProtocol": "ag_ui"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/run_sse")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_str = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body_str.contains("\"ui_protocol\":\"ag_ui\""));
+    assert!(body_str.contains("\"event\""));
+}
+
+#[tokio::test]
+async fn test_run_sse_compat_default_profile_emits_legacy_event_shape() {
+    let agent = Arc::new(StreamingTestAgent);
+    let config = adk_server::ServerConfig::new(
+        Arc::new(adk_core::SingleAgentLoader::new(agent)),
+        Arc::new(adk_session::InMemorySessionService::new()),
+    );
+    let app = create_app(config);
+
+    let body = serde_json::json!({
+        "appName": "stream-test-agent",
+        "userId": "user1",
+        "sessionId": "session1",
+        "newMessage": {
+            "role": "user",
+            "parts": [{ "text": "hello" }]
+        }
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/run_sse")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_str = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body_str.contains("\"author\":\"stream-test-agent\""));
+    assert!(!body_str.contains("\"ui_protocol\""));
+}
+
+#[tokio::test]
+async fn test_run_path_honors_ui_protocol_header() {
+    let agent = Arc::new(StreamingTestAgent);
+    let session_service = Arc::new(adk_session::InMemorySessionService::new());
+    session_service
+        .create(CreateRequest {
+            app_name: "stream-test-agent".to_string(),
+            user_id: "user1".to_string(),
+            session_id: Some("session1".to_string()),
+            state: std::collections::HashMap::new(),
+        })
+        .await
+        .unwrap();
+
+    let config =
+        adk_server::ServerConfig::new(Arc::new(adk_core::SingleAgentLoader::new(agent)), session_service);
+    let app = create_app(config);
+
+    let body = serde_json::json!({
+        "new_message": "hello"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/run/stream-test-agent/user1/session1")
+                .header("content-type", "application/json")
+                .header("x-adk-ui-protocol", "mcp_apps")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_str = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body_str.contains("\"ui_protocol\":\"mcp_apps\""));
 }

@@ -44,3 +44,4 @@ export type {
     ActionEventOptions,
 } from './a2ui/events';
 export { applyUiUpdate, applyUiUpdates } from './updates';
+export { applyProtocolPayload, parseProtocolPayload } from './protocols';

@@ -1584,18 +1584,182 @@ function applyParsedMessages(store, parsed) {
     }
   }
 }
+
+// src/protocols.ts
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+function getString(value) {
+  return typeof value === "string" ? value : void 0;
+}
+function surfaceToJsonl(surface) {
+  const messages = [
+    {
+      createSurface: {
+        surfaceId: surface.surfaceId,
+        catalogId: surface.catalogId,
+        theme: surface.theme ?? void 0,
+        sendDataModel: surface.sendDataModel ?? true
+      }
+    }
+  ];
+  if (surface.dataModel) {
+    messages.push({
+      updateDataModel: {
+        surfaceId: surface.surfaceId,
+        path: "/",
+        value: surface.dataModel
+      }
+    });
+  }
+  messages.push({
+    updateComponents: {
+      surfaceId: surface.surfaceId,
+      components: surface.components
+    }
+  });
+  return `${messages.map((entry) => JSON.stringify(entry)).join("\n")}
+`;
+}
+function extractSurfaceFromAgUiEvents(events) {
+  for (const event of events) {
+    if (getString(event.type) !== "CUSTOM") {
+      continue;
+    }
+    if (getString(event.name) !== "adk.ui.surface") {
+      continue;
+    }
+    const value = event.value;
+    if (!isRecord(value)) {
+      continue;
+    }
+    const surface = value.surface;
+    if (!isRecord(surface)) {
+      continue;
+    }
+    const surfaceId = getString(surface.surfaceId);
+    const catalogId = getString(surface.catalogId);
+    const components = Array.isArray(surface.components) ? surface.components.filter((entry) => isRecord(entry)) : [];
+    if (!surfaceId || !catalogId || components.length === 0) {
+      continue;
+    }
+    return {
+      surfaceId,
+      catalogId,
+      components,
+      dataModel: isRecord(surface.dataModel) ? surface.dataModel : void 0,
+      theme: isRecord(surface.theme) ? surface.theme : void 0,
+      sendDataModel: typeof surface.sendDataModel === "boolean" ? surface.sendDataModel : void 0
+    };
+  }
+  return null;
+}
+function extractSurfaceScriptFromHtml(html) {
+  const scriptPattern = /<script[^>]*id=["']adk-ui-surface["'][^>]*>([\s\S]*?)<\/script>/i;
+  const match = html.match(scriptPattern);
+  if (!match || !match[1]) {
+    return null;
+  }
+  return match[1].trim();
+}
+function extractSurfaceFromMcpPayload(payload) {
+  const resourceReadResponse = payload.resourceReadResponse;
+  if (!isRecord(resourceReadResponse)) {
+    return null;
+  }
+  const contents = resourceReadResponse.contents;
+  if (!Array.isArray(contents) || contents.length === 0) {
+    return null;
+  }
+  const firstContent = contents[0];
+  if (!isRecord(firstContent)) {
+    return null;
+  }
+  const html = getString(firstContent.text);
+  if (!html) {
+    return null;
+  }
+  const scriptText = extractSurfaceScriptFromHtml(html);
+  if (!scriptText) {
+    return null;
+  }
+  const parsed = JSON.parse(scriptText);
+  if (!isRecord(parsed)) {
+    return null;
+  }
+  const surfaceId = getString(parsed.surfaceId);
+  const catalogId = getString(parsed.catalogId);
+  const components = Array.isArray(parsed.components) ? parsed.components.filter((entry) => isRecord(entry)) : [];
+  if (!surfaceId || !catalogId || components.length === 0) {
+    return null;
+  }
+  return {
+    surfaceId,
+    catalogId,
+    components,
+    dataModel: isRecord(parsed.dataModel) ? parsed.dataModel : void 0,
+    theme: isRecord(parsed.theme) ? parsed.theme : void 0,
+    sendDataModel: typeof parsed.sendDataModel === "boolean" ? parsed.sendDataModel : void 0
+  };
+}
+function protocolEnvelopeToJsonl(envelope) {
+  if (typeof envelope.jsonl === "string") {
+    return envelope.jsonl;
+  }
+  const protocol = getString(envelope.protocol);
+  if (protocol === "ag_ui" && Array.isArray(envelope.events)) {
+    const surface = extractSurfaceFromAgUiEvents(
+      envelope.events.filter((entry) => isRecord(entry))
+    );
+    if (!surface) {
+      return null;
+    }
+    return surfaceToJsonl(surface);
+  }
+  if (protocol === "mcp_apps" && isRecord(envelope.payload)) {
+    const surface = extractSurfaceFromMcpPayload(envelope.payload);
+    if (!surface) {
+      return null;
+    }
+    return surfaceToJsonl(surface);
+  }
+  return null;
+}
+function parseProtocolPayload(payload) {
+  if (typeof payload === "string") {
+    return parseJsonl(payload);
+  }
+  if (!isRecord(payload)) {
+    return [];
+  }
+  const maybeEnvelope = payload;
+  const jsonl = protocolEnvelopeToJsonl(maybeEnvelope);
+  if (!jsonl) {
+    return [];
+  }
+  return parseJsonl(jsonl);
+}
+function applyProtocolPayload(store, payload) {
+  const parsed = parseProtocolPayload(payload);
+  if (parsed.length > 0) {
+    applyParsedMessages(store, parsed);
+  }
+  return parsed;
+}
 export {
   A2uiStore,
   A2uiSurfaceRenderer,
   Renderer,
   StreamingRenderer,
   applyParsedMessages,
+  applyProtocolPayload,
   applyUiUpdate,
   applyUiUpdates,
   buildActionEvent,
   isDataBinding,
   isFunctionCall,
   parseJsonl,
+  parseProtocolPayload,
   resolveDynamicString,
   resolveDynamicValue,
   resolvePath,
