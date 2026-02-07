@@ -1283,6 +1283,36 @@ impl ActionNodeConfig {
                 let key = &cfg.standard.mapping.output_key;
                 if key.is_empty() { vec!["branch".to_string()] } else { vec![key.clone()] }
             }
+            ActionNodeConfig::Loop(cfg) => {
+                // Loop nodes produce iteration variables and optionally aggregated results
+                let id = &cfg.standard.id;
+                let mut keys = vec![
+                    format!("{}_loop_index", id),
+                    format!("{}_loop_done", id),
+                    "index".to_string(),
+                ];
+                match cfg.loop_type {
+                    LoopType::ForEach => {
+                        let item_var = cfg.for_each.as_ref()
+                            .map(|f| f.item_var.clone())
+                            .unwrap_or_else(|| "item".to_string());
+                        let index_var = cfg.for_each.as_ref()
+                            .map(|f| f.index_var.clone())
+                            .unwrap_or_else(|| "index".to_string());
+                        keys.push(item_var);
+                        if index_var != "index" {
+                            keys.push(index_var);
+                        }
+                    }
+                    _ => {}
+                }
+                if cfg.results.collect {
+                    let agg_key = cfg.results.aggregation_key.as_deref()
+                        .unwrap_or("loop_results");
+                    keys.push(agg_key.to_string());
+                }
+                keys
+            }
             _ => {
                 // Other nodes use the standard output_key mapping
                 let key = &self.standard().mapping.output_key;

@@ -424,18 +424,42 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
 
     // Build predecessor map from workflow edges
     // This tells us what node comes before each node in the workflow
+    //
+    // IMPORTANT: We must skip back-edges (edges TO loop nodes that create cycles)
+    // to avoid infinite loops when walking the predecessor chain.
+    use crate::codegen::action_nodes::ActionNodeConfig;
+    let loop_node_ids: std::collections::HashSet<&str> = project
+        .action_nodes
+        .iter()
+        .filter(|(_, n)| matches!(n, ActionNodeConfig::Loop(_)))
+        .map(|(id, _)| id.as_str())
+        .collect();
+
     let mut predecessor_map: std::collections::HashMap<&str, &str> =
         std::collections::HashMap::new();
     for edge in &project.workflow.edges {
         // Skip trigger nodes - they're entry points, not execution nodes
-        use crate::codegen::action_nodes::ActionNodeConfig;
         let from_is_trigger = project
             .action_nodes
             .get(&edge.from)
             .map(|n| matches!(n, ActionNodeConfig::Trigger(_)))
             .unwrap_or(false);
 
-        if !from_is_trigger && edge.from != "START" && edge.to != "END" {
+        // Skip back-edges to loop nodes (these create cycles)
+        let is_back_edge = loop_node_ids.contains(edge.to.as_str())
+            && edge.from != "START"
+            && !edge.from.is_empty()
+            && project.action_nodes.get(&edge.from).map(|n| !matches!(n, ActionNodeConfig::Loop(_))).unwrap_or(true)
+            && !project.workflow.edges.iter().any(|e2| e2.from == edge.to && e2.to == edge.from);
+        // ^ A back-edge is an edge TO a loop node from a non-loop node that isn't the
+        //   direct forward edge. We detect it by checking: the target is a loop node,
+        //   and the source is not the node that the loop feeds into.
+
+        if from_is_trigger || is_back_edge {
+            continue;
+        }
+
+        if edge.from != "START" && edge.to != "END" {
             predecessor_map.insert(edge.to.as_str(), edge.from.as_str());
         } else if edge.from == "START" {
             // START connects to first node - mark it as having no predecessor (reads from "message")
@@ -473,7 +497,6 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
         .action_nodes
         .iter()
         .filter(|(_, node)| {
-            use crate::codegen::action_nodes::ActionNodeConfig;
             !matches!(node, ActionNodeConfig::Trigger(_))
         })
         .collect();
@@ -484,7 +507,27 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
 
     // Build graph
     code.push_str("    // Build the graph\n");
-    code.push_str("    let graph = StateGraph::with_channels(&[\"message\", \"classification\", \"response\"])\n");
+
+    // Collect additional state channels needed by loop nodes
+    let mut extra_channels: Vec<String> = Vec::new();
+    for (loop_id, node) in &project.action_nodes {
+        if let ActionNodeConfig::Loop(config) = node {
+            extra_channels.push(format!("{}_loop_index", loop_id));
+            extra_channels.push(format!("{}_loop_done", loop_id));
+            if let Some(fe) = &config.for_each {
+                extra_channels.push(fe.item_var.clone());
+                extra_channels.push(fe.index_var.clone());
+            }
+            if config.results.collect {
+                let agg_key = config.results.aggregation_key.as_deref().unwrap_or("loop_results");
+                extra_channels.push(agg_key.to_string());
+            }
+        }
+    }
+    let base_channels = vec!["message".to_string(), "classification".to_string(), "response".to_string()];
+    let all_channels: Vec<String> = base_channels.into_iter().chain(extra_channels.into_iter()).collect();
+    let channel_list = all_channels.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", ");
+    code.push_str(&format!("    let graph = StateGraph::with_channels(&[{}])\n", channel_list));
 
     // Add all agent nodes
     for agent_id in &top_level {
@@ -503,7 +546,6 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
         project.workflow.edges.iter().find(|e| e.from == "START").map(|e| e.to.as_str());
 
     // Check if START connects to a trigger - if so, find what the trigger connects to
-    use crate::codegen::action_nodes::ActionNodeConfig;
     let actual_start_target = if let Some(target) = start_target {
         if project
             .action_nodes
@@ -528,6 +570,14 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
         .map(|(id, _)| id.as_str())
         .collect();
 
+    // Collect loop node IDs so we can handle their edges specially
+    let loop_nodes: std::collections::HashSet<&str> = project
+        .action_nodes
+        .iter()
+        .filter(|(_, n)| matches!(n, ActionNodeConfig::Loop(_)))
+        .map(|(id, _)| id.as_str())
+        .collect();
+
     // Build a map of switch_node_id -> Vec<(from_port, target_node)> from edges
     let mut switch_edge_map: std::collections::HashMap<&str, Vec<(String, String)>> =
         std::collections::HashMap::new();
@@ -540,6 +590,43 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
                 edge.to.clone()
             };
             switch_edge_map.entry(edge.from.as_str()).or_default().push((port, target));
+        }
+    }
+
+    // Build loop edge maps: loop_id -> (body_target, exit_targets)
+    // Edges FROM loop nodes go to the loop body; edges TO loop nodes from body create the cycle
+    let mut loop_body_map: std::collections::HashMap<&str, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut loop_back_edges: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+    for edge in &project.workflow.edges {
+        if loop_nodes.contains(edge.from.as_str()) {
+            loop_body_map.entry(edge.from.as_str()).or_default().push(edge.to.clone());
+        }
+        // Detect back-edges: edges TO a loop node (cycle)
+        if loop_nodes.contains(edge.to.as_str()) && edge.from != "START" {
+            loop_back_edges.insert((edge.from.clone(), edge.to.clone()));
+        }
+    }
+    // For each loop node, find the exit target: the node that the loop's downstream
+    // chain eventually connects to AFTER the loop body. We look at edges from nodes
+    // that also have a back-edge to the loop — their OTHER outgoing edges are exit targets.
+    let mut loop_exit_map: std::collections::HashMap<&str, Vec<String>> =
+        std::collections::HashMap::new();
+    for (back_from, back_to) in &loop_back_edges {
+        // Find edges from back_from that don't go to the loop node — those are exit targets
+        for edge in &project.workflow.edges {
+            if edge.from == *back_from && edge.to != *back_to {
+                loop_exit_map.entry(back_to.as_str()).or_default().push(edge.to.clone());
+            }
+        }
+    }
+    // If no explicit exit targets found, default to END
+    for loop_id in &loop_nodes {
+        if !loop_exit_map.contains_key(loop_id) {
+            // Check if there are edges from the loop's body nodes to non-loop targets
+            // If not, the exit goes to END
+            loop_exit_map.entry(loop_id).or_default().push("END".to_string());
         }
     }
 
@@ -568,6 +655,16 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
 
         // Skip individual edges FROM switch nodes - they'll be handled as conditional edges
         if switch_nodes.contains(edge.from.as_str()) {
+            continue;
+        }
+
+        // Skip individual edges FROM loop nodes - they'll be handled as conditional edges
+        if loop_nodes.contains(edge.from.as_str()) {
+            continue;
+        }
+
+        // Skip back-edges TO loop nodes - they're part of the loop cycle
+        if loop_back_edges.contains(&(edge.from.clone(), edge.to.clone())) {
             continue;
         }
 
@@ -641,6 +738,39 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
             code.push_str(&format!("            Router::by_field(\"{}\"),\n", output_key));
             code.push_str(&format!("            [{}],\n", conditions.join(", ")));
             code.push_str("        )\n");
+        }
+    }
+
+    // Generate conditional edges for each loop node
+    // Loop nodes use a done flag to decide: continue body or exit
+    for loop_id in &loop_nodes {
+        let done_key = format!("{}_loop_done", loop_id);
+        let body_targets = loop_body_map.get(loop_id).cloned().unwrap_or_default();
+        let exit_targets = loop_exit_map.get(loop_id).cloned().unwrap_or_else(|| vec!["END".to_string()]);
+
+        if let Some(body_first) = body_targets.first() {
+            let exit_first = exit_targets.first().map(|s| s.as_str()).unwrap_or("END");
+
+            let body_target_str = format!("\"{}\"", body_first);
+            let exit_target_str = if exit_first == "END" {
+                "END".to_string()
+            } else {
+                format!("\"{}\"", exit_first)
+            };
+
+            code.push_str(&format!("        // Loop node: {} - conditional cycle by '{}'\n", loop_id, done_key));
+            code.push_str("        .add_conditional_edges(\n");
+            code.push_str(&format!("            \"{}\",\n", loop_id));
+            code.push_str(&format!("            Router::by_bool(\"{}\", \"exit\", \"body\"),\n", done_key));
+            code.push_str(&format!("            [(\"body\", {}), (\"exit\", {})],\n", body_target_str, exit_target_str));
+            code.push_str("        )\n");
+
+            // Add back-edge from last body node to loop node (cycle)
+            for (back_from, back_to) in &loop_back_edges {
+                if back_to.as_str() == *loop_id {
+                    code.push_str(&format!("        .add_edge(\"{}\", \"{}\")\n", back_from, loop_id));
+                }
+            }
         }
     }
 
@@ -962,10 +1092,12 @@ fn generate_llm_node_v2(
     {
         use crate::codegen::action_nodes::ActionNodeConfig;
         let mut current = predecessor;
+        let mut visited_preds = std::collections::HashSet::new();
         while let Some(pred_id) = current {
-            if pred_id == "START" {
+            if pred_id == "START" || visited_preds.contains(pred_id) {
                 break;
             }
+            visited_preds.insert(pred_id);
             if let Some(action_node) = project.action_nodes.get(pred_id) {
                 match action_node {
                     ActionNodeConfig::Set(set_config) => {
@@ -1519,6 +1651,131 @@ fn generate_action_node_function(
                 "        Ok(NodeOutput::new().with_update(\"{}\", json!(branch)))\n",
                 output_key
             ));
+            code.push_str("    });\n\n");
+        }
+        ActionNodeConfig::Loop(config) => {
+            code.push_str(&format!("    // Action Node: {} (Loop)\n", config.standard.name));
+            code.push_str(&format!("    let {}_node = adk_graph::node::FunctionNode::new(\"{}\", |ctx| async move {{\n", node_id, node_id));
+            code.push_str("        let mut output = NodeOutput::new();\n");
+
+            match config.loop_type {
+                crate::codegen::action_nodes::LoopType::ForEach => {
+                    let source = config.for_each.as_ref().map(|f| f.source_array.as_str()).unwrap_or("items");
+                    let item_var = config.for_each.as_ref().map(|f| f.item_var.as_str()).unwrap_or("item");
+                    let index_var = config.for_each.as_ref().map(|f| f.index_var.as_str()).unwrap_or("index");
+                    let counter_key = format!("{}_loop_index", node_id);
+                    let done_key = format!("{}_loop_done", node_id);
+
+                    code.push_str(&format!("        // forEach: iterate over '{}'\n", source));
+                    code.push_str(&format!("        let source_arr = ctx.state.get(\"{}\").and_then(|v| v.as_array()).cloned().unwrap_or_default();\n", source));
+                    code.push_str(&format!("        let idx = ctx.state.get(\"{}\").and_then(|v| v.as_u64()).unwrap_or(0) as usize;\n", counter_key));
+                    code.push_str("        if idx < source_arr.len() {\n");
+                    code.push_str(&format!("            let current_item = source_arr[idx].clone();\n"));
+                    code.push_str(&format!("            output = output.with_update(\"{}\", current_item);\n", item_var));
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(idx));\n", index_var));
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(idx + 1));\n", counter_key));
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(false));\n", done_key));
+
+                    // Collect results
+                    if config.results.collect {
+                        let agg_key = config.results.aggregation_key.as_deref().unwrap_or("loop_results");
+                        code.push_str(&format!("            // Collect previous iteration result if any\n"));
+                        code.push_str(&format!("            let mut results = ctx.state.get(\"{}\").and_then(|v| v.as_array()).cloned().unwrap_or_default();\n", agg_key));
+                        code.push_str("            if idx > 0 {\n");
+                        code.push_str("                // Capture the response from the previous iteration\n");
+                        code.push_str("                if let Some(resp) = ctx.state.get(\"response\") {\n");
+                        code.push_str("                    results.push(resp.clone());\n");
+                        code.push_str("                }\n");
+                        code.push_str("            }\n");
+                        code.push_str(&format!("            output = output.with_update(\"{}\", json!(results));\n", agg_key));
+                    }
+
+                    code.push_str("        } else {\n");
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(true));\n", done_key));
+
+                    // Final collection on completion
+                    if config.results.collect {
+                        let agg_key = config.results.aggregation_key.as_deref().unwrap_or("loop_results");
+                        code.push_str(&format!("            let mut results = ctx.state.get(\"{}\").and_then(|v| v.as_array()).cloned().unwrap_or_default();\n", agg_key));
+                        code.push_str("            if let Some(resp) = ctx.state.get(\"response\") {\n");
+                        code.push_str("                results.push(resp.clone());\n");
+                        code.push_str("            }\n");
+                        code.push_str(&format!("            output = output.with_update(\"{}\", json!(results));\n", agg_key));
+                    }
+
+                    code.push_str("        }\n");
+                }
+                crate::codegen::action_nodes::LoopType::Times => {
+                    let count = config.times.as_ref()
+                        .map(|t| match &t.count {
+                            serde_json::Value::Number(n) => n.as_u64().unwrap_or(3) as usize,
+                            _ => 3,
+                        })
+                        .unwrap_or(3);
+                    let counter_key = format!("{}_loop_index", node_id);
+                    let done_key = format!("{}_loop_done", node_id);
+
+                    code.push_str(&format!("        // times: repeat {} times\n", count));
+                    code.push_str(&format!("        let idx = ctx.state.get(\"{}\").and_then(|v| v.as_u64()).unwrap_or(0) as usize;\n", counter_key));
+                    code.push_str(&format!("        if idx < {} {{\n", count));
+                    code.push_str(&format!("            output = output.with_update(\"index\", json!(idx));\n"));
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(idx + 1));\n", counter_key));
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(false));\n", done_key));
+
+                    if config.results.collect {
+                        let agg_key = config.results.aggregation_key.as_deref().unwrap_or("loop_results");
+                        code.push_str(&format!("            let mut results = ctx.state.get(\"{}\").and_then(|v| v.as_array()).cloned().unwrap_or_default();\n", agg_key));
+                        code.push_str("            if idx > 0 {\n");
+                        code.push_str("                if let Some(resp) = ctx.state.get(\"response\") {\n");
+                        code.push_str("                    results.push(resp.clone());\n");
+                        code.push_str("                }\n");
+                        code.push_str("            }\n");
+                        code.push_str(&format!("            output = output.with_update(\"{}\", json!(results));\n", agg_key));
+                    }
+
+                    code.push_str("        } else {\n");
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(true));\n", done_key));
+
+                    if config.results.collect {
+                        let agg_key = config.results.aggregation_key.as_deref().unwrap_or("loop_results");
+                        code.push_str(&format!("            let mut results = ctx.state.get(\"{}\").and_then(|v| v.as_array()).cloned().unwrap_or_default();\n", agg_key));
+                        code.push_str("            if let Some(resp) = ctx.state.get(\"response\") {\n");
+                        code.push_str("                results.push(resp.clone());\n");
+                        code.push_str("            }\n");
+                        code.push_str(&format!("            output = output.with_update(\"{}\", json!(results));\n", agg_key));
+                    }
+
+                    code.push_str("        }\n");
+                }
+                crate::codegen::action_nodes::LoopType::While => {
+                    let condition_field = config.while_config.as_ref()
+                        .map(|w| w.condition.as_str())
+                        .unwrap_or("should_continue");
+                    let counter_key = format!("{}_loop_index", node_id);
+                    let done_key = format!("{}_loop_done", node_id);
+
+                    code.push_str(&format!("        // while: loop while '{}' is truthy\n", condition_field));
+                    code.push_str(&format!("        let idx = ctx.state.get(\"{}\").and_then(|v| v.as_u64()).unwrap_or(0) as usize;\n", counter_key));
+                    code.push_str(&format!("        let cond_val = ctx.state.get(\"{}\");\n", condition_field));
+                    code.push_str("        let should_continue = match cond_val {\n");
+                    code.push_str("            Some(v) if v.is_boolean() => v.as_bool().unwrap_or(false),\n");
+                    code.push_str("            Some(v) if v.is_string() => !v.as_str().unwrap_or(\"\").is_empty() && v.as_str() != Some(\"false\"),\n");
+                    code.push_str("            Some(v) if v.is_number() => v.as_f64().unwrap_or(0.0) != 0.0,\n");
+                    code.push_str("            Some(v) if v.is_null() => false,\n");
+                    code.push_str("            Some(_) => true,\n");
+                    code.push_str("            None => false,\n");
+                    code.push_str("        };\n");
+                    code.push_str("        if should_continue {\n");
+                    code.push_str(&format!("            output = output.with_update(\"index\", json!(idx));\n"));
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(idx + 1));\n", counter_key));
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(false));\n", done_key));
+                    code.push_str("        } else {\n");
+                    code.push_str(&format!("            output = output.with_update(\"{}\", json!(true));\n", done_key));
+                    code.push_str("        }\n");
+                }
+            }
+
+            code.push_str("        Ok(output)\n");
             code.push_str("    });\n\n");
         }
         // Other action node types can be added here
