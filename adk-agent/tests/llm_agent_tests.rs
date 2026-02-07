@@ -464,3 +464,35 @@ async fn test_llm_agent_injects_skill_prompt_block() {
     assert!(combined.contains("[skill:search]"));
     assert!(combined.contains("Use rg --files then rg <pattern>."));
 }
+
+#[tokio::test]
+async fn test_llm_agent_legacy_builder_path_has_no_skill_injection() {
+    let model = SpyLlm::new("ok");
+    let captured = model.last_request.clone();
+
+    let agent = LlmAgentBuilder::new("legacy_agent")
+        .description("Legacy builder path")
+        .model(Arc::new(model))
+        .instruction("Respond briefly")
+        .build()
+        .unwrap();
+
+    let ctx = Arc::new(TestContext::new("Please search this repository"));
+    let mut stream = agent.run(ctx).await.unwrap();
+
+    use futures::StreamExt;
+    while let Some(result) = stream.next().await {
+        result.unwrap();
+    }
+
+    let request = captured.lock().unwrap().clone().expect("expected captured request");
+    let combined = request
+        .contents
+        .iter()
+        .flat_map(|c| c.parts.iter())
+        .filter_map(|p| p.text())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(!combined.contains("[skill:"));
+}

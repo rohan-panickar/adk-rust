@@ -61,6 +61,11 @@ let agent = LlmAgentBuilder::new("assistant")
 | `instruction(text)` | Set static instruction |
 | `instruction_provider(fn)` | Set dynamic instruction provider |
 | `global_instruction(text)` | Set global instruction (shared across agents) |
+| `with_skills(index)` | Attach a preloaded skills index |
+| `with_auto_skills()` | Auto-load skills from `.skills/` in current directory |
+| `with_skills_from_root(path)` | Auto-load skills from `.skills/` under a specific root |
+| `with_skill_policy(policy)` | Configure matching policy (`top_k`, threshold, tags) |
+| `with_skill_budget(chars)` | Cap injected skill content length |
 | `tool(tool)` | Add a tool |
 | `sub_agent(agent)` | Add a sub-agent for transfers |
 | `input_schema(json)` | Set input JSON schema |
@@ -75,6 +80,29 @@ let agent = LlmAgentBuilder::new("assistant")
 | `before_tool_callback(fn)` | Add before-tool callback |
 | `after_tool_callback(fn)` | Add after-tool callback |
 | `build()` | Build the LlmAgent |
+
+### Backward Compatibility
+
+Existing builder paths remain valid and unchanged:
+
+```rust
+let agent = LlmAgentBuilder::new("assistant")
+    .description("Helpful AI assistant")
+    .instruction("Be helpful and concise.")
+    .model(model)
+    .build()?;
+```
+
+Skills are opt-in. No skill content is injected unless you call a skills method.
+
+### Minimal Skills Usage
+
+```rust
+let agent = LlmAgentBuilder::new("assistant")
+    .model(model)
+    .with_auto_skills()? // loads .skills/**/*.md when present
+    .build()?;
+```
 
 ### Workflow Agents
 

@@ -37,6 +37,14 @@ name = "loop_workflow"
 path = "loop_workflow/main.rs"
 
 [[example]]
+name = "skills_llm_minimal"
+path = "skills_llm_minimal/main.rs"
+
+[[example]]
+name = "skills_workflow_minimal"
+path = "skills_workflow_minimal/main.rs"
+
+[[example]]
 name = "load_artifacts"
 path = "load_artifacts/main.rs"
 
