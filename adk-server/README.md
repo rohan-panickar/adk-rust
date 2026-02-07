@@ -99,11 +99,41 @@ let coordinator = LlmAgentBuilder::new("coordinator")
 
 ## API Endpoints
 
+### Runtime and Sessions
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Web UI |
-| `/api/chat` | POST | Send message |
-| `/api/chat/stream` | POST | Stream response |
+| `/api/health` | GET | Health check |
+| `/api/apps` | GET | List available agents |
+| `/api/list-apps` | GET | adk-go compatible app listing |
+| `/api/sessions` | POST | Create session |
+| `/api/sessions/{app_name}/{user_id}/{session_id}` | GET, DELETE | Get or delete session |
+| `/api/run/{app_name}/{user_id}/{session_id}` | POST | Run agent with SSE |
+| `/api/run_sse` | POST | adk-go compatible SSE runtime |
+
+### UI Protocol Contracts
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ui/capabilities` | GET | Supported UI protocols/features (`adk_ui`, `a2ui`, `ag_ui`, `mcp_apps`) |
+| `/api/ui/resources` | GET | List MCP UI resources (`ui://` entries) |
+| `/api/ui/resources/read?uri=...` | GET | Read a registered MCP UI resource |
+| `/api/ui/resources/register` | POST | Register an MCP UI resource (validated `ui://` + mime/meta) |
+
+Runtime endpoints support protocol negotiation via:
+- request body field `uiProtocol` / `ui_protocol`
+- header `x-adk-ui-protocol` (takes precedence)
+
+Supported runtime profile values:
+- `adk_ui` (default)
+- `a2ui`
+- `ag_ui`
+- `mcp_apps`
+
+### A2A Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/.well-known/agent.json` | GET | A2A agent card |
 | `/a2a` | POST | A2A JSON-RPC |
 | `/a2a/stream` | POST | A2A streaming |
