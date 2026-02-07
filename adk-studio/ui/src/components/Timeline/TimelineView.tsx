@@ -87,7 +87,7 @@ export const TimelineView = memo(function TimelineView({
             <div className="timeline-track">
               {visibleSnapshots.map((snapshot, index) => (
                 <TimelineNodeEntry
-                  key={`${snapshot.nodeId}-${snapshot.timestamp}`}
+                  key={`${snapshot.nodeId}-step${snapshot.step ?? index}-${index}`}
                   snapshot={snapshot}
                   index={index}
                   isActive={index === activeVisibleIndex}

@@ -101,15 +101,54 @@ impl ExecutionContext {
         }
     }
 
-    /// Record node start - captures input state but doesn't emit event yet.
-    /// Returns the trace event JSON for immediate emission, or None if already pending.
-    fn node_start(&mut self, node: &str) -> Option<String> {
-        // Prevent duplicate tracking — a node can only be pending once.
-        // This happens when both stderr ("Starting agent execution") and
-        // TRACE node_start fire for the same agent, or when execute_stream()
-        // and execute() both trigger the tracing subscriber.
-        if self.pending_agents.iter().any(|p| p.name == node) {
-            return None;
+    /// Record node start - captures input state and emits node_start event.
+    /// Returns a list of events to emit.
+    ///
+    /// When a new node_start arrives, we close ALL previously pending nodes:
+    /// - Same-name nodes (loop iterations): closed with current state diff
+    /// - Different-name nodes: closed with their expected output keys or diff
+    ///
+    /// This ensures that nodes like `set_topics` (which run once before a loop)
+    /// get their node_end emitted as soon as the next node starts, rather than
+    /// being deferred to `emit_pending_node_ends()` at the very end.
+    fn node_start(&mut self, node: &str) -> Vec<String> {
+        let mut events = Vec::new();
+
+        // Close ALL pending nodes before starting the new one.
+        // Sort by step so they emit in chronological order.
+        let mut pending: Vec<_> = self.pending_agents.drain(..).collect();
+        pending.sort_by_key(|p| p.step);
+
+        for prev in pending {
+            let duration_ms = self.recorded_durations.remove(&prev.name)
+                .unwrap_or_else(|| prev.start_time.elapsed().as_millis() as u64);
+
+            let output_state = if let Some(captured) = self.completed_outputs.remove(&prev.name) {
+                captured
+            } else if let Some(expected_keys) = self.action_node_output_keys.get(&prev.name) {
+                let mut output = serde_json::Map::new();
+                for key in expected_keys {
+                    if let Some(value) = self.current_state.get(key) {
+                        output.insert(key.clone(), value.clone());
+                    }
+                }
+                if output.is_empty() {
+                    self.diff_against_input(&prev.input_state, &self.current_state)
+                } else {
+                    serde_json::Value::Object(output)
+                }
+            } else {
+                self.diff_against_input(&prev.input_state, &self.current_state)
+            };
+
+            let end_event = TraceEventV2::node_end(
+                &prev.name,
+                prev.step,
+                duration_ms,
+                prev.input_state,
+                output_state,
+            );
+            events.push(end_event.to_json());
         }
 
         self.step += 1;
@@ -125,15 +164,17 @@ impl ExecutionContext {
             input_state: input_state.clone(),
         });
 
-        let event = TraceEventV2::node_start(node, self.step, input_state);
-        Some(event.to_json())
+        let start_event = TraceEventV2::node_start(node, self.step, input_state);
+        events.push(start_event.to_json());
+
+        events
     }
 
     /// Process a StreamEvent from TRACE output and extract state updates.
-    /// Returns (enriched_event, should_emit_done, suppress_raw_passthrough).
-    fn process_stream_event(&mut self, trace_json: &str) -> (Option<String>, bool, bool) {
+    /// Returns (enriched_events, should_emit_done, suppress_raw_passthrough).
+    fn process_stream_event(&mut self, trace_json: &str) -> (Vec<String>, bool, bool) {
         let Ok(event) = serde_json::from_str::<serde_json::Value>(trace_json) else {
-            return (None, false, false);
+            return (Vec::new(), false, false);
         };
 
         let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
@@ -144,12 +185,13 @@ impl ExecutionContext {
                 // already tracked via stderr ("Starting agent execution").
                 let node = event.get("node").and_then(|v| v.as_str()).unwrap_or("");
                 if !node.is_empty() {
-                    if let Some(trace_data) = self.node_start(node) {
+                    let events = self.node_start(node);
+                    if !events.is_empty() {
                         // suppress_raw=true: we emit our enriched version instead
-                        return (Some(trace_data), false, true);
+                        return (events, false, true);
                     }
                 }
-                (None, false, false)
+                (Vec::new(), false, false)
             }
             "node_end" => {
                 // NodeEnd from adk-graph doesn't include state, just duration.
@@ -172,7 +214,7 @@ impl ExecutionContext {
                     }
                 }
                 // Suppress the raw node_end — we'll emit enriched versions later
-                (None, false, true)
+                (Vec::new(), false, true)
             }
             "message" => {
                 // Message event contains agent output text
@@ -202,7 +244,7 @@ impl ExecutionContext {
                         );
                     }
                 }
-                (None, false, false)
+                (Vec::new(), false, false)
             }
             "state" => {
                 // State snapshot - update current state
@@ -213,7 +255,7 @@ impl ExecutionContext {
                         }
                     }
                 }
-                (None, false, false)
+                (Vec::new(), false, false)
             }
             "updates" => {
                 // State updates from a node (emitted by local adk-graph builds,
@@ -229,7 +271,7 @@ impl ExecutionContext {
                         }
                     }
                 }
-                (None, false, false)
+                (Vec::new(), false, false)
             }
             "done" => {
                 // Done event contains final state - emit node_end for all pending agents
@@ -240,7 +282,7 @@ impl ExecutionContext {
                         }
                     }
                 }
-                (None, true, false)
+                (Vec::new(), true, false)
             }
             "interrupted" => {
                 // Interrupt event from ADK-Graph - workflow is paused
@@ -253,9 +295,9 @@ impl ExecutionContext {
                         }
                     }
                 }
-                (None, false, false)
+                (Vec::new(), false, false)
             }
-            _ => (None, false, false),
+            _ => (Vec::new(), false, false),
         }
     }
 
@@ -621,8 +663,8 @@ pub async fn stream_handler(
                                 if is_new_start {
                                     // This belongs to the new execution — process it and continue to main loop
                                     let trace = trimmed.trim_start_matches("TRACE:");
-                                    let (enriched_event, _is_done, suppress_raw) = exec_ctx.process_stream_event(trace);
-                                    if let Some(event_json) = enriched_event {
+                                    let (enriched_events, _is_done, suppress_raw) = exec_ctx.process_stream_event(trace);
+                                    for event_json in enriched_events {
                                         yield Ok(Event::default().event("trace").data(event_json));
                                     }
                                     if !suppress_raw {
@@ -677,7 +719,7 @@ pub async fn stream_handler(
                 } else if let Some(trace) = line.strip_prefix("TRACE:") {
                     // Process TRACE events from adk-graph to extract state information
                     // This is where we get the actual output state for each agent
-                    let (enriched_event, is_done, suppress_raw) = exec_ctx.process_stream_event(trace);
+                    let (enriched_events, is_done, suppress_raw) = exec_ctx.process_stream_event(trace);
 
                     // Check for interrupt events (Task 9: Handle ADK-Graph Interrupts)
                     // Requirements: 3.1, 5.2
@@ -714,8 +756,10 @@ pub async fn stream_handler(
                         // The frontend will call the resume endpoint when ready
                     }
 
-                    // Emit the enriched event (node_start/node_end with state_snapshot)
-                    if let Some(event_json) = enriched_event {
+                    // Emit the enriched events (node_start/node_end with state_snapshot)
+                    // In loop iterations, this may include a node_end for the previous
+                    // iteration followed by a node_start for the new iteration.
+                    for event_json in enriched_events {
                         yield Ok(Event::default().event("trace").data(event_json));
                     }
 
@@ -726,11 +770,7 @@ pub async fn stream_handler(
                             yield Ok(Event::default().event("trace").data(event_json));
                         }
 
-                        // Also pass through the original trace for backward compatibility
-                        yield Ok(Event::default().event("trace").data(trace));
-
-                        // For action-node-only workflows (no LLM response), emit end event here
-                        // This ensures the UI knows the workflow completed
+                        // Emit our enriched done event (with state_snapshot)
                         yield Ok(Event::default().event("trace").data(exec_ctx.done()));
                         yield Ok(Event::default().event("end").data(""));
                         break;

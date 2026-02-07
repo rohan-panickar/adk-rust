@@ -431,7 +431,7 @@ function StateHistory({ history, currentIndex, onSelect }: StateHistoryProps) {
       <div className="state-history-list">
         {history.map(({ snapshot, index }) => (
           <div
-            key={`${snapshot.nodeId}-${snapshot.timestamp}`}
+            key={`${snapshot.nodeId}-hist-${index}`}
             className={`state-history-item ${index === currentIndex ? 'active' : ''}`}
             onClick={() => onSelect?.(index)}
             role="button"
