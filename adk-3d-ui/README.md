@@ -27,12 +27,40 @@ Optional environment variables:
 - `ADK_3D_UI_HOST` (default `127.0.0.1`)
 - `ADK_3D_UI_PORT` (default `8099`)
 
+### Run via examples launcher
+
+```bash
+cargo run --example 3d_ui_ops_center
+```
+
 ## API
 
 - `POST /api/3d/session` -> create a new session
 - `GET /api/3d/stream/{session_id}` -> SSE stream
 - `POST /api/3d/event/{session_id}` -> send UI events
 - `POST /api/3d/run/{session_id}` -> compile prompt into `ui_ops`
+
+## Manual Validation
+
+1. Open the UI and run: `rollback payments now`
+2. Confirm an action card appears with pending action state.
+3. Click `Approve Pending Action` and verify:
+ - orb state patches to healthy/focused
+ - workbench subtitle updates to execution success
+4. Run again with a safe prompt and verify no pending action state.
+
+## Troubleshooting
+
+- `status: reconnecting` repeatedly
+ - check the server is running on the same host/port shown in the browser URL.
+- no render changes after `Run Prompt`
+ - inspect runtime log panel for `sse.ui_ops`; if missing, verify `/api/3d/run/{session_id}` returns `accepted: true`.
+- pending action buttons stay disabled
+ - dangerous prompts must include terms like `restart`, `rollback`, or `scale down`.
+- view looks frozen
+ - the client watchdog sets status to `timeout` after 15s with no SSE activity; run a new prompt to recover.
+- CORS or network failures
+ - serve the page from the same process (`/`) instead of loading the html file directly.
 
 ## Notes
 
