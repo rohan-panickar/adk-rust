@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo } from 'react';
+import { useCallback, useState, useMemo, useRef } from 'react';
 import type { StateSnapshot, InterruptData } from '../types/execution';
 import { useExecutionPath } from './useExecutionPath';
 
@@ -39,6 +39,10 @@ export function useCanvasExecution(deps: {
   // @see Requirements 10.3, 10.5: Execution path highlighting
   const executionPath = useExecutionPath();
 
+  // Keep a ref to executionPath so setTimeout callbacks read fresh state
+  const execPathRef = useRef(executionPath);
+  execPathRef.current = executionPath;
+
   // Timeline state (v2.0)
   const [timelineCollapsed, setTimelineCollapsed] = useState(false);
   const [snapshots, setSnapshots] = useState<StateSnapshot[]>([]);
@@ -57,24 +61,86 @@ export function useCanvasExecution(deps: {
   const [stateKeys, setStateKeys] = useState<Map<string, string[]>>(new Map());
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
 
+  // v2.0: Queue refs for active agent animation (declared before handlers that use them)
+  const activeAgentQueueRef = useRef<string[]>([]);
+  const processingRef = useRef(false);
+  const currentDisplayedAgentRef = useRef<string | null>(null);
+  const pendingIdleRef = useRef(false);
+
   // v2.0: Wrapper for flow phase that also updates execution path
+  // Start execution on trigger_input (not input) so the path is ready
+  // BEFORE trace events arrive — action nodes complete in <1ms.
   // @see Requirements 10.3, 10.5: Execution path highlighting
   const handleFlowPhase = useCallback((phase: FlowPhase) => {
     setFlowPhase(phase);
-    if (phase === 'input') {
-      executionPath.startExecution();
-    } else if (phase === 'idle' && executionPath.isExecuting) {
-      executionPath.completeExecution();
+    const ep = execPathRef.current;
+    if (phase === 'trigger_input') {
+      // Reset queue state for new execution
+      activeAgentQueueRef.current = [];
+      processingRef.current = false;
+      pendingIdleRef.current = false;
+      currentDisplayedAgentRef.current = null;
+      ep.startExecution();
+    } else if (phase === 'idle' && ep.isExecuting) {
+      ep.completeExecution();
     }
-  }, [executionPath]);
+  }, []);
 
-  // v2.0: Wrapper for active agent that also updates execution path
-  const handleActiveAgent = useCallback((agent: string | null) => {
-    setActiveAgent(agent);
-    if (agent && executionPath.isExecuting && !executionPath.path.includes(agent)) {
-      executionPath.moveToNode(agent);
+  // v2.0: Wrapper for active agent that also updates execution path.
+  // Uses a queue + minimum display duration so fast action nodes (0ms)
+  // still get visible edge animation (~300ms each).
+
+  const processAgentQueue = useCallback(() => {
+    if (processingRef.current) return;
+    const next = activeAgentQueueRef.current.shift();
+    if (!next) {
+      // Queue empty — if execution ended while we were draining, clear now
+      if (pendingIdleRef.current) {
+        pendingIdleRef.current = false;
+        currentDisplayedAgentRef.current = null;
+        setActiveAgent(null);
+      }
+      return;
     }
-  }, [executionPath]);
+
+    processingRef.current = true;
+    currentDisplayedAgentRef.current = next;
+    setActiveAgent(next);
+    const ep = execPathRef.current;
+    if (ep.isExecuting && !ep.path.includes(next)) {
+      ep.moveToNode(next);
+    }
+
+    // Hold this node as "active" for at least 300ms so the edge animation is visible
+    setTimeout(() => {
+      processingRef.current = false;
+      processAgentQueue(); // Process next item or handle pending idle
+    }, 300);
+  }, []);
+
+  const handleActiveAgent = useCallback((agent: string | null) => {
+    if (!agent) {
+      // Execution ended — mark pending idle, queue will clear when drained
+      pendingIdleRef.current = true;
+      if (!processingRef.current && activeAgentQueueRef.current.length === 0) {
+        // Nothing in flight — clear immediately
+        pendingIdleRef.current = false;
+        currentDisplayedAgentRef.current = null;
+        setActiveAgent(null);
+      }
+      return;
+    }
+
+    pendingIdleRef.current = false;
+    const ep = execPathRef.current;
+    // Skip if already displayed or queued or already in path
+    if (currentDisplayedAgentRef.current === agent) return;
+    if (activeAgentQueueRef.current.includes(agent)) return;
+    if (ep.path.includes(agent)) return;
+
+    activeAgentQueueRef.current.push(agent);
+    processAgentQueue();
+  }, [processAgentQueue]);
 
   // Thought bubble handler
   const handleThought = useCallback((agent: string, thought: string | null) => {
@@ -120,13 +186,14 @@ export function useCanvasExecution(deps: {
     // v2.0: Update execution path based on snapshots
     // @see Requirements 10.3, 10.5: Execution path highlighting
     if (newSnapshots.length > 0) {
-      executionPath.resetPath();
-      executionPath.startExecution();
+      const ep = execPathRef.current;
+      ep.resetPath();
+      ep.startExecution();
       newSnapshots.forEach(s => {
-        executionPath.moveToNode(s.nodeId);
+        ep.moveToNode(s.nodeId);
       });
     }
-  }, [executionPath]);
+  }, []);
 
   // Current and previous snapshots for StateInspector (v2.0)
   // @see Requirements 4.5, 5.4: Update inspector when timeline position changes
