@@ -2,8 +2,15 @@ use crate::error::{SkillError, SkillResult};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-const CONVENTION_FILES: &[&str] =
-    &["AGENTS.md", "AGENT.md", "CLAUDE.md", "GEMINI.md", "COPILOT.md", "SKILLS.md"];
+const CONVENTION_FILES: &[&str] = &[
+    "AGENTS.md",
+    "AGENT.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    "COPILOT.md",
+    "SKILLS.md",
+    "SOUL.md",
+];
 
 const IGNORED_DIRS: &[&str] =
     &[".git", ".hg", ".svn", "target", "node_modules", ".next", "dist", "build", "coverage"];
@@ -51,7 +58,7 @@ fn discover_convention_files(root: &Path) -> SkillResult<Vec<PathBuf>> {
         .filter_entry(|entry| !is_ignored_dir(entry))
         .filter_map(std::result::Result::ok)
         .filter(|entry| entry.file_type().is_file())
-        .filter(|entry| is_convention_file(entry.path()))
+        .filter(|entry| is_convention_file(entry.path(), root))
         .map(|entry| entry.into_path())
         .collect::<Vec<_>>();
 
@@ -66,10 +73,24 @@ fn is_ignored_dir(entry: &walkdir::DirEntry) -> bool {
         })
 }
 
-fn is_convention_file(path: &Path) -> bool {
-    path.file_name().and_then(|n| n.to_str()).is_some_and(|name| {
-        CONVENTION_FILES.iter().any(|candidate| name.eq_ignore_ascii_case(candidate))
-    })
+fn is_convention_file(path: &Path, root: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+
+    if !CONVENTION_FILES
+        .iter()
+        .any(|candidate| name.eq_ignore_ascii_case(candidate))
+    {
+        return false;
+    }
+
+    // SOUL.md is currently supported as a repository-root convention file.
+    if name.eq_ignore_ascii_case("SOUL.md") {
+        return path.parent().is_some_and(|parent| parent == root);
+    }
+
+    true
 }
 
 #[cfg(test)]
@@ -101,12 +122,16 @@ mod tests {
 
         fs::write(root.join("AGENTS.md"), "# Root instructions\n").unwrap();
         fs::write(root.join("pkg/CLAUDE.md"), "# Claude instructions\n").unwrap();
+        fs::write(root.join("SOUL.MD"), "# Soul instructions\n").unwrap();
+        fs::write(root.join("pkg/SOUL.md"), "# Nested soul should be ignored\n").unwrap();
         fs::write(root.join("pkg/readme.md"), "# ignore\n").unwrap();
         fs::write(root.join("target/GEMINI.md"), "# ignored by target skip\n").unwrap();
 
         let files = discover_instruction_files(root).unwrap();
-        assert_eq!(files.len(), 2);
+        assert_eq!(files.len(), 3);
         assert!(files.iter().any(|p| p.ends_with("AGENTS.md")));
         assert!(files.iter().any(|p| p.ends_with("CLAUDE.md")));
+        assert!(files.iter().any(|p| p.ends_with("SOUL.MD")));
+        assert!(!files.iter().any(|p| p.ends_with("pkg/SOUL.md")));
     }
 }

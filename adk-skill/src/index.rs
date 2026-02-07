@@ -95,4 +95,20 @@ mod tests {
         assert!(skill.tags.iter().any(|t| t == "agents-md"));
         assert!(skill.body.contains("Use cargo test before commit."));
     }
+
+    #[test]
+    fn loads_root_soul_md_as_skill_document() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::write(root.join("SOUL.MD"), "# Soul\nBias toward deterministic workflows.\n").unwrap();
+        fs::create_dir_all(root.join("pkg")).unwrap();
+        fs::write(root.join("pkg/SOUL.md"), "# Nested soul should not load\n").unwrap();
+
+        let index = load_skill_index(root).unwrap();
+        assert_eq!(index.len(), 1);
+        let skill = &index.skills()[0];
+        assert_eq!(skill.name, "soul");
+        assert!(skill.tags.iter().any(|t| t == "soul-md"));
+        assert!(skill.body.contains("deterministic workflows"));
+    }
 }

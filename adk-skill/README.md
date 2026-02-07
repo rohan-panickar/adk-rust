@@ -47,6 +47,7 @@ The index loader also discovers and ingests these markdown files:
 - `GEMINI.md`
 - `COPILOT.md`
 - `SKILLS.md`
+- `SOUL.md` (root-level)
 
 For these files, frontmatter is optional:
 

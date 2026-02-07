@@ -2,8 +2,15 @@ use crate::error::{SkillError, SkillResult};
 use crate::model::{ParsedSkill, SkillFrontmatter};
 use std::path::Path;
 
-const CONVENTION_FILES: &[&str] =
-    &["AGENTS.md", "AGENT.md", "CLAUDE.md", "GEMINI.md", "COPILOT.md", "SKILLS.md"];
+const CONVENTION_FILES: &[&str] = &[
+    "AGENTS.md",
+    "AGENT.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    "COPILOT.md",
+    "SKILLS.md",
+    "SOUL.md",
+];
 
 pub fn parse_skill_markdown(path: &Path, content: &str) -> SkillResult<ParsedSkill> {
     let normalized = content.replace("\r\n", "\n");
@@ -101,6 +108,9 @@ fn parse_convention_markdown(path: &Path, content: &str) -> SkillResult<ParsedSk
         "SKILLS.MD" => {
             ("skills".to_string(), vec!["convention".to_string(), "skills-md".to_string()])
         }
+        "SOUL.MD" => {
+            ("soul".to_string(), vec!["convention".to_string(), "soul-md".to_string()])
+        }
         _ => (
             path.file_stem()
                 .and_then(|stem| stem.to_str())
@@ -196,6 +206,18 @@ body
         assert!(parsed.tags.contains(&"convention".to_string()));
         assert!(parsed.tags.contains(&"agents-md".to_string()));
         assert!(parsed.body.contains("Always prefer rg"));
+    }
+
+    #[test]
+    fn parses_soul_md_without_frontmatter() {
+        let content = "# Soul Profile\nPrioritize deliberate planning before execution.\n";
+        let parsed = parse_instruction_markdown(Path::new("SOUL.MD"), content).unwrap();
+
+        assert_eq!(parsed.name, "soul");
+        assert_eq!(parsed.description, "Soul Profile");
+        assert!(parsed.tags.contains(&"convention".to_string()));
+        assert!(parsed.tags.contains(&"soul-md".to_string()));
+        assert!(parsed.body.contains("deliberate planning"));
     }
 
     #[test]
