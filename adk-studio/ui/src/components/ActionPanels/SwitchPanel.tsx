@@ -389,7 +389,7 @@ function ConditionRow({
   onMoveDown,
 }: ConditionRowProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const operatorConfig = OPERATOR_CONFIG[condition.operator];
+  const operatorConfig = OPERATOR_CONFIG[condition.operator] ?? { label: condition.operator, description: condition.operator, requiresValue: true };
   
   return (
     <div className={`switch-condition-row ${isExpanded ? 'expanded' : 'collapsed'}`}>

@@ -24,16 +24,29 @@ pub enum WorkflowType {
 
 /// Edge between nodes
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Edge {
     pub from: String,
     pub to: String,
     #[serde(default)]
     pub condition: Option<String>,
+    /// Source port for multi-output nodes (e.g., Switch branch output_port)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_port: Option<String>,
+    /// Target port for multi-input nodes (e.g., Merge)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_port: Option<String>,
 }
 
 impl Edge {
     pub fn new(from: impl Into<String>, to: impl Into<String>) -> Self {
-        Self { from: from.into(), to: to.into(), condition: None }
+        Self {
+            from: from.into(),
+            to: to.into(),
+            condition: None,
+            from_port: None,
+            to_port: None,
+        }
     }
 
     pub fn conditional(
@@ -41,7 +54,18 @@ impl Edge {
         to: impl Into<String>,
         condition: impl Into<String>,
     ) -> Self {
-        Self { from: from.into(), to: to.into(), condition: Some(condition.into()) }
+        Self {
+            from: from.into(),
+            to: to.into(),
+            condition: Some(condition.into()),
+            from_port: None,
+            to_port: None,
+        }
+    }
+
+    pub fn with_from_port(mut self, port: impl Into<String>) -> Self {
+        self.from_port = Some(port.into());
+        self
     }
 }
 

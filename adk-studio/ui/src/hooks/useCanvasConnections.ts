@@ -57,7 +57,10 @@ export function useCanvasConnections(deps: {
         return;
       }
 
-      addProjectEdge(p.source, p.target);
+      // Pass source/target handle IDs as port info for multi-port nodes (Switch, Merge)
+      const fromPort = p.sourceHandle || undefined;
+      const toPort = p.targetHandle || undefined;
+      addProjectEdge(p.source, p.target, fromPort, toPort);
       invalidateBuild('onEdgeAdd');
     }
   }, [addProjectEdge, invalidateBuild, currentProject]);

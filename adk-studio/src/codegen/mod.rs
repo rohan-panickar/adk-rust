@@ -520,6 +520,29 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
         None
     };
 
+    // Collect switch node IDs so we can handle their edges specially
+    let switch_nodes: std::collections::HashSet<&str> = project
+        .action_nodes
+        .iter()
+        .filter(|(_, n)| matches!(n, ActionNodeConfig::Switch(_)))
+        .map(|(id, _)| id.as_str())
+        .collect();
+
+    // Build a map of switch_node_id -> Vec<(from_port, target_node)> from edges
+    let mut switch_edge_map: std::collections::HashMap<&str, Vec<(String, String)>> =
+        std::collections::HashMap::new();
+    for edge in &project.workflow.edges {
+        if switch_nodes.contains(edge.from.as_str()) {
+            let port = edge.from_port.clone().unwrap_or_default();
+            let target = if edge.to == "END" {
+                "END".to_string()
+            } else {
+                edge.to.clone()
+            };
+            switch_edge_map.entry(edge.from.as_str()).or_default().push((port, target));
+        }
+    }
+
     for edge in &project.workflow.edges {
         // Skip edges from trigger nodes (they're entry points, not execution nodes)
         let from_is_trigger = project
@@ -540,6 +563,11 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
         }
 
         if to_is_trigger && edge.to != "END" {
+            continue;
+        }
+
+        // Skip individual edges FROM switch nodes - they'll be handled as conditional edges
+        if switch_nodes.contains(edge.from.as_str()) {
             continue;
         }
 
@@ -583,6 +611,37 @@ fn generate_main_rs(project: &ProjectSchema) -> String {
         }
 
         code.push_str(&format!("        .add_edge({}, {})\n", from, to));
+    }
+
+    // Generate conditional edges for each switch node
+    for (switch_id, targets) in &switch_edge_map {
+        if let Some(ActionNodeConfig::Switch(config)) = project.action_nodes.get(*switch_id) {
+            let output_key = if config.standard.mapping.output_key.is_empty() {
+                "branch"
+            } else {
+                &config.standard.mapping.output_key
+            };
+
+            // Build condition -> target mapping from edges
+            let conditions: Vec<String> = targets
+                .iter()
+                .map(|(port, target)| {
+                    let target_str = if target == "END" {
+                        "END".to_string()
+                    } else {
+                        format!("\"{}\"", target)
+                    };
+                    format!("(\"{}\", {})", port, target_str)
+                })
+                .collect();
+
+            code.push_str(&format!("        // Switch node: {} - conditional routing by '{}'\n", switch_id, output_key));
+            code.push_str("        .add_conditional_edges(\n");
+            code.push_str(&format!("            \"{}\",\n", switch_id));
+            code.push_str(&format!("            Router::by_field(\"{}\"),\n", output_key));
+            code.push_str(&format!("            [{}],\n", conditions.join(", ")));
+            code.push_str("        )\n");
+        }
     }
 
     code.push_str("        .compile()?;\n\n");
@@ -1367,13 +1426,13 @@ fn generate_action_node_function(
                 ));
 
                 match op.as_str() {
-                    "equals" | "==" => {
+                    "equals" | "==" | "eq" => {
                         code.push_str(&format!(
                             "            if field_val == \"{}\" {{ matched_branch = Some(\"{}\"); }}\n",
                             value_str.replace('"', "\\\""), port
                         ));
                     }
-                    "not_equals" | "!=" => {
+                    "not_equals" | "!=" | "neq" => {
                         code.push_str(&format!(
                             "            if field_val != \"{}\" {{ matched_branch = Some(\"{}\"); }}\n",
                             value_str.replace('"', "\\\""), port
@@ -1385,16 +1444,52 @@ fn generate_action_node_function(
                             value_str.replace('"', "\\\""), port
                         ));
                     }
-                    "greater_than" | ">" => {
+                    "greater_than" | ">" | "gt" => {
                         code.push_str(&format!(
                             "            if field_val > \"{}\" {{ matched_branch = Some(\"{}\"); }}\n",
                             value_str.replace('"', "\\\""), port
                         ));
                     }
-                    "less_than" | "<" => {
+                    "less_than" | "<" | "lt" => {
                         code.push_str(&format!(
                             "            if field_val < \"{}\" {{ matched_branch = Some(\"{}\"); }}\n",
                             value_str.replace('"', "\\\""), port
+                        ));
+                    }
+                    "gte" | ">=" => {
+                        code.push_str(&format!(
+                            "            if field_val >= \"{}\" {{ matched_branch = Some(\"{}\"); }}\n",
+                            value_str.replace('"', "\\\""), port
+                        ));
+                    }
+                    "lte" | "<=" => {
+                        code.push_str(&format!(
+                            "            if field_val <= \"{}\" {{ matched_branch = Some(\"{}\"); }}\n",
+                            value_str.replace('"', "\\\""), port
+                        ));
+                    }
+                    "startsWith" => {
+                        code.push_str(&format!(
+                            "            if field_val.starts_with(\"{}\") {{ matched_branch = Some(\"{}\"); }}\n",
+                            value_str.replace('"', "\\\""), port
+                        ));
+                    }
+                    "endsWith" => {
+                        code.push_str(&format!(
+                            "            if field_val.ends_with(\"{}\") {{ matched_branch = Some(\"{}\"); }}\n",
+                            value_str.replace('"', "\\\""), port
+                        ));
+                    }
+                    "empty" => {
+                        code.push_str(&format!(
+                            "            if field_val.is_empty() {{ matched_branch = Some(\"{}\"); }}\n",
+                            port
+                        ));
+                    }
+                    "exists" => {
+                        code.push_str(&format!(
+                            "            if ctx.state.contains_key(\"{}\") {{ matched_branch = Some(\"{}\"); }}\n",
+                            field, port
                         ));
                     }
                     _ => {
