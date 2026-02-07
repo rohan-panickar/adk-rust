@@ -155,6 +155,16 @@ Example args:
 
 Migration guidance for legacy/default outputs is documented in `adk-ui/docs/PROTOCOL_MIGRATION.md`.
 
+### Deprecation Timeline
+
+Legacy runtime profile `adk_ui` now carries explicit deprecation metadata:
+
+- announced: `2026-02-07`
+- sunset target: `2026-12-31`
+- replacements: `a2ui`, `ag_ui`, `mcp_apps`
+
+This metadata is exposed through shared capability constants (`UI_PROTOCOL_CAPABILITIES`) and surfaced by `adk-server` in `/api/ui/capabilities`.
+
 ## Interop Adapters
 
 `adk-ui` includes adapter primitives for protocol conversion from canonical surfaces:
@@ -186,6 +196,7 @@ Or use the reference implementation in `examples/ui_react_client/`.
 |---------|-------------|---------|
 | `ui_agent` | Console demo | `cargo run --example ui_agent` |
 | `ui_server` | HTTP server with SSE | `cargo run --example ui_server` |
+| `ui_protocol_profiles` | 13x3 protocol output coverage demo | `cargo run --example ui_protocol_profiles` |
 | `streaming_demo` | Real-time progress updates | `cargo run --example streaming_demo` |
 | `ui_react_client` | React frontend | `cd examples/ui_react_client && npm run dev` |
 

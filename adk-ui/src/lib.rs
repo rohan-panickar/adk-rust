@@ -18,8 +18,9 @@ pub use kit::{KitArtifacts, KitGenerator, KitSpec};
 pub use model::{ToolEnvelope, ToolEnvelopeProtocol};
 pub use prompts::{UI_AGENT_PROMPT, UI_AGENT_PROMPT_SHORT};
 pub use protocol_capabilities::{
-    SUPPORTED_UI_PROTOCOLS, TOOL_ENVELOPE_VERSION, UI_DEFAULT_PROTOCOL, UI_PROTOCOL_CAPABILITIES,
-    UiProtocolCapabilitySpec, normalize_runtime_ui_protocol,
+    ADK_UI_LEGACY_DEPRECATION, SUPPORTED_UI_PROTOCOLS, TOOL_ENVELOPE_VERSION, UI_DEFAULT_PROTOCOL,
+    UI_PROTOCOL_CAPABILITIES, UiProtocolCapabilitySpec, UiProtocolDeprecationSpec,
+    normalize_runtime_ui_protocol,
 };
 pub use schema::*;
 pub use templates::{StatItem, TemplateData, UiTemplate, UserData, render_template};

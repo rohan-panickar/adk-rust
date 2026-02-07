@@ -125,10 +125,16 @@ Runtime endpoints support protocol negotiation via:
 - header `x-adk-ui-protocol` (takes precedence)
 
 Supported runtime profile values:
-- `adk_ui` (default)
+- `adk_ui` (default, legacy profile)
 - `a2ui`
 - `ag_ui`
 - `mcp_apps`
+
+Deprecation signaling:
+
+- `adk_ui` deprecation metadata is included in `/api/ui/capabilities`.
+- Runtime requests using `adk_ui` emit server warning logs to aid migration tracking.
+- Current timeline: announced `2026-02-07`, sunset target `2026-12-31`.
 
 Example runtime request:
 
@@ -157,10 +163,12 @@ MCP UI resource registration request shape:
 ```json
 {
   "uri": "ui://demo/dashboard",
-  "mimeType": "text/html+skybridge",
+  "mimeType": "text/html;profile=mcp-app",
   "text": "<html>...</html>",
   "meta": {
-    "openai/outputTemplate": "ui://demo/dashboard"
+    "ui": {
+      "domain": "https://example.com"
+    }
   }
 }
 ```

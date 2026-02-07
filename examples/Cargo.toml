@@ -424,6 +424,10 @@ name = "a2ui_demo"
 path = "a2ui_demo/main.rs"
 
 [[example]]
+name = "ui_protocol_profiles"
+path = "ui_protocol_profiles/main.rs"
+
+[[example]]
 name = "ui_working_support"
 path = "ui_working/support/main.rs"
 

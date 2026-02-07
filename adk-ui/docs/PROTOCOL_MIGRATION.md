@@ -77,3 +77,15 @@ When `protocol` is set, these tools emit protocol envelopes:
 - Legacy default outputs are still supported.
 - No forced cutover is required for existing `UiResponse` consumers.
 - New integrations should prefer explicit `protocol` selection to avoid ambiguous defaults.
+
+### Timeline (Current Plan)
+
+- Announced: `2026-02-07`
+- Legacy runtime profile: `adk_ui`
+- Sunset target for new integrations: `2026-12-31`
+- Preferred profiles: `a2ui`, `ag_ui`, `mcp_apps`
+
+### Runtime Notices
+
+- `adk-server` emits warning logs when requests explicitly or implicitly use `adk_ui`.
+- `/api/ui/capabilities` now includes deprecation metadata for `adk_ui` so clients can surface migration prompts.

@@ -1,5 +1,5 @@
 use crate::ServerConfig;
-use adk_ui::{SUPPORTED_UI_PROTOCOLS, normalize_runtime_ui_protocol};
+use adk_ui::{SUPPORTED_UI_PROTOCOLS, UI_PROTOCOL_CAPABILITIES, normalize_runtime_ui_protocol};
 use axum::{
     Json,
     extract::{Path, State},
@@ -143,6 +143,28 @@ fn serialize_runtime_event(event: &adk_core::Event, profile: UiProfile) -> Optio
     .ok()
 }
 
+fn log_profile_deprecation(profile: UiProfile) {
+    if profile != UiProfile::AdkUi {
+        return;
+    }
+    let Some(spec) = UI_PROTOCOL_CAPABILITIES
+        .iter()
+        .find(|capability| capability.protocol == profile.as_str())
+        .and_then(|capability| capability.deprecation)
+    else {
+        return;
+    };
+
+    warn!(
+        protocol = %profile.as_str(),
+        stage = %spec.stage,
+        announced_on = %spec.announced_on,
+        sunset_target_on = ?spec.sunset_target_on,
+        replacements = ?spec.replacement_protocols,
+        "legacy ui protocol profile selected"
+    );
+}
+
 pub async fn run_sse(
     State(controller): State<RuntimeController>,
     Path((app_name, user_id, session_id)): Path<(String, String, String)>,
@@ -153,6 +175,7 @@ pub async fn run_sse(
     let span = tracing::info_span!("run_sse", session_id = %session_id, app_name = %app_name, user_id = %user_id);
 
     async move {
+        log_profile_deprecation(ui_profile);
         info!(
             ui_protocol = %ui_profile.as_str(),
             "resolved ui protocol profile for runtime request"
@@ -236,6 +259,7 @@ pub async fn run_sse_compat(
         ui_protocol = %ui_profile.as_str(),
         "POST /run_sse request received"
     );
+    log_profile_deprecation(ui_profile);
 
     // Extract text from message parts
     let message_text = req

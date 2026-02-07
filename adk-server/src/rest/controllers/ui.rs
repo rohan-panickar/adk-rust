@@ -5,7 +5,7 @@ use axum::{
 };
 use adk_ui::{
     McpAppsRenderOptions, TOOL_ENVELOPE_VERSION, UI_DEFAULT_PROTOCOL, UI_PROTOCOL_CAPABILITIES,
-    validate_mcp_apps_render_options,
+    UiProtocolDeprecationSpec, validate_mcp_apps_render_options,
 };
 use adk_ui::interop::mcp_apps::{McpUiPermissions, McpUiResourceCsp};
 use serde::{Deserialize, Serialize};
@@ -19,6 +19,31 @@ pub struct UiProtocolCapability {
     pub protocol: &'static str,
     pub versions: Vec<&'static str>,
     pub features: Vec<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deprecation: Option<UiProtocolDeprecation>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiProtocolDeprecation {
+    pub stage: &'static str,
+    pub announced_on: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sunset_target_on: Option<&'static str>,
+    pub replacement_protocols: Vec<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<&'static str>,
+}
+
+fn map_deprecation(spec: Option<&'static UiProtocolDeprecationSpec>) -> Option<UiProtocolDeprecation> {
+    let spec = spec?;
+    Some(UiProtocolDeprecation {
+        stage: spec.stage,
+        announced_on: spec.announced_on,
+        sunset_target_on: spec.sunset_target_on,
+        replacement_protocols: spec.replacement_protocols.to_vec(),
+        note: spec.note,
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -200,6 +225,7 @@ pub async fn ui_capabilities() -> Json<UiCapabilities> {
                 protocol: spec.protocol,
                 versions: spec.versions.to_vec(),
                 features: spec.features.to_vec(),
+                deprecation: map_deprecation(spec.deprecation),
             })
             .collect(),
         tool_envelope_version: TOOL_ENVELOPE_VERSION,

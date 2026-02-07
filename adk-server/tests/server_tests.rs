@@ -197,6 +197,49 @@ async fn test_ui_capabilities() {
 
         assert_eq!(versions, expected.versions, "version mismatch for {}", expected.protocol);
         assert_eq!(features, expected.features, "feature mismatch for {}", expected.protocol);
+
+        match expected.deprecation {
+            Some(deprecation) => {
+                assert_eq!(
+                    entry["deprecation"]["stage"],
+                    deprecation.stage,
+                    "deprecation stage mismatch for {}",
+                    expected.protocol
+                );
+                assert_eq!(
+                    entry["deprecation"]["announcedOn"],
+                    deprecation.announced_on,
+                    "deprecation announcedOn mismatch for {}",
+                    expected.protocol
+                );
+                let sunset_target = entry["deprecation"]["sunsetTargetOn"].as_str();
+                assert_eq!(
+                    sunset_target,
+                    deprecation.sunset_target_on,
+                    "deprecation sunsetTargetOn mismatch for {}",
+                    expected.protocol
+                );
+                let replacements: Vec<&str> = entry["deprecation"]["replacementProtocols"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .collect();
+                assert_eq!(
+                    replacements,
+                    deprecation.replacement_protocols,
+                    "deprecation replacement mismatch for {}",
+                    expected.protocol
+                );
+            }
+            None => {
+                assert!(
+                    entry.get("deprecation").is_none() || entry["deprecation"].is_null(),
+                    "unexpected deprecation metadata for {}",
+                    expected.protocol
+                );
+            }
+        }
     }
 }
 

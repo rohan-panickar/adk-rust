@@ -105,6 +105,12 @@ Common pattern with server runtime negotiation:
 2. Feed response payloads into `client.applyPayload(...)`.
 3. Render with `A2uiSurfaceRenderer` from the unified store.
 
+Migration note:
+
+- `adk_ui` is treated as legacy profile compatibility mode.
+- Prefer `a2ui`, `ag_ui`, or `mcp_apps` for new integrations.
+- Read `/api/ui/capabilities` and surface server-provided deprecation metadata in client UX.
+
 ## 🧩 Available Components
 
 | Category | Components |

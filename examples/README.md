@@ -13,6 +13,7 @@ examples/
 ├── roadmap_vertex_auth/     # Vertex auth modes (API key / ADC / SA / WIF)
 ├── roadmap_gemini_sdk/      # adk-gemini v1 + Vertex SDK surface
 ├── roadmap_retry_matrix/    # Standardized retry across providers
+├── ui_protocol_profiles/    # Tri-protocol UI outputs (A2UI/AG-UI/MCP Apps)
 ├── skills_llm_minimal/      # Basic LlmAgent + local skills
 ├── skills_auto_discovery/   # Auto-discover .skills with default policy
 ├── skills_conventions_index/# Discover AGENTS/CLAUDE/GEMINI/COPILOT/SKILLS files
@@ -150,6 +151,12 @@ cargo run --example roadmap_retry_matrix
 cargo run --example roadmap_retry_matrix --features openai,anthropic,deepseek,groq
 ```
 Optional live call selector: `ROADMAP_RUN_PROVIDER=gemini|openai|anthropic|deepseek|groq`
+
+### ui_protocol_profiles
+Runs all 13 `adk-ui` render tools across all 3 UI protocols and prints output-shape summaries.
+```bash
+cargo run --example ui_protocol_profiles
+```
 
 ## Skills Feature Examples
 
