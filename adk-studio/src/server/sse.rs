@@ -123,17 +123,26 @@ impl ExecutionContext {
         pending.sort_by_key(|p| p.step);
 
         for prev in pending {
-            // If this is a known action node, check whether its output keys
-            // are already available in current_state. If not, defer it.
+            // If this pending node hasn't produced output yet, defer it.
+            // This handles both:
+            // - Action nodes whose expected output keys aren't in state yet
+            // - LLM agents running in parallel that haven't emitted a message yet
             let has_captured = self.completed_outputs.contains_key(&prev.name);
             if !has_captured {
-                if let Some(expected_keys) = self.action_node_output_keys.get(&prev.name) {
-                    let any_key_present = expected_keys.iter().any(|k| self.current_state.contains_key(k));
-                    if !any_key_present && !expected_keys.is_empty() {
-                        // Output not available yet — keep pending for emit_pending_node_ends()
-                        still_pending.push(prev);
-                        continue;
+                let is_action_node = self.action_node_output_keys.contains_key(&prev.name);
+                if is_action_node {
+                    if let Some(expected_keys) = self.action_node_output_keys.get(&prev.name) {
+                        let any_key_present = expected_keys.iter().any(|k| self.current_state.contains_key(k));
+                        if !any_key_present && !expected_keys.is_empty() {
+                            still_pending.push(prev);
+                            continue;
+                        }
                     }
+                } else {
+                    // LLM agent with no completed output — it's still running
+                    // in a parallel branch. Defer until done event.
+                    still_pending.push(prev);
+                    continue;
                 }
             }
 
