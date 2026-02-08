@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+/// Maximum allowed size for inline binary data (10 MB).
+/// Prevents accidental or malicious embedding of oversized payloads in Content parts.
+pub const MAX_INLINE_DATA_SIZE: usize = 10 * 1024 * 1024;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FunctionResponseData {
     pub name: String,
@@ -70,7 +74,16 @@ impl Content {
     }
 
     /// Add inline binary data (e.g., image bytes).
+    ///
+    /// # Panics
+    /// Panics if `data` exceeds [`MAX_INLINE_DATA_SIZE`] (10 MB).
     pub fn with_inline_data(mut self, mime_type: impl Into<String>, data: Vec<u8>) -> Self {
+        assert!(
+            data.len() <= MAX_INLINE_DATA_SIZE,
+            "Inline data size {} exceeds maximum allowed size of {} bytes",
+            data.len(),
+            MAX_INLINE_DATA_SIZE
+        );
         self.parts.push(Part::InlineData { mime_type: mime_type.into(), data });
         self
     }
@@ -123,7 +136,16 @@ impl Part {
     }
 
     /// Create a new inline data part
+    ///
+    /// # Panics
+    /// Panics if `data` exceeds [`MAX_INLINE_DATA_SIZE`] (10 MB).
     pub fn inline_data(mime_type: impl Into<String>, data: Vec<u8>) -> Self {
+        assert!(
+            data.len() <= MAX_INLINE_DATA_SIZE,
+            "Inline data size {} exceeds maximum allowed size of {} bytes",
+            data.len(),
+            MAX_INLINE_DATA_SIZE
+        );
         Part::InlineData { mime_type: mime_type.into(), data }
     }
 
@@ -249,5 +271,35 @@ mod tests {
         assert!(
             matches!(file, Part::FileData { mime_type, file_uri } if mime_type == "image/jpeg" && file_uri == "https://example.com/img.jpg")
         );
+    }
+
+    #[test]
+    fn test_inline_data_within_limit() {
+        // Should succeed: small data
+        let data = vec![0u8; 1024];
+        let content = Content::new("user").with_inline_data("image/png", data);
+        assert_eq!(content.parts.len(), 1);
+    }
+
+    #[test]
+    fn test_inline_data_at_limit() {
+        // Should succeed: exactly at limit
+        let data = vec![0u8; MAX_INLINE_DATA_SIZE];
+        let part = Part::inline_data("image/png", data);
+        assert!(part.is_media());
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeds maximum allowed size")]
+    fn test_inline_data_exceeds_limit_content() {
+        let data = vec![0u8; MAX_INLINE_DATA_SIZE + 1];
+        let _ = Content::new("user").with_inline_data("image/png", data);
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeds maximum allowed size")]
+    fn test_inline_data_exceeds_limit_part() {
+        let data = vec![0u8; MAX_INLINE_DATA_SIZE + 1];
+        let _ = Part::inline_data("image/png", data);
     }
 }

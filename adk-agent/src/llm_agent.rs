@@ -752,8 +752,8 @@ impl Agent for LlmAgent {
                     cached_event.author = agent_name.clone();
                     cached_event.llm_response.content = cached_response.content.clone();
                     cached_event.llm_request = Some(serde_json::to_string(&request).unwrap_or_default());
-                    cached_event.gcp_llm_request = Some(serde_json::to_string(&request).unwrap_or_default());
-                    cached_event.gcp_llm_response = Some(serde_json::to_string(&cached_response).unwrap_or_default());
+                    cached_event.provider_metadata.insert("gcp.vertex.agent.llm_request".to_string(), serde_json::to_string(&request).unwrap_or_default());
+                    cached_event.provider_metadata.insert("gcp.vertex.agent.llm_response".to_string(), serde_json::to_string(&cached_response).unwrap_or_default());
 
                     // Populate long_running_tool_ids for function calls from long-running tools
                     if let Some(ref content) = cached_response.content {
@@ -854,8 +854,8 @@ impl Agent for LlmAgent {
                             let mut partial_event = Event::with_id(&llm_event_id, &invocation_id);
                             partial_event.author = agent_name.clone();
                             partial_event.llm_request = Some(request_json.clone());
-                            partial_event.gcp_llm_request = Some(request_json.clone());
-                            partial_event.gcp_llm_response = Some(serde_json::to_string(&chunk).unwrap_or_default());
+                            partial_event.provider_metadata.insert("gcp.vertex.agent.llm_request".to_string(), request_json.clone());
+                            partial_event.provider_metadata.insert("gcp.vertex.agent.llm_response".to_string(), serde_json::to_string(&chunk).unwrap_or_default());
                             partial_event.llm_response.partial = chunk.partial;
                             partial_event.llm_response.turn_complete = chunk.turn_complete;
                             partial_event.llm_response.finish_reason = chunk.finish_reason;
@@ -896,7 +896,7 @@ impl Agent for LlmAgent {
                         let mut final_event = Event::with_id(&llm_event_id, &invocation_id);
                         final_event.author = agent_name.clone();
                         final_event.llm_request = Some(request_json.clone());
-                        final_event.gcp_llm_request = Some(request_json.clone());
+                        final_event.provider_metadata.insert("gcp.vertex.agent.llm_request".to_string(), request_json.clone());
                         final_event.llm_response.content = accumulated_content.clone();
                         final_event.llm_response.partial = false;
                         final_event.llm_response.turn_complete = true;
@@ -905,7 +905,7 @@ impl Agent for LlmAgent {
                         if let Some(ref last) = last_chunk {
                             final_event.llm_response.finish_reason = last.finish_reason;
                             final_event.llm_response.usage_metadata = last.usage_metadata.clone();
-                            final_event.gcp_llm_response = Some(serde_json::to_string(last).unwrap_or_default());
+                            final_event.provider_metadata.insert("gcp.vertex.agent.llm_response".to_string(), serde_json::to_string(last).unwrap_or_default());
                         }
 
                         // Populate long_running_tool_ids

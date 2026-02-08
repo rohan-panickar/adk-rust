@@ -17,8 +17,37 @@ pub trait ReadonlyContext: Send + Sync {
 }
 
 // State management traits
+
+/// Maximum allowed length for state keys (256 bytes).
+pub const MAX_STATE_KEY_LEN: usize = 256;
+
+/// Validates a state key. Returns `Ok(())` if the key is safe, or an error message.
+///
+/// Rules:
+/// - Must not be empty
+/// - Must not exceed [`MAX_STATE_KEY_LEN`] bytes
+/// - Must not contain path separators (`/`, `\`) or `..`
+/// - Must not contain null bytes
+pub fn validate_state_key(key: &str) -> std::result::Result<(), &'static str> {
+    if key.is_empty() {
+        return Err("state key must not be empty");
+    }
+    if key.len() > MAX_STATE_KEY_LEN {
+        return Err("state key exceeds maximum length of 256 bytes");
+    }
+    if key.contains('/') || key.contains('\\') || key.contains("..") {
+        return Err("state key must not contain path separators or '..'");
+    }
+    if key.contains('\0') {
+        return Err("state key must not contain null bytes");
+    }
+    Ok(())
+}
+
 pub trait State: Send + Sync {
     fn get(&self, key: &str) -> Option<Value>;
+    /// Set a state value. Implementations should call [`validate_state_key`] and
+    /// reject invalid keys (e.g., by logging a warning or panicking).
     fn set(&mut self, key: String, value: Value);
     fn all(&self) -> HashMap<String, Value>;
 }
@@ -203,5 +232,37 @@ mod tests {
         assert!(!policy.requires_confirmation("write_file"));
 
         assert!(ToolConfirmationPolicy::Always.requires_confirmation("any_tool"));
+    }
+
+    #[test]
+    fn test_validate_state_key_valid() {
+        assert!(validate_state_key("user_name").is_ok());
+        assert!(validate_state_key("app:config").is_ok());
+        assert!(validate_state_key("temp:data").is_ok());
+        assert!(validate_state_key("a").is_ok());
+    }
+
+    #[test]
+    fn test_validate_state_key_empty() {
+        assert_eq!(validate_state_key(""), Err("state key must not be empty"));
+    }
+
+    #[test]
+    fn test_validate_state_key_too_long() {
+        let long_key = "a".repeat(MAX_STATE_KEY_LEN + 1);
+        assert!(validate_state_key(&long_key).is_err());
+    }
+
+    #[test]
+    fn test_validate_state_key_path_traversal() {
+        assert!(validate_state_key("../etc/passwd").is_err());
+        assert!(validate_state_key("foo/bar").is_err());
+        assert!(validate_state_key("foo\\bar").is_err());
+        assert!(validate_state_key("..").is_err());
+    }
+
+    #[test]
+    fn test_validate_state_key_null_byte() {
+        assert!(validate_state_key("foo\0bar").is_err());
     }
 }

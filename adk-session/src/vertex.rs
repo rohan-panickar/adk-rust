@@ -685,8 +685,7 @@ impl VertexEventPayload {
             event.timestamp = timestamp;
         }
 
-        event.invocation_id = invocation_id.clone();
-        event.invocation_id_camel = invocation_id;
+        event.invocation_id = invocation_id;
         event.author = self.author;
         event.branch = self.event_metadata.branch;
         event.actions.state_delta = sanitize_state_map(self.actions.state_delta);

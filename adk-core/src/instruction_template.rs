@@ -1,17 +1,53 @@
 use crate::{AdkError, InvocationContext, Result};
-use regex::Regex;
-use std::sync::OnceLock;
 
-/// Regex pattern to match template placeholders like {variable} or {artifact.file_name}
-/// Optimized pattern matches only valid identifiers: {[a-zA-Z_][a-zA-Z0-9_:]*[?]?}
-/// This reduces backtracking compared to the previous pattern: \{+[^{}]*\}+
-static PLACEHOLDER_REGEX: OnceLock<Regex> = OnceLock::new();
+/// Checks if a character is valid as the first character of a placeholder identifier.
+fn is_ident_start(c: char) -> bool {
+    c.is_ascii_alphabetic() || c == '_'
+}
 
-fn get_placeholder_regex() -> &'static Regex {
-    PLACEHOLDER_REGEX.get_or_init(|| {
-        // Match: { + identifier (with dots for artifact.name) + optional ? + }
-        Regex::new(r"\{[a-zA-Z_][a-zA-Z0-9_:.]*\??\}").expect("Invalid regex pattern")
-    })
+/// Checks if a character is valid inside a placeholder identifier body.
+fn is_ident_body(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == ':' || c == '.'
+}
+
+/// Finds the next placeholder `{...}` in `template` starting from byte offset `from`.
+/// Returns `Some((start, end, content))` where start/end are byte offsets of the
+/// outer braces and content is the inner string (without braces).
+/// Returns `None` when no more placeholders exist.
+fn find_next_placeholder(template: &str, from: usize) -> Option<(usize, usize, &str)> {
+    let bytes = template.as_bytes();
+    let len = bytes.len();
+    let mut i = from;
+
+    while i < len {
+        if bytes[i] == b'{' {
+            let content_start = i + 1;
+            if content_start >= len {
+                break;
+            }
+            // First char must be a valid identifier start
+            if !is_ident_start(bytes[content_start] as char) {
+                i += 1;
+                continue;
+            }
+            // Scan the body
+            let mut j = content_start + 1;
+            while j < len && is_ident_body(bytes[j] as char) {
+                j += 1;
+            }
+            // Optional trailing '?'
+            if j < len && bytes[j] == b'?' {
+                j += 1;
+            }
+            // Must close with '}'
+            if j < len && bytes[j] == b'}' {
+                let content = &template[content_start..j];
+                return Some((i, j + 1, content));
+            }
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Checks if a string is a valid identifier (like Python's str.isidentifier())
@@ -48,10 +84,9 @@ fn is_valid_state_name(var_name: &str) -> bool {
 }
 
 /// Replaces a single placeholder match with its resolved value
-/// Handles {var}, {var?}, and {artifact.name} syntax  
-async fn replace_match(ctx: &dyn InvocationContext, match_str: &str) -> Result<String> {
-    // Trim curly braces: "{var_name}" -> "var_name"
-    let var_name = match_str.trim_matches(|c| c == '{' || c == '}').trim();
+/// Handles {var}, {var?}, and {artifact.name} syntax
+async fn replace_match(ctx: &dyn InvocationContext, content: &str) -> Result<String> {
+    let var_name = content.trim();
 
     // Check if optional (ends with ?)
     let (var_name, optional) =
@@ -59,13 +94,20 @@ async fn replace_match(ctx: &dyn InvocationContext, match_str: &str) -> Result<S
 
     // Handle artifact.{name} pattern
     if let Some(file_name) = var_name.strip_prefix("artifact.") {
+        // Reject path traversal attempts in artifact names
+        if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
+            return Err(AdkError::Agent(format!(
+                "Invalid artifact name '{}': must not contain path separators or '..'",
+                file_name
+            )));
+        }
+
         let artifacts = ctx
             .artifacts()
             .ok_or_else(|| AdkError::Agent("Artifact service is not initialized".to_string()))?;
 
         match artifacts.load(file_name).await {
             Ok(part) => {
-                // Extract text from the part
                 if let Some(text) = part.text() {
                     return Ok(text.to_string());
                 }
@@ -73,7 +115,6 @@ async fn replace_match(ctx: &dyn InvocationContext, match_str: &str) -> Result<S
             }
             Err(e) => {
                 if optional {
-                    // Optional artifact missing - return empty string
                     Ok(String::new())
                 } else {
                     Err(AdkError::Agent(format!("Failed to load artifact {}: {}", file_name, e)))
@@ -81,12 +122,10 @@ async fn replace_match(ctx: &dyn InvocationContext, match_str: &str) -> Result<S
             }
         }
     } else if is_valid_state_name(var_name) {
-        // Handle session state variable
         let state_value = ctx.session().state().get(var_name);
 
         match state_value {
             Some(value) => {
-                // Convert value to string
                 if let Some(s) = value.as_str() {
                     Ok(s.to_string())
                 } else {
@@ -103,7 +142,7 @@ async fn replace_match(ctx: &dyn InvocationContext, match_str: &str) -> Result<S
         }
     } else {
         // Not a valid variable name - return original match as literal
-        Ok(match_str.to_string())
+        Ok(format!("{{{}}}", content))
     }
 }
 
@@ -130,23 +169,19 @@ async fn replace_match(ctx: &dyn InvocationContext, match_str: &str) -> Result<S
 /// - A required artifact cannot be loaded
 /// - The artifact service is not initialized
 pub async fn inject_session_state(ctx: &dyn InvocationContext, template: &str) -> Result<String> {
-    let regex = get_placeholder_regex();
     // Pre-allocate 20% extra capacity to reduce reallocations when placeholders expand
     let mut result = String::with_capacity((template.len() as f32 * 1.2) as usize);
     let mut last_end = 0;
 
-    for captures in regex.find_iter(template) {
-        let match_range = captures.range();
-
+    while let Some((start, end, content)) = find_next_placeholder(template, last_end) {
         // Append text between last match and this one
-        result.push_str(&template[last_end..match_range.start]);
+        result.push_str(&template[last_end..start]);
 
         // Get the replacement for the current match
-        let match_str = captures.as_str();
-        let replacement = replace_match(ctx, match_str).await?;
+        let replacement = replace_match(ctx, content).await?;
         result.push_str(&replacement);
 
-        last_end = match_range.end;
+        last_end = end;
     }
 
     // Append any remaining text
@@ -178,5 +213,53 @@ mod tests {
         assert!(!is_valid_state_name("invalid:prefix"));
         assert!(!is_valid_state_name("app:invalid-name"));
         assert!(!is_valid_state_name("too:many:parts"));
+    }
+
+    #[test]
+    fn test_find_placeholder_basic() {
+        let t = "Hello {name}, welcome!";
+        let (s, e, c) = find_next_placeholder(t, 0).unwrap();
+        assert_eq!(c, "name");
+        assert_eq!(&t[s..e], "{name}");
+    }
+
+    #[test]
+    fn test_find_placeholder_optional() {
+        let t = "Hello {name?}!";
+        let (_, _, c) = find_next_placeholder(t, 0).unwrap();
+        assert_eq!(c, "name?");
+    }
+
+    #[test]
+    fn test_find_placeholder_prefixed() {
+        let t = "Value: {app:config}";
+        let (_, _, c) = find_next_placeholder(t, 0).unwrap();
+        assert_eq!(c, "app:config");
+    }
+
+    #[test]
+    fn test_find_placeholder_artifact() {
+        let t = "Content: {artifact.readme}";
+        let (_, _, c) = find_next_placeholder(t, 0).unwrap();
+        assert_eq!(c, "artifact.readme");
+    }
+
+    #[test]
+    fn test_find_placeholder_skips_invalid() {
+        // {123} should not match (starts with digit)
+        assert!(find_next_placeholder("{123}", 0).is_none());
+        // Empty braces
+        assert!(find_next_placeholder("{}", 0).is_none());
+        // JSON-like content
+        assert!(find_next_placeholder("{\"key\": \"value\"}", 0).is_none());
+    }
+
+    #[test]
+    fn test_find_placeholder_multiple() {
+        let t = "{a} and {b}";
+        let (_, e1, c1) = find_next_placeholder(t, 0).unwrap();
+        assert_eq!(c1, "a");
+        let (_, _, c2) = find_next_placeholder(t, e1).unwrap();
+        assert_eq!(c2, "b");
     }
 }

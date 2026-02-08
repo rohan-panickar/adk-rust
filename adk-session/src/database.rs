@@ -271,15 +271,13 @@ impl SessionService for DatabaseSessionService {
                     id: row.get("id"),
                     timestamp,
                     invocation_id: row.get("invocation_id"),
-                    invocation_id_camel: row.get("invocation_id"),
                     branch: row.get("branch"),
                     author: row.get("author"),
                     llm_request: None,
                     llm_response,
                     actions,
                     long_running_tool_ids,
-                    gcp_llm_request: None,
-                    gcp_llm_response: None,
+                    provider_metadata: std::collections::HashMap::new(),
                 })
             })
             .collect();

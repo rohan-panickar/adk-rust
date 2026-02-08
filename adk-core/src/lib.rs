@@ -81,6 +81,7 @@ pub use context::{
     Artifacts, CallbackContext, IncludeContents, InvocationContext, Memory, MemoryEntry,
     ReadonlyContext, ReadonlyState, RunConfig, Session, State, StreamingMode,
     ToolConfirmationDecision, ToolConfirmationPolicy, ToolConfirmationRequest,
+    validate_state_key, MAX_STATE_KEY_LEN,
 };
 pub use error::{AdkError, Result};
 pub use event::{Event, EventActions, KEY_PREFIX_APP, KEY_PREFIX_TEMP, KEY_PREFIX_USER};
@@ -90,4 +91,4 @@ pub use model::{
     LlmResponse, LlmResponseStream, UsageMetadata,
 };
 pub use tool::{Tool, ToolContext, ToolPredicate, Toolset};
-pub use types::{Content, FunctionResponseData, Part};
+pub use types::{Content, FunctionResponseData, Part, MAX_INLINE_DATA_SIZE};
