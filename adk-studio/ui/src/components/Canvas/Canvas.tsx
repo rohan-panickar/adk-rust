@@ -260,6 +260,18 @@ export function Canvas() {
             maxZoom={2}
             snapToGrid={snapToGrid}
             snapGrid={[gridSize, gridSize]}
+            proOptions={{ hideAttribution: true }}
+            connectionLineStyle={{ stroke: 'var(--accent-primary)', strokeWidth: 2 }}
+            defaultEdgeOptions={{ type: 'animated' }}
+            fitView
+            fitViewOptions={{ padding: 0.2, maxZoom: 0.9 }}
+            nodesDraggable
+            nodesConnectable
+            elementsSelectable
+            panOnDrag
+            zoomOnScroll
+            zoomOnPinch
+            selectNodesOnDrag={false}
           >
             <Background color={gridColor} gap={gridSize} />
             <Controls />

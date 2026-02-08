@@ -28,7 +28,7 @@ export interface LayoutState {
 
 export const defaultLayoutState: LayoutState = {
   mode: 'free',
-  direction: 'TB',
+  direction: 'LR',
   snapToGrid: true,
   gridSize: 20,
 };

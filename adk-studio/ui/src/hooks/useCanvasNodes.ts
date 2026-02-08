@@ -3,6 +3,7 @@ import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import type { Project, Edge as WorkflowEdge } from '../types/project';
 import type { ActionNodeConfig } from '../types/actionNodes';
 import { useStore } from '../store';
+import { consumePendingDropPosition } from './useCanvasDragDrop';
 
 interface ExecutionState {
   activeAgent: string | null;
@@ -89,6 +90,10 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
   // Track structure hash to detect actual changes
   const prevStructureHash = useRef<string>('');
   
+  // Track current node positions via ref (avoids dependency cycle with setNodes)
+  const nodesRef = useRef<Node[]>([]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  
   // Compute current structure hash
   const currentStructureHash = useMemo(() => getStructureHash(project), [project]);
 
@@ -103,7 +108,17 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
     if (currentStructureHash === prevStructureHash.current) {
       return;
     }
+    const isFirstBuild = prevStructureHash.current === '';
     prevStructureHash.current = currentStructureHash;
+    
+    // Consume any pending drop position (from drag-drop onto canvas)
+    const dropPosition = consumePendingDropPosition();
+    
+    // Capture existing node positions so we can preserve them
+    const existingNodes = new Map<string, { x: number; y: number }>();
+    for (const n of nodesRef.current) {
+      existingNodes.set(n.id, { x: n.position.x, y: n.position.y });
+    }
     
     const agentIds = Object.keys(project.agents);
     const actionNodeIds = Object.keys(project.actionNodes || {});
@@ -177,18 +192,38 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
     
     const newNodes: Node[] = [];
     const nodeSpacing = 200;
-    const branchSpacing = 250; // horizontal spacing between parallel branches
+    const branchSpacing = 250;
     const triggerOffset = 100;
     const startOffset = triggerOffset + (nodesConnectingToStart.length > 0 ? nodeSpacing : 0);
     const centerX = 300;
+
+    /**
+     * Resolve position for a node:
+     * 1. If this is a newly added node AND we have a drop position → use drop position
+     * 2. If the node already existed on canvas → preserve its current position
+     * 3. Otherwise → use the computed BFS layout position (initial load / first build)
+     */
+    const resolvePosition = (id: string, computedPos: { x: number; y: number }): { x: number; y: number } => {
+      // New node with drop position — place at cursor
+      if (!existingNodes.has(id) && dropPosition) {
+        return { x: dropPosition.x, y: dropPosition.y };
+      }
+      // Existing node — preserve position (don't rearrange on structure change)
+      if (existingNodes.has(id) && !isFirstBuild) {
+        return existingNodes.get(id)!;
+      }
+      // First build or no existing position — use computed layout
+      return computedPos;
+    };
     
     // Add trigger nodes (connect TO START)
     nodesConnectingToStart.forEach((id, _i) => {
       const actionNode = project.actionNodes?.[id];
       if (actionNode) {
-        const pos = isHorizontal
+        const computedPos = isHorizontal
           ? { x: triggerOffset, y: 200 }
           : { x: centerX, y: triggerOffset };
+        const pos = resolvePosition(id, computedPos);
         const nodeType = getActionNodeType(actionNode.type);
         newNodes.push({
           id,
@@ -199,20 +234,20 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
       }
     });
     
-    // Add START/END
+    // Add START/END — always preserve existing positions if available
     const endLayer = layers['END'] || maxLayer + 1;
     if (allWorkflowItems.length > 0 || nodesConnectingToStart.length > 0) {
-      if (isHorizontal) {
-        newNodes.push(
-          { id: 'START', position: { x: startOffset, y: 200 }, data: {}, type: 'start' },
-          { id: 'END', position: { x: startOffset + endLayer * nodeSpacing, y: 200 }, data: {}, type: 'end' },
-        );
-      } else {
-        newNodes.push(
-          { id: 'START', position: { x: centerX, y: startOffset }, data: {}, type: 'start' },
-          { id: 'END', position: { x: centerX, y: startOffset + endLayer * nodeSpacing }, data: {}, type: 'end' },
-        );
-      }
+      const startComputed = isHorizontal
+        ? { x: startOffset, y: 200 }
+        : { x: centerX, y: startOffset };
+      const endComputed = isHorizontal
+        ? { x: startOffset + endLayer * nodeSpacing, y: 200 }
+        : { x: centerX, y: startOffset + endLayer * nodeSpacing };
+      
+      newNodes.push(
+        { id: 'START', position: existingNodes.get('START') || startComputed, data: {}, type: 'start' },
+        { id: 'END', position: existingNodes.get('END') || endComputed, data: {}, type: 'end' },
+      );
     }
 
     // Add all workflow nodes positioned by layer, spreading parallel nodes
@@ -221,13 +256,14 @@ export function useCanvasNodes(project: Project | null, execution: ExecutionStat
       const count = ids.length;
       
       ids.forEach((id, idx) => {
-        // Calculate position: center parallel nodes around the center axis
         const offset = (idx - (count - 1) / 2) * branchSpacing;
         const mainAxisPos = startOffset + layer * nodeSpacing;
         
-        const pos = isHorizontal
+        const computedPos = isHorizontal
           ? { x: mainAxisPos, y: 200 + offset }
           : { x: centerX + offset, y: mainAxisPos };
+        
+        const pos = resolvePosition(id, computedPos);
         
         // Check if this is an agent
         const agent = project.agents[id];

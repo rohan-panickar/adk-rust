@@ -1,8 +1,22 @@
 import { useCallback, DragEvent } from 'react';
+import { useReactFlow } from '@xyflow/react';
 import { useStore } from '../store';
 import type { ActionNodeType, ActionNodeConfig } from '../types/actionNodes';
 import { createDefaultStandardProperties } from '../types/standardProperties';
 import type { AutobuildTriggerType } from './useBuild';
+
+/**
+ * Ephemeral drop position — consumed by useCanvasNodes when building new nodes.
+ * This avoids polluting the store with transient UI state.
+ */
+let _pendingDropPosition: { x: number; y: number } | null = null;
+
+/** Read and consume the pending drop position (one-shot). */
+export function consumePendingDropPosition(): { x: number; y: number } | null {
+  const pos = _pendingDropPosition;
+  _pendingDropPosition = null;
+  return pos;
+}
 
 /**
  * Parameters for the useCanvasDragDrop hook.
@@ -35,14 +49,46 @@ export interface UseCanvasDragDropReturn {
 }
 
 /**
+ * Find the closest edge to a given position for edge-splitting (insert between nodes).
+ * Returns the edge to split if the drop point is close enough to an edge midpoint.
+ */
+function findClosestEdge(
+  dropX: number,
+  dropY: number,
+  edges: Array<{ from: string; to: string }>,
+  nodePositions: Map<string, { x: number; y: number }>,
+  threshold: number = 120,
+): { from: string; to: string } | null {
+  let closest: { from: string; to: string } | null = null;
+  let closestDist = threshold;
+
+  for (const edge of edges) {
+    const sourcePos = nodePositions.get(edge.from);
+    const targetPos = nodePositions.get(edge.to);
+    if (!sourcePos || !targetPos) continue;
+
+    // Midpoint of the edge
+    const midX = (sourcePos.x + targetPos.x) / 2;
+    const midY = (sourcePos.y + targetPos.y) / 2;
+    const dist = Math.sqrt((dropX - midX) ** 2 + (dropY - midY) ** 2);
+
+    if (dist < closestDist) {
+      closestDist = dist;
+      closest = edge;
+    }
+  }
+
+  return closest;
+}
+
+/**
  * Hook that encapsulates all drag-and-drop handlers for the Canvas.
  *
- * Handles:
- * - Agent palette drag start
- * - Action node palette drag start
- * - Canvas drag over
- * - Canvas drop (agents, action nodes, tools)
- * - Action node creation with workflow edge wiring
+ * Key behaviors:
+ * - Nodes are placed at the drop cursor position (n8n-style)
+ * - Dropping near an edge midpoint splits the edge (insert between nodes)
+ * - Auto-layout is only applied when no drop position is available (palette click)
+ * - Node positions are persisted and respected
  *
  * @see Requirements 2.5
  */
@@ -52,6 +98,7 @@ export function useCanvasDragDrop({
   applyLayout,
   invalidateBuild,
 }: UseCanvasDragDropParams): UseCanvasDragDropReturn {
+  const { screenToFlowPosition, getNodes } = useReactFlow();
   const addActionNode = useStore(s => s.addActionNode);
   const addProjectEdge = useStore(s => s.addEdge);
   const removeProjectEdge = useStore(s => s.removeEdge);
@@ -70,12 +117,70 @@ export function useCanvasDragDrop({
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  // Create action node handler
-  // Action nodes integrate into the workflow the same way agents do:
-  // - If first item on canvas, connect START -> node -> END
-  // - If other items exist, insert before END (remove edge to END, connect previous -> new -> END)
-  const createActionNode = useCallback((type: ActionNodeType) => {
-    // Read current project from store directly to avoid stale closures
+  /**
+   * Wire a new node into the workflow graph.
+   * If dropPosition is provided and close to an edge, splits that edge.
+   * Otherwise appends before END.
+   */
+  const wireNodeIntoWorkflow = useCallback((
+    nodeId: string,
+    isTrigger: boolean,
+    dropPosition?: { x: number; y: number },
+  ) => {
+    const currentProject = useStore.getState().currentProject;
+    if (!currentProject) return;
+
+    if (isTrigger) {
+      // Trigger nodes connect TO START
+      const existingTrigger = Object.values(currentProject.actionNodes || {}).find(
+        (node) => node.type === 'trigger'
+      );
+      if (existingTrigger && existingTrigger.id !== nodeId) {
+        useStore.getState().removeActionNode(nodeId);
+        alert('Only one trigger node is allowed per workflow. Remove the existing trigger first.');
+        return;
+      }
+      addProjectEdge(nodeId, 'START');
+      return;
+    }
+
+    // Try edge-splitting if we have a drop position
+    if (dropPosition) {
+      const nodes = getNodes();
+      const nodePositions = new Map<string, { x: number; y: number }>();
+      for (const n of nodes) {
+        nodePositions.set(n.id, { x: n.position.x + 90, y: n.position.y + 50 }); // center of node
+      }
+
+      const edgeToSplit = findClosestEdge(
+        dropPosition.x,
+        dropPosition.y,
+        currentProject.workflow.edges,
+        nodePositions,
+      );
+
+      if (edgeToSplit) {
+        // Split: remove old edge, insert node in between
+        removeProjectEdge(edgeToSplit.from, edgeToSplit.to);
+        addProjectEdge(edgeToSplit.from, nodeId);
+        addProjectEdge(nodeId, edgeToSplit.to);
+        return;
+      }
+    }
+
+    // Default: append before END
+    const edgeToEnd = currentProject.workflow.edges.find(e => e.to === 'END');
+    if (edgeToEnd) {
+      removeProjectEdge(edgeToEnd.from, 'END');
+      addProjectEdge(edgeToEnd.from, nodeId);
+    } else {
+      addProjectEdge('START', nodeId);
+    }
+    addProjectEdge(nodeId, 'END');
+  }, [addProjectEdge, removeProjectEdge, getNodes]);
+
+  // Create action node handler — used by palette click (no drop position)
+  const createActionNode = useCallback((type: ActionNodeType, dropPosition?: { x: number; y: number }) => {
     const currentProject = useStore.getState().currentProject;
     if (!currentProject) return;
 
@@ -83,7 +188,6 @@ export function useCanvasDragDrop({
     const name = type.charAt(0).toUpperCase() + type.slice(1);
     const baseProps = createDefaultStandardProperties(id, name, `${type}Result`);
 
-    // Create node config based on type
     let nodeConfig: ActionNodeConfig;
 
     switch (type) {
@@ -92,14 +196,8 @@ export function useCanvasDragDrop({
         break;
       case 'http':
         nodeConfig = {
-          ...baseProps,
-          type: 'http',
-          method: 'GET',
-          url: 'https://api.example.com',
-          auth: { type: 'none' },
-          headers: {},
-          body: { type: 'none' },
-          response: { type: 'json' },
+          ...baseProps, type: 'http', method: 'GET', url: 'https://api.example.com',
+          auth: { type: 'none' }, headers: {}, body: { type: 'none' }, response: { type: 'json' },
         };
         break;
       case 'set':
@@ -113,61 +211,40 @@ export function useCanvasDragDrop({
         break;
       case 'loop':
         nodeConfig = {
-          ...baseProps,
-          type: 'loop',
-          loopType: 'forEach',
+          ...baseProps, type: 'loop', loopType: 'forEach',
           forEach: { sourceArray: '', itemVar: 'item', indexVar: 'index' },
-          parallel: { enabled: false },
-          results: { collect: true },
+          parallel: { enabled: false }, results: { collect: true },
         };
         break;
       case 'merge':
         nodeConfig = {
-          ...baseProps,
-          type: 'merge',
-          mode: 'wait_all',
-          combineStrategy: 'array',
+          ...baseProps, type: 'merge', mode: 'wait_all', combineStrategy: 'array',
           timeout: { enabled: false, ms: 30000, behavior: 'error' },
         };
         break;
       case 'wait':
         nodeConfig = {
-          ...baseProps,
-          type: 'wait',
-          waitType: 'fixed',
+          ...baseProps, type: 'wait', waitType: 'fixed',
           fixed: { duration: 1000, unit: 'ms' },
         };
         break;
       case 'code':
         nodeConfig = {
-          ...baseProps,
-          type: 'code',
-          language: 'javascript',
+          ...baseProps, type: 'code', language: 'javascript',
           code: '// Your code here\nreturn input;',
           sandbox: { networkAccess: false, fileSystemAccess: false, memoryLimit: 128, timeLimit: 5000 },
         };
         break;
       case 'database':
         nodeConfig = {
-          ...baseProps,
-          type: 'database',
-          dbType: 'postgresql',
+          ...baseProps, type: 'database', dbType: 'postgresql',
           connection: { connectionString: '' },
         };
         break;
       case 'email':
         nodeConfig = {
-          ...baseProps,
-          type: 'email',
-          mode: 'send',
-          smtp: {
-            host: 'smtp.example.com',
-            port: 587,
-            secure: true,
-            username: '',
-            password: '',
-            fromEmail: '',
-          },
+          ...baseProps, type: 'email', mode: 'send',
+          smtp: { host: 'smtp.example.com', port: 587, secure: true, username: '', password: '', fromEmail: '' },
           recipients: { to: '' },
           content: { subject: '', body: '', bodyType: 'text' },
           attachments: [],
@@ -177,48 +254,16 @@ export function useCanvasDragDrop({
         return;
     }
 
-    // Add the action node
     addActionNode(id, nodeConfig);
-
-    // Special handling for trigger nodes:
-    // - Only one trigger allowed per workflow
-    // - Trigger connects TO START (not from START like other nodes)
-    // - Visual flow: [Trigger] → START → agents → END
-    if (type === 'trigger') {
-      // Check if a trigger already exists
-      const existingTrigger = Object.values(currentProject.actionNodes || {}).find(
-        (node) => node.type === 'trigger'
-      );
-      if (existingTrigger && existingTrigger.id !== id) {
-        // Remove the newly added trigger - only one allowed
-        useStore.getState().removeActionNode(id);
-        alert('Only one trigger node is allowed per workflow. Remove the existing trigger first.');
-        return;
-      }
-
-      // Connect trigger TO START (trigger is the entry point)
-      addProjectEdge(id, 'START');
-    } else {
-      // Connect to workflow edges (same logic as agents)
-      // Find edge going to END and insert this node before it
-      const edgeToEnd = currentProject.workflow.edges.find(e => e.to === 'END');
-      if (edgeToEnd) {
-        // Remove the existing edge to END
-        removeProjectEdge(edgeToEnd.from, 'END');
-        // Connect previous node to this new node
-        addProjectEdge(edgeToEnd.from, id);
-      } else {
-        // No existing edges to END, connect from START
-        addProjectEdge('START', id);
-      }
-      // Connect this node to END
-      addProjectEdge(id, 'END');
-    }
-
+    wireNodeIntoWorkflow(id, type === 'trigger', dropPosition);
     selectActionNode(id);
-    invalidateBuild('onAgentAdd'); // Action nodes use same trigger as agents
-    setTimeout(() => applyLayout(), 100);
-  }, [addActionNode, addProjectEdge, removeProjectEdge, selectActionNode, applyLayout, invalidateBuild]);
+    invalidateBuild('onAgentAdd');
+
+    // Only auto-layout if no drop position (palette click, not drag-drop)
+    if (!dropPosition) {
+      setTimeout(() => applyLayout(), 100);
+    }
+  }, [addActionNode, wireNodeIntoWorkflow, selectActionNode, applyLayout, invalidateBuild]);
 
   const onDragOver = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -228,31 +273,36 @@ export function useCanvasDragDrop({
   const onDrop = useCallback((e: DragEvent) => {
     e.preventDefault();
 
-    // Read current project from store directly to avoid stale closures
     const currentProject = useStore.getState().currentProject;
 
+    // Convert screen coordinates to flow coordinates for drop-at-cursor
+    const flowPosition = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+
+    // Handle tool drop onto selected agent
     const toolData = e.dataTransfer.getData('text/plain');
     if (toolData.startsWith('tool:') && selectedNodeId && currentProject?.agents[selectedNodeId]) {
       addToolToAgent(selectedNodeId, toolData.slice(5));
-      invalidateBuild('onToolAdd'); // Trigger autobuild when tool is added
+      invalidateBuild('onToolAdd');
       return;
     }
 
-    // Handle action node drop
+    // Handle action node drop — place at cursor position
     const actionType = e.dataTransfer.getData('application/actionnode');
     if (actionType) {
-      createActionNode(actionType as ActionNodeType);
+      _pendingDropPosition = flowPosition;
+      createActionNode(actionType as ActionNodeType, flowPosition);
       return;
     }
 
+    // Handle agent drop — place at cursor position
     const type = e.dataTransfer.getData('application/reactflow');
     if (type) {
+      _pendingDropPosition = flowPosition;
       createAgentWithUndo(type);
-      invalidateBuild('onAgentAdd'); // Trigger autobuild when agent is added
-      // Apply layout after adding node (only in fixed mode or always for initial setup)
-      setTimeout(() => applyLayout(), 100);
+      invalidateBuild('onAgentAdd');
+      // Don't auto-layout — node will be placed at drop position
     }
-  }, [createAgentWithUndo, createActionNode, selectedNodeId, addToolToAgent, applyLayout, invalidateBuild]);
+  }, [createAgentWithUndo, createActionNode, selectedNodeId, addToolToAgent, invalidateBuild, screenToFlowPosition]);
 
   return {
     onDragStart,
