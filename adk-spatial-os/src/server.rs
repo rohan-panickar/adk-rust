@@ -396,6 +396,52 @@ async fn master_prompt(
             )
             .await;
     } else {
+        for app_id in &plan.selected_apps {
+            let dispatched = state.host.execute_command(app_id, prompt).await;
+            let dispatch_summary = dispatched.summary.clone();
+
+            let _ = state
+                .sessions
+                .publish(
+                    &session_id,
+                    SsePayload::TimelineEntry(timeline::app_command_entry(
+                        app_id,
+                        prompt,
+                        dispatched.accepted,
+                        &dispatch_summary,
+                    )),
+                )
+                .await;
+            let _ = state
+                .sessions
+                .publish(
+                    &session_id,
+                    SsePayload::Notification(NotificationPayload {
+                        level: if dispatched.accepted { "info" } else { "warn" }.to_string(),
+                        message: dispatch_summary.clone(),
+                    }),
+                )
+                .await;
+            let _ = state
+                .sessions
+                .publish(
+                    &session_id,
+                    SsePayload::AppSurfaceOps(AppSurfaceOpsPayload {
+                        reply_to: None,
+                        ops: vec![SurfaceOp::Patch(SurfacePatchOp {
+                            id: format!("surface:{app_id}"),
+                            props: json!({
+                                "content": dispatch_summary,
+                            })
+                            .as_object()
+                            .cloned()
+                            .unwrap_or_default(),
+                        })],
+                    }),
+                )
+                .await;
+        }
+
         let _ = state
             .sessions
             .publish(&session_id, SsePayload::Done(DonePayload { status: "completed".to_string() }))
