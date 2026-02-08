@@ -181,11 +181,13 @@ export function useCanvasDragDrop({
 
     // Always try to find the closest edge to the drop position and split it.
     // This is the core n8n-style behavior: drop between two nodes → insert there.
+    // Exclude trigger→START edges — those are entry-point wiring, not splittable.
     if (dropPosition) {
+      const splittableEdges = currentProject.workflow.edges.filter(e => e.to !== 'START');
       const edgeToSplit = findClosestEdge(
         dropPosition.x,
         dropPosition.y,
-        currentProject.workflow.edges,
+        splittableEdges,
         nodePositions,
       );
 
