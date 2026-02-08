@@ -19,7 +19,7 @@ Session management and state persistence for Rust Agent Development Kit (ADK-Rus
 
 ```toml
 [dependencies]
-adk-session = "0.2.0"
+adk-session = "0.3.0"
 ```
 
 Or use the meta-crate:
@@ -80,6 +80,7 @@ let theme = session.state().get("user:theme");
 - Automatic event history management
 - Pluggable storage backends
 - Optional SQLite persistence (`database` feature)
+- Optional Vertex AI Session Service backend (`vertex-session` feature)
 
 ## Feature Flags
 
@@ -89,6 +90,7 @@ adk-session = { version = "0.2.1", features = ["database"] }
 ```
 
 - `database` - Enable SQLite-backed sessions
+- `vertex-session` - Enable Vertex AI Session Service backend (`VertexAiSessionService`)
 
 ## Related Crates
 

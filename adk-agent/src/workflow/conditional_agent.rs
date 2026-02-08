@@ -29,6 +29,7 @@
 use adk_core::{
     AfterAgentCallback, Agent, BeforeAgentCallback, EventStream, InvocationContext, Result,
 };
+use adk_skill::{SelectionPolicy, SkillIndex, load_skill_index};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -55,6 +56,11 @@ pub struct ConditionalAgent {
     condition: ConditionFn,
     if_agent: Arc<dyn Agent>,
     else_agent: Option<Arc<dyn Agent>>,
+    /// Cached list of all branch agents for tree discovery via `sub_agents()`.
+    all_agents: Vec<Arc<dyn Agent>>,
+    skills_index: Option<Arc<SkillIndex>>,
+    skill_policy: SelectionPolicy,
+    max_skill_chars: usize,
     before_callbacks: Vec<BeforeAgentCallback>,
     after_callbacks: Vec<AfterAgentCallback>,
 }
@@ -64,12 +70,17 @@ impl ConditionalAgent {
     where
         F: Fn(&dyn InvocationContext) -> bool + Send + Sync + 'static,
     {
+        let all_agents = vec![if_agent.clone()];
         Self {
             name: name.into(),
             description: String::new(),
             condition: Box::new(condition),
             if_agent,
             else_agent: None,
+            all_agents,
+            skills_index: None,
+            skill_policy: SelectionPolicy::default(),
+            max_skill_chars: 2000,
             before_callbacks: Vec::new(),
             after_callbacks: Vec::new(),
         }
@@ -81,6 +92,7 @@ impl ConditionalAgent {
     }
 
     pub fn with_else(mut self, else_agent: Arc<dyn Agent>) -> Self {
+        self.all_agents.push(else_agent.clone());
         self.else_agent = Some(else_agent);
         self
     }
@@ -92,6 +104,31 @@ impl ConditionalAgent {
 
     pub fn after_callback(mut self, callback: AfterAgentCallback) -> Self {
         self.after_callbacks.push(callback);
+        self
+    }
+
+    pub fn with_skills(mut self, index: SkillIndex) -> Self {
+        self.skills_index = Some(Arc::new(index));
+        self
+    }
+
+    pub fn with_auto_skills(self) -> Result<Self> {
+        self.with_skills_from_root(".")
+    }
+
+    pub fn with_skills_from_root(mut self, root: impl AsRef<std::path::Path>) -> Result<Self> {
+        let index = load_skill_index(root).map_err(|e| adk_core::AdkError::Agent(e.to_string()))?;
+        self.skills_index = Some(Arc::new(index));
+        Ok(self)
+    }
+
+    pub fn with_skill_policy(mut self, policy: SelectionPolicy) -> Self {
+        self.skill_policy = policy;
+        self
+    }
+
+    pub fn with_skill_budget(mut self, max_chars: usize) -> Self {
+        self.max_skill_chars = max_chars;
         self
     }
 }
@@ -107,11 +144,18 @@ impl Agent for ConditionalAgent {
     }
 
     fn sub_agents(&self) -> &[Arc<dyn Agent>] {
-        &[]
+        &self.all_agents
     }
 
     async fn run(&self, ctx: Arc<dyn InvocationContext>) -> Result<EventStream> {
-        let agent = if (self.condition)(ctx.as_ref()) {
+        let run_ctx = super::skill_context::with_skill_injected_context(
+            ctx,
+            self.skills_index.as_ref(),
+            &self.skill_policy,
+            self.max_skill_chars,
+        );
+
+        let agent = if (self.condition)(run_ctx.as_ref()) {
             self.if_agent.clone()
         } else if let Some(else_agent) = &self.else_agent {
             else_agent.clone()
@@ -119,6 +163,6 @@ impl Agent for ConditionalAgent {
             return Ok(Box::pin(futures::stream::empty()));
         };
 
-        agent.run(ctx).await
+        agent.run(run_ctx).await
     }
 }

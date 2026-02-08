@@ -37,12 +37,50 @@ name = "loop_workflow"
 path = "loop_workflow/main.rs"
 
 [[example]]
+name = "skills_llm_minimal"
+path = "skills_llm_minimal/main.rs"
+
+[[example]]
+name = "skills_auto_discovery"
+path = "skills_auto_discovery/main.rs"
+
+[[example]]
+name = "skills_conventions_index"
+path = "skills_conventions_index/main.rs"
+
+[[example]]
+name = "skills_conventions_llm"
+path = "skills_conventions_llm/main.rs"
+
+[[example]]
+name = "skills_policy_filters"
+path = "skills_policy_filters/main.rs"
+
+[[example]]
+name = "skills_runner_injector"
+path = "skills_runner_injector/main.rs"
+
+[[example]]
+name = "skills_workflow_minimal"
+path = "skills_workflow_minimal/main.rs"
+
+[[example]]
 name = "load_artifacts"
 path = "load_artifacts/main.rs"
 
 [[example]]
 name = "mcp"
 path = "mcp/main.rs"
+
+[[example]]
+name = "mcp_http"
+path = "mcp_http/main.rs"
+required-features = ["http-transport"]
+
+[[example]]
+name = "mcp_oauth"
+path = "mcp_oauth/main.rs"
+required-features = ["http-transport"]
 
 [[example]]
 name = "a2a"
@@ -71,6 +109,22 @@ path = "template/main.rs"
 [[example]]
 name = "structured_output"
 path = "structured_output/main.rs"
+
+[[example]]
+name = "roadmap_gemini_compat"
+path = "roadmap_gemini_compat/main.rs"
+
+[[example]]
+name = "roadmap_vertex_auth"
+path = "roadmap_vertex_auth/main.rs"
+
+[[example]]
+name = "roadmap_gemini_sdk"
+path = "roadmap_gemini_sdk/main.rs"
+
+[[example]]
+name = "roadmap_retry_matrix"
+path = "roadmap_retry_matrix/main.rs"
 
 [[example]]
 name = "openai_basic"
@@ -366,6 +420,34 @@ name = "ui_server"
 path = "ui_server/main.rs"
 
 [[example]]
+name = "a2ui_demo"
+path = "a2ui_demo/main.rs"
+
+[[example]]
+name = "ui_protocol_profiles"
+path = "ui_protocol_profiles/main.rs"
+
+[[example]]
+name = "ui_working_support"
+path = "ui_working/support/main.rs"
+
+[[example]]
+name = "ui_working_appointment"
+path = "ui_working/appointment/main.rs"
+
+[[example]]
+name = "ui_working_inventory"
+path = "ui_working/inventory/main.rs"
+
+[[example]]
+name = "ui_working_events"
+path = "ui_working/events/main.rs"
+
+[[example]]
+name = "ui_working_facilities"
+path = "ui_working/facilities/main.rs"
+
+[[example]]
 name = "streaming_demo"
 path = "streaming_demo/main.rs"
 
@@ -508,6 +590,7 @@ required-features = ["mistralrs"]
 [features]
 default = []
 openai = ["adk-model/openai"]
+http-transport = ["adk-tool/http-transport"]
 anthropic = ["adk-model/anthropic"]
 deepseek = ["adk-model/deepseek"]
 ollama = ["adk-model/ollama"]
@@ -523,6 +606,7 @@ sso = ["adk-auth/sso"]
 adk-core.workspace = true
 adk-agent.workspace = true
 adk-model.workspace = true
+adk-gemini.workspace = true
 adk-tool.workspace = true
 adk-cli.workspace = true
 adk-artifact.workspace = true
@@ -530,6 +614,7 @@ adk-runner.workspace = true
 adk-session.workspace = true
 adk-server.workspace = true
 adk-memory.workspace = true
+adk-skill.workspace = true
 adk-realtime.workspace = true
 adk-graph.workspace = true
 adk-eval.workspace = true
@@ -553,7 +638,7 @@ tracing-subscriber.workspace = true
 axum = "0.8"
 async-trait.workspace = true
 dotenvy = "0.15"
-rmcp = { version = "0.9", features = ["client", "transport-child-process"] }
+rmcp = { version = "0.14", features = ["client", "transport-child-process"] }
 rustyline = "15"
 image = "0.25"
 clap = { version = "4.0", features = ["derive"] }

@@ -5,36 +5,186 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.1] - 2026-01-21
+## [0.3.0] - 2026-02-08
 
 ### ⭐ Highlights
+- **Context Compaction**: Sliding-window summarization of older events to reduce LLM context size (ADK Python parity)
+- **Workflow Agent Hardening**: ConditionalAgent, LlmConditionalAgent, and ParallelAgent production fixes
+- **adk-core Production Hardening**: Security limits, validation, provider-agnostic Event, hand-written template parser
+- **Action Node Code Generation**: Full Rust codegen for HTTP, Database, Email, and Code action nodes
+- **Workflow Triggers**: Complete trigger system with webhook, schedule, and event triggers
+- **rmcp 0.14 Upgrade**: Updated MCP integration with HTTP transport, authentication, and auto-reconnect
+- **Plugin System**: Extensible callback architecture for agent lifecycle hooks (adk-go parity)
 - **OpenAI Structured Output**: `output_schema` now works with OpenAI/Azure via `response_format` API
-- **Ralph Autonomous Agent**: New example showcasing spec-driven development with loop agents
-- **Local Model Support**: New examples for Ollama and OpenAI-compatible local APIs
-- **Improved Error Handling**: Replaced `unwrap()` calls with proper error handling across crates
 
 ### Added
-- **adk-model**: OpenAI/Azure clients now wire `output_schema` to `response_format` with `json_schema` type
+
+#### adk-core
+- `EventCompaction` struct for compacted event metadata (start/end timestamps, summary content)
+- `EventActions.compaction` field for marking events as compaction summaries
+- `BaseEventsSummarizer` trait for custom summarization strategies
+- `EventsCompactionConfig` struct (compaction_interval, overlap_size, summarizer)
+- `validate_state_key()` and `MAX_STATE_KEY_LEN` (256 bytes) for state key validation
+- `MAX_INLINE_DATA_SIZE` (10MB) limit on `Part::InlineData`
+- `provider_metadata: HashMap<String, String>` on `Event` — provider-agnostic replacement for GCP-specific fields
+- `has_trailing_code_execution_result()` on `Event` for detecting pending code execution results
+- Hand-written placeholder parser for instruction templates (replaces regex dependency)
+- `LlmRequest::with_response_schema()` and `with_config()` builder methods for structured output
+
+#### adk-agent
+- `LlmEventSummarizer` — LLM-based event summarizer with configurable prompt template
+- `LlmAgentBuilder::max_iterations()` to configure maximum LLM round-trips (default: 100)
+
+#### adk-runner
+- `compaction_config` field on `RunnerConfig` for enabling automatic context compaction
+- Re-exports `BaseEventsSummarizer` and `EventsCompactionConfig` from `adk-core`
+- Compaction triggers after invocation when user-event count reaches interval
+- `MutableSession::conversation_history()` respects compaction events — replaces old events with summary
+
+#### adk-model
+- OpenAI/Azure clients now wire `output_schema` to `response_format` with `json_schema` type
   - Auto-injects `additionalProperties: false` at root level for strict mode compliance
   - Uses sanitized model name for schema name
-- **adk-core**: `LlmRequest::with_response_schema()` and `with_config()` builder methods for structured output
-- **adk-agent**: `LlmAgentBuilder::max_iterations()` to configure maximum LLM round-trips (default: 100)
-- **adk-server**: `TaskStore` for in-memory A2A task persistence and retrieval
-- **adk-tool**: `AgentTool` now forwards `state_delta` and `artifact_delta` to parent context
-- **examples/ralph**: Autonomous agent example with loop workflow, PRD management, and file/git/test tools
-- **examples/ollama_structured**: Structured JSON output with local Ollama models
-- **examples/openai_local**: OpenAI client with local models via `OpenAIConfig::compatible()`
-- **examples/openai_structured_basic**: Basic structured output example with OpenAI
-- **examples/openai_structured_strict**: Strict schema example with nested objects
+
+#### adk-tool
+- `ConnectionRefresher` for automatic MCP reconnection
+  - `ConnectionFactory` trait for creating new connections
+  - `RefreshConfig` for retry settings (max_attempts, retry_delay_ms)
+  - `RetryResult<T>` to indicate if reconnection occurred
+  - `should_refresh_connection()` to detect refreshable errors
+  - `SimpleClient` wrapper for servers without reconnect support
+  - Handles: connection closed, EOF, broken pipe, session not found, transport errors
+- `McpHttpClientBuilder` for remote MCP server connections
+  - Streamable HTTP transport (SEP-1686 compliant)
+  - `with_auth()` for authentication configuration
+  - `timeout()` for request timeout configuration
+  - `header()` for custom headers
+- `McpAuth` enum for MCP authentication
+  - `McpAuth::bearer(token)` - Bearer token authentication
+  - `McpAuth::api_key(header, key)` - API key in custom header
+  - `McpAuth::oauth2(config)` - OAuth2 client credentials flow
+- `OAuth2Config` for OAuth2 authentication (client credentials flow, token caching)
+- `McpTaskConfig` for long-running operations (polling, timeout, max attempts)
+- New feature flag `http-transport` for remote MCP servers
+- `AgentTool` now forwards `state_delta` and `artifact_delta` to parent context
+- Upgraded rmcp from 0.9 to 0.14
+
+#### adk-plugin
+- New plugin system crate (adk-go feature parity)
+  - `Plugin` and `PluginConfig` for bundling related callbacks
+  - `PluginBuilder` for fluent plugin construction
+  - `PluginManager` for coordinating callback execution across plugins
+  - Run lifecycle callbacks: `on_user_message`, `on_event`, `before_run`, `after_run`
+  - Agent callbacks: `before_agent`, `after_agent`
+  - Model callbacks: `before_model`, `after_model`, `on_model_error`
+  - Tool callbacks: `before_tool`, `after_tool`, `on_tool_error`
+  - Helper functions: `log_user_messages()`, `log_events()`, `collect_metrics()`
+
+#### adk-server
+- `TaskStore` for in-memory A2A task persistence and retrieval
+
+#### adk-studio
+- HTTP action node code generation (all methods, auth, body types, response handling)
+- Database action node code generation (PostgreSQL, MySQL, SQLite via sqlx; MongoDB; Redis)
+- Email action node code generation (SMTP send via lettre; IMAP monitor via imap + native-tls)
+- Code action node code generation (JavaScript via boa_engine with sandboxing)
+- Predecessor output injection for all action node types
+- Smart Build button (detects when recompilation is needed)
+- Webhook trigger endpoints (async, sync, GET)
+- Schedule trigger service (cron-based with `last_executed` tracking)
+- Event trigger endpoints (source/eventType matching, JSONPath filters)
+- Trigger-aware Run button with type-specific default prompts
+- Webhook event SSE notifications to UI
+
+#### Examples
+- `examples/ralph`: Autonomous agent with loop workflow, PRD management, and file/git/test tools
+- `examples/ollama_structured`: Structured JSON output with local Ollama models
+- `examples/openai_local`: OpenAI client with local models via `OpenAIConfig::compatible()`
+- `examples/openai_structured_basic`: Basic structured output example with OpenAI
+- `examples/openai_structured_strict`: Strict schema example with nested objects
+- `examples/mcp_http`: Remote MCP server example (Fetch, Sequential Thinking)
+- `examples/mcp_oauth`: GitHub Copilot MCP authentication example
+
+#### Dependencies (Generated Projects)
+- `reqwest` — auto-detected for HTTP action nodes
+- `sqlx` — auto-detected per database type (postgres/mysql/sqlite features)
+- `mongodb` — auto-detected for MongoDB action nodes
+- `redis` — auto-detected for Redis action nodes
+- `lettre` — auto-detected for Email send nodes
+- `imap` + `native-tls` — auto-detected for Email monitor nodes
+- `boa_engine` — auto-detected for Code action nodes
 
 ### Fixed
-- **adk-model**: `output_schema` was ignored by OpenAI client - now properly sent as `response_format`
-- **adk-session**: Replaced all `unwrap()` calls with proper error handling in `DatabaseSessionService`
-- **adk-model**: Fixed rustdoc bare URL warning in `AzureConfig` documentation
-- **adk-server**: A2A `tasks/get` endpoint now returns stored tasks instead of empty response
-
-### Changed
+- **adk-agent**: `ConditionalAgent::sub_agents()` now returns branch agents (was returning empty slice)
+- **adk-agent**: `LlmConditionalAgent::sub_agents()` now returns route + default agents (was returning empty slice)
+- **adk-agent**: `ParallelAgent` now drains all futures before propagating first error (prevents resource leaks)
 - **adk-agent**: Default max iterations increased from 10 to 100 for `LlmAgent`
+- **adk-core**: `function_call_ids()` now falls back to function name when call ID is `None` (Gemini compatibility)
+- **adk-core**: Removed GCP-specific fields from `Event` (replaced with `provider_metadata`)
+- **adk-core**: Removed phantom `adk-3d-ui` workspace member
+- **adk-model**: `output_schema` was ignored by OpenAI client — now properly sent as `response_format`
+- **adk-model**: Fixed rustdoc bare URL warning in `AzureConfig` documentation
+- **adk-session**: Replaced all `unwrap()` calls with proper error handling in `DatabaseSessionService`
+- **adk-server**: A2A `tasks/get` endpoint now returns stored tasks instead of empty response
+- **adk-studio**: Replaced non-existent `NodeError::Other` with `GraphError::NodeExecutionFailed` in all generated code
+- **adk-studio**: Fixed sqlx type inference in database codegen by splitting fetch and map operations
+- **adk-studio**: Added missing `sqlx::Row` and `sqlx::Column` imports in database codegen
+- **adk-studio**: Fixed moved value error when capturing row count before consuming rows in JSON macro
+- **adk-studio**: Run button now correctly uses trigger-specific default prompts
+- **adk-studio**: `sendingRef` now properly resets on cancel, allowing re-runs
+- **adk-studio**: Cron parsing now uses 6-field format (with seconds) for `cron` crate compatibility
+- **adk-tool**: Bearer auth now passes raw token (rmcp adds "Bearer " prefix automatically)
+- **Security**: Updated lodash to fix prototype pollution vulnerability (CVE-2020-8203)
+- **Security**: Updated vite/esbuild to fix server.fs.deny bypass (CVE-2025-0291)
+- **Security**: Updated rsa crate to fix Marvin Attack vulnerability (RUSTSEC-2023-0071)
+
+### Documentation
+- Added context compaction guide: `docs/official_docs/sessions/context-compaction.md`
+- Updated all crate READMEs with v0.3.0 version references
+- Updated all official docs with v0.3.0 version references
+- Updated adk-core, adk-agent, adk-runner READMEs with compaction, security, and production hardening details
+- Updated events and runner official docs with new EventActions fields and compaction config
+
+### Migration Guide
+
+**From 0.2.x to 0.3.0:**
+
+- All crate versions bumped to `0.3.0`. Update your `Cargo.toml` dependencies.
+- `Event` no longer has GCP-specific fields — use `provider_metadata` HashMap instead.
+- rmcp 0.14 breaking changes were handled internally in `adk-tool`. Your existing MCP code using `McpToolset::new(client)` continues to work unchanged.
+
+**New features available:**
+
+```rust
+// Context compaction for long-running sessions
+use adk_runner::{Runner, RunnerConfig, EventsCompactionConfig};
+use adk_agent::LlmEventSummarizer;
+
+let config = RunnerConfig {
+    compaction_config: Some(EventsCompactionConfig {
+        compaction_interval: 3,
+        overlap_size: 1,
+        summarizer: Arc::new(LlmEventSummarizer::new(model.clone())),
+    }),
+    ..
+};
+
+// HTTP transport for remote MCP servers (requires http-transport feature)
+use adk_tool::McpHttpClientBuilder;
+
+let toolset = McpHttpClientBuilder::new("https://remote.mcpservers.org/fetch/mcp")
+    .timeout(Duration::from_secs(30))
+    .connect()
+    .await?;
+
+// Authentication for protected MCP servers
+use adk_tool::{McpHttpClientBuilder, McpAuth};
+
+let toolset = McpHttpClientBuilder::new("https://api.githubcopilot.com/mcp/")
+    .with_auth(McpAuth::bearer(std::env::var("GITHUB_TOKEN")?))
+    .connect()
+    .await?;
+```
 
 ## [0.2.0] - 2026-01-06
 
@@ -440,8 +590,8 @@ Initial release - Published to crates.io.
 - Tokio async runtime
 - Google API key for Gemini
 
-[Unreleased]: https://github.com/zavora-ai/adk-rust/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/zavora-ai/adk-rust/compare/v0.2.0...v0.2.1
+[Unreleased]: https://github.com/zavora-ai/adk-rust/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/zavora-ai/adk-rust/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/zavora-ai/adk-rust/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/zavora-ai/adk-rust/compare/v0.1.7...v0.1.9
 [0.1.7]: https://github.com/zavora-ai/adk-rust/compare/v0.1.6...v0.1.7

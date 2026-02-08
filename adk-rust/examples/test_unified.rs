@@ -50,7 +50,9 @@ async fn main() -> Result<()> {
             session_service: Arc::new(session_service),
             artifact_service: None,
             memory_service: None,
+            plugin_manager: None,
             run_config: None,
+            compaction_config: None,
         })?;
         println!("   Runner created successfully");
     } else {

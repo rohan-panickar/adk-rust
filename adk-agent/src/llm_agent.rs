@@ -3,8 +3,9 @@ use adk_core::{
     BeforeModelCallback, BeforeModelResult, BeforeToolCallback, CallbackContext, Content, Event,
     EventActions, FunctionResponseData, GlobalInstructionProvider, InstructionProvider,
     InvocationContext, Llm, LlmRequest, LlmResponse, MemoryEntry, Part, ReadonlyContext, Result,
-    Tool, ToolContext,
+    Tool, ToolConfirmationDecision, ToolConfirmationPolicy, ToolConfirmationRequest, ToolContext,
 };
+use adk_skill::{SelectionPolicy, SkillIndex, load_skill_index, select_skill_prompt_block};
 use async_stream::stream;
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
@@ -15,6 +16,9 @@ use crate::guardrails::GuardrailSet;
 /// Default maximum number of LLM round-trips (iterations) before the agent stops.
 pub const DEFAULT_MAX_ITERATIONS: u32 = 100;
 
+/// Default tool execution timeout (5 minutes).
+pub const DEFAULT_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
 pub struct LlmAgent {
     name: String,
     description: String,
@@ -23,6 +27,9 @@ pub struct LlmAgent {
     instruction_provider: Option<Arc<InstructionProvider>>,
     global_instruction: Option<String>,
     global_instruction_provider: Option<Arc<GlobalInstructionProvider>>,
+    skills_index: Option<Arc<SkillIndex>>,
+    skill_policy: SelectionPolicy,
+    max_skill_chars: usize,
     #[allow(dead_code)] // Part of public API via builder
     input_schema: Option<serde_json::Value>,
     output_schema: Option<serde_json::Value>,
@@ -36,12 +43,15 @@ pub struct LlmAgent {
     output_key: Option<String>,
     /// Maximum number of LLM round-trips before stopping
     max_iterations: u32,
+    /// Timeout for individual tool executions
+    tool_timeout: std::time::Duration,
     before_callbacks: Arc<Vec<BeforeAgentCallback>>,
     after_callbacks: Arc<Vec<AfterAgentCallback>>,
     before_model_callbacks: Arc<Vec<BeforeModelCallback>>,
     after_model_callbacks: Arc<Vec<AfterModelCallback>>,
     before_tool_callbacks: Arc<Vec<BeforeToolCallback>>,
     after_tool_callbacks: Arc<Vec<AfterToolCallback>>,
+    tool_confirmation_policy: ToolConfirmationPolicy,
     #[allow(dead_code)] // Used when guardrails feature is enabled
     input_guardrails: GuardrailSet,
     #[allow(dead_code)] // Used when guardrails feature is enabled
@@ -69,6 +79,9 @@ pub struct LlmAgentBuilder {
     instruction_provider: Option<Arc<InstructionProvider>>,
     global_instruction: Option<String>,
     global_instruction_provider: Option<Arc<GlobalInstructionProvider>>,
+    skills_index: Option<Arc<SkillIndex>>,
+    skill_policy: SelectionPolicy,
+    max_skill_chars: usize,
     input_schema: Option<serde_json::Value>,
     output_schema: Option<serde_json::Value>,
     disallow_transfer_to_parent: bool,
@@ -78,12 +91,14 @@ pub struct LlmAgentBuilder {
     sub_agents: Vec<Arc<dyn Agent>>,
     output_key: Option<String>,
     max_iterations: u32,
+    tool_timeout: std::time::Duration,
     before_callbacks: Vec<BeforeAgentCallback>,
     after_callbacks: Vec<AfterAgentCallback>,
     before_model_callbacks: Vec<BeforeModelCallback>,
     after_model_callbacks: Vec<AfterModelCallback>,
     before_tool_callbacks: Vec<BeforeToolCallback>,
     after_tool_callbacks: Vec<AfterToolCallback>,
+    tool_confirmation_policy: ToolConfirmationPolicy,
     input_guardrails: GuardrailSet,
     output_guardrails: GuardrailSet,
 }
@@ -98,6 +113,9 @@ impl LlmAgentBuilder {
             instruction_provider: None,
             global_instruction: None,
             global_instruction_provider: None,
+            skills_index: None,
+            skill_policy: SelectionPolicy::default(),
+            max_skill_chars: 2000,
             input_schema: None,
             output_schema: None,
             disallow_transfer_to_parent: false,
@@ -107,12 +125,14 @@ impl LlmAgentBuilder {
             sub_agents: Vec::new(),
             output_key: None,
             max_iterations: DEFAULT_MAX_ITERATIONS,
+            tool_timeout: DEFAULT_TOOL_TIMEOUT,
             before_callbacks: Vec::new(),
             after_callbacks: Vec::new(),
             before_model_callbacks: Vec::new(),
             after_model_callbacks: Vec::new(),
             before_tool_callbacks: Vec::new(),
             after_tool_callbacks: Vec::new(),
+            tool_confirmation_policy: ToolConfirmationPolicy::Never,
             input_guardrails: GuardrailSet::new(),
             output_guardrails: GuardrailSet::new(),
         }
@@ -145,6 +165,36 @@ impl LlmAgentBuilder {
 
     pub fn global_instruction_provider(mut self, provider: GlobalInstructionProvider) -> Self {
         self.global_instruction_provider = Some(Arc::new(provider));
+        self
+    }
+
+    /// Set a preloaded skills index for this agent.
+    pub fn with_skills(mut self, index: SkillIndex) -> Self {
+        self.skills_index = Some(Arc::new(index));
+        self
+    }
+
+    /// Auto-load skills from `.skills/` in the current working directory.
+    pub fn with_auto_skills(self) -> Result<Self> {
+        self.with_skills_from_root(".")
+    }
+
+    /// Auto-load skills from `.skills/` under a custom root directory.
+    pub fn with_skills_from_root(mut self, root: impl AsRef<std::path::Path>) -> Result<Self> {
+        let index = load_skill_index(root).map_err(|e| adk_core::AdkError::Agent(e.to_string()))?;
+        self.skills_index = Some(Arc::new(index));
+        Ok(self)
+    }
+
+    /// Customize skill selection behavior.
+    pub fn with_skill_policy(mut self, policy: SelectionPolicy) -> Self {
+        self.skill_policy = policy;
+        self
+    }
+
+    /// Limit injected skill content length.
+    pub fn with_skill_budget(mut self, max_chars: usize) -> Self {
+        self.max_skill_chars = max_chars;
         self
     }
 
@@ -182,6 +232,13 @@ impl LlmAgentBuilder {
     /// Default is 100.
     pub fn max_iterations(mut self, max: u32) -> Self {
         self.max_iterations = max;
+        self
+    }
+
+    /// Set the timeout for individual tool executions.
+    /// Default is 5 minutes. Tools that exceed this timeout will return an error.
+    pub fn tool_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.tool_timeout = timeout;
         self
     }
 
@@ -225,6 +282,24 @@ impl LlmAgentBuilder {
         self
     }
 
+    /// Configure tool confirmation requirements for this agent.
+    pub fn tool_confirmation_policy(mut self, policy: ToolConfirmationPolicy) -> Self {
+        self.tool_confirmation_policy = policy;
+        self
+    }
+
+    /// Require confirmation for a specific tool name.
+    pub fn require_tool_confirmation(mut self, tool_name: impl Into<String>) -> Self {
+        self.tool_confirmation_policy = self.tool_confirmation_policy.with_tool(tool_name);
+        self
+    }
+
+    /// Require confirmation for all tool calls.
+    pub fn require_tool_confirmation_for_all(mut self) -> Self {
+        self.tool_confirmation_policy = ToolConfirmationPolicy::Always;
+        self
+    }
+
     /// Set input guardrails to validate user input before processing.
     ///
     /// Input guardrails run before the agent processes the request and can:
@@ -263,6 +338,9 @@ impl LlmAgentBuilder {
             instruction_provider: self.instruction_provider,
             global_instruction: self.global_instruction,
             global_instruction_provider: self.global_instruction_provider,
+            skills_index: self.skills_index,
+            skill_policy: self.skill_policy,
+            max_skill_chars: self.max_skill_chars,
             input_schema: self.input_schema,
             output_schema: self.output_schema,
             disallow_transfer_to_parent: self.disallow_transfer_to_parent,
@@ -272,12 +350,14 @@ impl LlmAgentBuilder {
             sub_agents: self.sub_agents,
             output_key: self.output_key,
             max_iterations: self.max_iterations,
+            tool_timeout: self.tool_timeout,
             before_callbacks: Arc::new(self.before_callbacks),
             after_callbacks: Arc::new(self.after_callbacks),
             before_model_callbacks: Arc::new(self.before_model_callbacks),
             after_model_callbacks: Arc::new(self.after_model_callbacks),
             before_tool_callbacks: Arc::new(self.before_tool_callbacks),
             after_tool_callbacks: Arc::new(self.after_tool_callbacks),
+            tool_confirmation_policy: self.tool_confirmation_policy,
             input_guardrails: self.input_guardrails,
             output_guardrails: self.output_guardrails,
         })
@@ -401,17 +481,22 @@ impl Agent for LlmAgent {
         let instruction_provider = self.instruction_provider.clone();
         let global_instruction = self.global_instruction.clone();
         let global_instruction_provider = self.global_instruction_provider.clone();
+        let skills_index = self.skills_index.clone();
+        let skill_policy = self.skill_policy.clone();
+        let max_skill_chars = self.max_skill_chars;
         let output_key = self.output_key.clone();
         let output_schema = self.output_schema.clone();
         let include_contents = self.include_contents;
         let max_iterations = self.max_iterations;
+        let tool_timeout = self.tool_timeout;
         // Clone Arc references (cheap)
         let before_agent_callbacks = self.before_callbacks.clone();
         let after_agent_callbacks = self.after_callbacks.clone();
         let before_model_callbacks = self.before_model_callbacks.clone();
         let after_model_callbacks = self.after_model_callbacks.clone();
-        let _before_tool_callbacks = self.before_tool_callbacks.clone();
-        let _after_tool_callbacks = self.after_tool_callbacks.clone();
+        let before_tool_callbacks = self.before_tool_callbacks.clone();
+        let after_tool_callbacks = self.after_tool_callbacks.clone();
+        let tool_confirmation_policy = self.tool_confirmation_policy.clone();
 
         let s = stream! {
             // ===== BEFORE AGENT CALLBACKS =====
@@ -459,6 +544,34 @@ impl Agent for LlmAgent {
 
             // ===== MAIN AGENT EXECUTION =====
             let mut conversation_history = Vec::new();
+
+            // ===== PROCESS SKILL CONTEXT =====
+            // If skills are configured, select the most relevant skill from user input
+            // and inject it as a compact instruction block before other prompts.
+            if let Some(index) = &skills_index {
+                let user_query = ctx
+                    .user_content()
+                    .parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        Part::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                if let Some((_matched, skill_block)) = select_skill_prompt_block(
+                    index.as_ref(),
+                    &user_query,
+                    &skill_policy,
+                    max_skill_chars,
+                ) {
+                    conversation_history.push(Content {
+                        role: "user".to_string(),
+                        parts: vec![Part::Text { text: skill_block }],
+                    });
+                }
+            }
 
             // ===== PROCESS GLOBAL INSTRUCTION =====
             // GlobalInstruction provides tree-wide personality/identity
@@ -546,6 +659,28 @@ impl Agent for LlmAgent {
                     // Default behavior - keep full conversation history
                     conversation_history
                 }
+            };
+
+            // Build tool lookup map for O(1) access (instead of linear scan)
+            let tool_map: std::collections::HashMap<String, Arc<dyn Tool>> = tools
+                .iter()
+                .map(|t| (t.name().to_string(), t.clone()))
+                .collect();
+
+            // Helper: extract long-running tool IDs from content
+            let collect_long_running_ids = |content: &Content| -> Vec<String> {
+                content.parts.iter()
+                    .filter_map(|p| {
+                        if let Part::FunctionCall { name, .. } = p {
+                            if let Some(tool) = tool_map.get(name) {
+                                if tool.is_long_running() {
+                                    return Some(name.clone());
+                                }
+                            }
+                        }
+                        None
+                    })
+                    .collect()
             };
 
             // Build tool declarations for Gemini
@@ -655,24 +790,12 @@ impl Agent for LlmAgent {
                     cached_event.author = agent_name.clone();
                     cached_event.llm_response.content = cached_response.content.clone();
                     cached_event.llm_request = Some(serde_json::to_string(&request).unwrap_or_default());
-                    cached_event.gcp_llm_request = Some(serde_json::to_string(&request).unwrap_or_default());
-                    cached_event.gcp_llm_response = Some(serde_json::to_string(&cached_response).unwrap_or_default());
+                    cached_event.provider_metadata.insert("gcp.vertex.agent.llm_request".to_string(), serde_json::to_string(&request).unwrap_or_default());
+                    cached_event.provider_metadata.insert("gcp.vertex.agent.llm_response".to_string(), serde_json::to_string(&cached_response).unwrap_or_default());
 
                     // Populate long_running_tool_ids for function calls from long-running tools
                     if let Some(ref content) = cached_response.content {
-                        let long_running_ids: Vec<String> = content.parts.iter()
-                            .filter_map(|p| {
-                                if let Part::FunctionCall { name, .. } = p {
-                                    if let Some(tool) = tools.iter().find(|t| t.name() == name) {
-                                        if tool.is_long_running() {
-                                            return Some(name.clone());
-                                        }
-                                    }
-                                }
-                                None
-                            })
-                            .collect();
-                        cached_event.long_running_tool_ids = long_running_ids;
+                        cached_event.long_running_tool_ids = collect_long_running_ids(content);
                     }
 
                     yield Ok(cached_event);
@@ -693,6 +816,7 @@ impl Agent for LlmAgent {
                         "gcp.vertex.agent.event_id" = %llm_event_id,
                         "gcp.vertex.agent.invocation_id" = %invocation_id,
                         "gcp.vertex.agent.session_id" = %ctx.session_id(),
+                        "gen_ai.conversation.id" = %ctx.session_id(),
                         "gcp.vertex.agent.llm_request" = %request_json,
                         "gcp.vertex.agent.llm_response" = tracing::field::Empty  // Placeholder for later recording
                     );
@@ -756,8 +880,8 @@ impl Agent for LlmAgent {
                             let mut partial_event = Event::with_id(&llm_event_id, &invocation_id);
                             partial_event.author = agent_name.clone();
                             partial_event.llm_request = Some(request_json.clone());
-                            partial_event.gcp_llm_request = Some(request_json.clone());
-                            partial_event.gcp_llm_response = Some(serde_json::to_string(&chunk).unwrap_or_default());
+                            partial_event.provider_metadata.insert("gcp.vertex.agent.llm_request".to_string(), request_json.clone());
+                            partial_event.provider_metadata.insert("gcp.vertex.agent.llm_response".to_string(), serde_json::to_string(&chunk).unwrap_or_default());
                             partial_event.llm_response.partial = chunk.partial;
                             partial_event.llm_response.turn_complete = chunk.turn_complete;
                             partial_event.llm_response.finish_reason = chunk.finish_reason;
@@ -766,19 +890,7 @@ impl Agent for LlmAgent {
 
                             // Populate long_running_tool_ids
                             if let Some(ref content) = chunk.content {
-                                let long_running_ids: Vec<String> = content.parts.iter()
-                                    .filter_map(|p| {
-                                        if let Part::FunctionCall { name, .. } = p {
-                                            if let Some(tool) = tools.iter().find(|t| t.name() == name) {
-                                                if tool.is_long_running() {
-                                                    return Some(name.clone());
-                                                }
-                                            }
-                                        }
-                                        None
-                                    })
-                                    .collect();
-                                partial_event.long_running_tool_ids = long_running_ids;
+                                partial_event.long_running_tool_ids = collect_long_running_ids(content);
                             }
 
                             yield Ok(partial_event);
@@ -798,7 +910,7 @@ impl Agent for LlmAgent {
                         let mut final_event = Event::with_id(&llm_event_id, &invocation_id);
                         final_event.author = agent_name.clone();
                         final_event.llm_request = Some(request_json.clone());
-                        final_event.gcp_llm_request = Some(request_json.clone());
+                        final_event.provider_metadata.insert("gcp.vertex.agent.llm_request".to_string(), request_json.clone());
                         final_event.llm_response.content = accumulated_content.clone();
                         final_event.llm_response.partial = false;
                         final_event.llm_response.turn_complete = true;
@@ -807,24 +919,12 @@ impl Agent for LlmAgent {
                         if let Some(ref last) = last_chunk {
                             final_event.llm_response.finish_reason = last.finish_reason;
                             final_event.llm_response.usage_metadata = last.usage_metadata.clone();
-                            final_event.gcp_llm_response = Some(serde_json::to_string(last).unwrap_or_default());
+                            final_event.provider_metadata.insert("gcp.vertex.agent.llm_response".to_string(), serde_json::to_string(last).unwrap_or_default());
                         }
 
                         // Populate long_running_tool_ids
                         if let Some(ref content) = accumulated_content {
-                            let long_running_ids: Vec<String> = content.parts.iter()
-                                .filter_map(|p| {
-                                    if let Part::FunctionCall { name, .. } = p {
-                                        if let Some(tool) = tools.iter().find(|t| t.name() == name) {
-                                            if tool.is_long_running() {
-                                                return Some(name.clone());
-                                            }
-                                        }
-                                    }
-                                    None
-                                })
-                                .collect();
-                            final_event.long_running_tool_ids = long_running_ids;
+                            final_event.long_running_tool_ids = collect_long_running_ids(content);
                         }
 
                         yield Ok(final_event);
@@ -856,8 +956,7 @@ impl Agent for LlmAgent {
                 // If so, we should NOT continue the loop - the tool returned a pending status
                 // and the agent/client will poll for completion later
                 let all_calls_are_long_running = has_function_calls && function_call_names.iter().all(|name| {
-                    tools.iter()
-                        .find(|t| t.name() == name)
+                    tool_map.get(name)
                         .map(|t| t.is_long_running())
                         .unwrap_or(false)
                 });
@@ -903,14 +1002,49 @@ impl Agent for LlmAgent {
 
                 // Execute function calls and add responses to history
                 if let Some(content) = &accumulated_content {
+                    let mut tool_call_index = 0usize;
                     for part in &content.parts {
                         if let Part::FunctionCall { name, args, id } = part {
+                            let fallback_call_id =
+                                format!("{}_{}_{}", invocation_id, name, tool_call_index);
+                            tool_call_index += 1;
+                            let function_call_id = id.clone().unwrap_or(fallback_call_id);
+
                             // Handle transfer_to_agent specially
                             if name == "transfer_to_agent" {
                                 let target_agent = args.get("agent_name")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or_default()
                                     .to_string();
+
+                                // Validate that the target agent exists in sub_agents
+                                let valid_target = sub_agents.iter().any(|a| a.name() == target_agent);
+                                if !valid_target {
+                                    // Return error to LLM so it can try again
+                                    let error_content = Content {
+                                        role: "function".to_string(),
+                                        parts: vec![Part::FunctionResponse {
+                                            function_response: FunctionResponseData {
+                                                name: name.clone(),
+                                                response: serde_json::json!({
+                                                    "error": format!(
+                                                        "Agent '{}' not found. Available agents: {:?}",
+                                                        target_agent,
+                                                        sub_agents.iter().map(|a| a.name()).collect::<Vec<_>>()
+                                                    )
+                                                }),
+                                            },
+                                            id: id.clone(),
+                                        }],
+                                    };
+                                    conversation_history.push(error_content.clone());
+
+                                    let mut error_event = Event::new(&invocation_id);
+                                    error_event.author = agent_name.clone();
+                                    error_event.llm_response.content = Some(error_content);
+                                    yield Ok(error_event);
+                                    continue;
+                                }
 
                                 let mut transfer_event = Event::new(&invocation_id);
                                 transfer_event.author = agent_name.clone();
@@ -920,60 +1054,189 @@ impl Agent for LlmAgent {
                                 return;
                             }
 
+                            // ===== BEFORE TOOL CALLBACKS =====
+                            // Allows policy checks or callback-provided short-circuit responses.
+                            let mut tool_actions = EventActions::default();
+                            let mut response_content: Option<Content> = None;
+                            let mut run_after_tool_callbacks = true;
 
-                            // Find and execute tool
-                            let (tool_result, tool_actions) = if let Some(tool) = tools.iter().find(|t| t.name() == name) {
-                                // ✅ Use AgentToolContext that preserves parent context
-                                let tool_ctx: Arc<dyn ToolContext> = Arc::new(AgentToolContext::new(
-                                    ctx.clone(),
-                                    format!("{}_{}", invocation_id, name),
-                                ));
+                            // ===== TOOL CONFIRMATION POLICY =====
+                            // If configured and no decision is provided, emit an interrupt event
+                            // before execution. Callers can resume by re-running with a decision
+                            // in RunConfig.tool_confirmation_decisions.
+                            if tool_confirmation_policy.requires_confirmation(name) {
+                                match ctx.run_config().tool_confirmation_decisions.get(name).copied()
+                                {
+                                    Some(ToolConfirmationDecision::Approve) => {
+                                        tool_actions.tool_confirmation_decision =
+                                            Some(ToolConfirmationDecision::Approve);
+                                    }
+                                    Some(ToolConfirmationDecision::Deny) => {
+                                        tool_actions.tool_confirmation_decision =
+                                            Some(ToolConfirmationDecision::Deny);
+                                        response_content = Some(Content {
+                                            role: "function".to_string(),
+                                            parts: vec![Part::FunctionResponse {
+                                                function_response: FunctionResponseData {
+                                                    name: name.clone(),
+                                                    response: serde_json::json!({
+                                                        "error": format!(
+                                                            "Tool '{}' execution denied by confirmation policy",
+                                                            name
+                                                        ),
+                                                    }),
+                                                },
+                                                id: id.clone(),
+                                            }],
+                                        });
+                                        run_after_tool_callbacks = false;
+                                    }
+                                    None => {
+                                        let mut confirmation_event = Event::new(&invocation_id);
+                                        confirmation_event.author = agent_name.clone();
+                                        confirmation_event.llm_response.interrupted = true;
+                                        confirmation_event.llm_response.turn_complete = true;
+                                        confirmation_event.llm_response.content = Some(Content {
+                                            role: "model".to_string(),
+                                            parts: vec![Part::Text {
+                                                text: format!(
+                                                    "Tool confirmation required for '{}'. Provide approve/deny decision to continue.",
+                                                    name
+                                                ),
+                                            }],
+                                        });
+                                        confirmation_event.actions.tool_confirmation =
+                                            Some(ToolConfirmationRequest {
+                                                tool_name: name.clone(),
+                                                function_call_id: Some(function_call_id),
+                                                args: args.clone(),
+                                            });
+                                        yield Ok(confirmation_event);
+                                        return;
+                                    }
+                                }
+                            }
 
-                                // Create span name following adk-go pattern: "execute_tool {name}"
-                                let span_name = format!("execute_tool {}", name);
-                                let tool_span = tracing::info_span!(
-                                    "",
-                                    otel.name = %span_name,
-                                    tool.name = %name,
-                                    "gcp.vertex.agent.event_id" = %format!("{}_{}", invocation_id, name),
-                                    "gcp.vertex.agent.invocation_id" = %invocation_id,
-                                    "gcp.vertex.agent.session_id" = %ctx.session_id()
-                                );
-
-                                // Use instrument() for proper async span handling
-                                let result = async {
-                                    tracing::info!(tool.name = %name, tool.args = %args, "tool_call");
-                                    match tool.execute(tool_ctx.clone(), args.clone()).await {
-                                        Ok(result) => {
-                                            tracing::info!(tool.name = %name, tool.result = %result, "tool_result");
-                                            result
+                            if response_content.is_none() {
+                                for callback in before_tool_callbacks.as_ref() {
+                                    match callback(ctx.clone() as Arc<dyn CallbackContext>).await {
+                                        Ok(Some(content)) => {
+                                            response_content = Some(content);
+                                            break;
                                         }
+                                        Ok(None) => continue,
                                         Err(e) => {
-                                            tracing::warn!(tool.name = %name, error = %e, "tool_error");
-                                            serde_json::json!({ "error": e.to_string() })
+                                            yield Err(e);
+                                            return;
                                         }
                                     }
-                                }.instrument(tool_span).await;
+                                }
+                            }
 
-                                (result, tool_ctx.actions())
-                            } else {
-                                (serde_json::json!({ "error": format!("Tool {} not found", name) }), EventActions::default())
-                            };
+                            // Find and execute tool unless callbacks already short-circuited.
+                            if response_content.is_none() {
+                                if let Some(tool) = tool_map.get(name) {
+                                    // ✅ Use AgentToolContext that preserves parent context
+                                    let tool_ctx: Arc<dyn ToolContext> = Arc::new(AgentToolContext::new(
+                                        ctx.clone(),
+                                        format!("{}_{}", invocation_id, name),
+                                    ));
+
+                                    // Create span name following adk-go pattern: "execute_tool {name}"
+                                    let span_name = format!("execute_tool {}", name);
+                                    let tool_span = tracing::info_span!(
+                                        "",
+                                        otel.name = %span_name,
+                                        tool.name = %name,
+                                        "gcp.vertex.agent.event_id" = %format!("{}_{}", invocation_id, name),
+                                        "gcp.vertex.agent.invocation_id" = %invocation_id,
+                                        "gcp.vertex.agent.session_id" = %ctx.session_id(),
+                                        "gen_ai.conversation.id" = %ctx.session_id()
+                                    );
+
+                                    // Use instrument() for proper async span handling, with timeout
+                                    let tool_clone = tool.clone();
+                                    let result = async {
+                                        tracing::info!(tool.name = %name, tool.args = %args, "tool_call");
+                                        let exec_future = tool_clone.execute(tool_ctx.clone(), args.clone());
+                                        match tokio::time::timeout(tool_timeout, exec_future).await {
+                                            Ok(Ok(result)) => {
+                                                tracing::info!(tool.name = %name, tool.result = %result, "tool_result");
+                                                result
+                                            }
+                                            Ok(Err(e)) => {
+                                                tracing::warn!(tool.name = %name, error = %e, "tool_error");
+                                                serde_json::json!({ "error": e.to_string() })
+                                            }
+                                            Err(_) => {
+                                                tracing::warn!(tool.name = %name, timeout_secs = tool_timeout.as_secs(), "tool_timeout");
+                                                serde_json::json!({
+                                                    "error": format!(
+                                                        "Tool '{}' timed out after {} seconds",
+                                                        name, tool_timeout.as_secs()
+                                                    )
+                                                })
+                                            }
+                                        }
+                                    }.instrument(tool_span).await;
+
+                                    let confirmation_decision =
+                                        tool_actions.tool_confirmation_decision;
+                                    tool_actions = tool_ctx.actions();
+                                    if tool_actions.tool_confirmation_decision.is_none() {
+                                        tool_actions.tool_confirmation_decision =
+                                            confirmation_decision;
+                                    }
+                                    response_content = Some(Content {
+                                        role: "function".to_string(),
+                                        parts: vec![Part::FunctionResponse {
+                                            function_response: FunctionResponseData {
+                                                name: name.clone(),
+                                                response: result,
+                                            },
+                                            id: id.clone(),
+                                        }],
+                                    });
+                                } else {
+                                    response_content = Some(Content {
+                                        role: "function".to_string(),
+                                        parts: vec![Part::FunctionResponse {
+                                            function_response: FunctionResponseData {
+                                                name: name.clone(),
+                                                response: serde_json::json!({
+                                                    "error": format!("Tool {} not found", name)
+                                                }),
+                                            },
+                                            id: id.clone(),
+                                        }],
+                                    });
+                                }
+                            }
+
+                            // ===== AFTER TOOL CALLBACKS =====
+                            // Allows post-processing of tool outputs or audit side effects.
+                            let mut response_content = response_content.expect("tool response content is set");
+                            if run_after_tool_callbacks {
+                                for callback in after_tool_callbacks.as_ref() {
+                                    match callback(ctx.clone() as Arc<dyn CallbackContext>).await {
+                                        Ok(Some(modified_content)) => {
+                                            response_content = modified_content;
+                                            break;
+                                        }
+                                        Ok(None) => continue,
+                                        Err(e) => {
+                                            yield Err(e);
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
 
                             // Yield tool execution event
                             let mut tool_event = Event::new(&invocation_id);
                             tool_event.author = agent_name.clone();
                             tool_event.actions = tool_actions.clone();
-                            tool_event.llm_response.content = Some(Content {
-                                role: "function".to_string(),
-                                parts: vec![Part::FunctionResponse {
-                                    function_response: FunctionResponseData {
-                                        name: name.clone(),
-                                        response: tool_result.clone(),
-                                    },
-                                    id: id.clone(),
-                                }],
-                            });
+                            tool_event.llm_response.content = Some(response_content.clone());
                             yield Ok(tool_event);
 
                             // Check if tool requested escalation or skip_summarization
@@ -983,16 +1246,7 @@ impl Agent for LlmAgent {
                             }
 
                             // Add function response to history
-                            conversation_history.push(Content {
-                                role: "function".to_string(),
-                                parts: vec![Part::FunctionResponse {
-                                    function_response: FunctionResponseData {
-                                        name: name.clone(),
-                                        response: tool_result,
-                                    },
-                                    id: id.clone(),
-                                }],
-                            });
+                            conversation_history.push(response_content);
                         }
                     }
                 }

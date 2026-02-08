@@ -57,6 +57,60 @@ function AgentUI({ response }: { response: UiResponse }) {
 }
 ```
 
+## Tri-Protocol Client (A2UI / AG-UI / MCP Apps)
+
+Use the protocol client when your backend may return different UI protocols.
+
+```tsx
+import {
+  A2uiSurfaceRenderer,
+  UnifiedRenderStore,
+  createProtocolClient,
+} from '@zavora-ai/adk-ui-react';
+
+const store = new UnifiedRenderStore();
+const client = createProtocolClient({ protocol: 'adk_ui', store });
+
+// payload can be:
+// - A2UI JSONL string
+// - AG-UI envelope { protocol: "ag_ui", events: [...] }
+// - MCP Apps envelope { protocol: "mcp_apps", payload: {...} }
+// - legacy ADK-UI payload with `components`
+client.applyPayload(payload);
+
+const surface = store.getA2uiStore().getSurface('main');
+```
+
+Supported inbound payload patterns:
+
+- A2UI: JSONL string or `{ protocol: "a2ui", jsonl, components, ... }`
+- AG-UI: `{ protocol: "ag_ui", events: [...] }` or envelope payload with `payload.events`
+- MCP Apps: `{ protocol: "mcp_apps", payload: { resource, ... } }`
+- Legacy ADK-UI: `{ components: [...] }`
+
+Outbound events can also be generated per protocol:
+
+```ts
+import { buildOutboundEvent } from '@zavora-ai/adk-ui-react';
+
+const event = buildOutboundEvent('ag_ui', {
+  action: 'button_click',
+  action_id: 'approve',
+});
+```
+
+Common pattern with server runtime negotiation:
+
+1. Set runtime profile on requests with `uiProtocol` or `x-adk-ui-protocol`.
+2. Feed response payloads into `client.applyPayload(...)`.
+3. Render with `A2uiSurfaceRenderer` from the unified store.
+
+Migration note:
+
+- `adk_ui` is treated as legacy profile compatibility mode.
+- Prefer `a2ui`, `ag_ui`, or `mcp_apps` for new integrations.
+- Read `/api/ui/capabilities` and surface server-provided deprecation metadata in client UX.
+
 ## 🧩 Available Components
 
 | Category | Components |

@@ -1,3 +1,5 @@
+import type { ActionNodeConfig } from './actionNodes';
+
 export interface Project {
   id: string;
   version: string;
@@ -7,6 +9,8 @@ export interface Project {
   agents: Record<string, AgentSchema>;
   tools: Record<string, ToolSchema>;
   tool_configs: Record<string, ToolConfig>;
+  /** Action nodes for non-LLM programmatic operations */
+  actionNodes: Record<string, ActionNodeConfig>;
   workflow: WorkflowSchema;
   created_at: string;
   updated_at: string;
@@ -15,6 +19,33 @@ export interface Project {
 export interface ProjectSettings {
   default_model: string;
   env_vars: Record<string, string>;
+  // Layout settings (v2.0)
+  layoutMode?: 'free' | 'fixed';
+  layoutDirection?: 'TB' | 'LR' | 'BT' | 'RL';
+  showDataFlowOverlay?: boolean;
+  debugMode?: boolean;
+  // Code generation settings
+  adkVersion?: string;
+  rustEdition?: '2021' | '2024';
+  // Default provider/model
+  defaultProvider?: string;
+  // Build settings
+  autobuildEnabled?: boolean;
+  autobuildTriggers?: AutobuildTriggers;
+  // UI preferences
+  showMinimap?: boolean;
+  showTimeline?: boolean;
+  consolePosition?: 'bottom' | 'right';
+}
+
+export interface AutobuildTriggers {
+  onAgentAdd?: boolean;
+  onAgentDelete?: boolean;
+  onAgentUpdate?: boolean;
+  onToolAdd?: boolean;
+  onToolUpdate?: boolean;
+  onEdgeAdd?: boolean;
+  onEdgeDelete?: boolean;
 }
 
 export interface AgentSchema {
@@ -93,6 +124,10 @@ export interface Edge {
   from: string;
   to: string;
   condition?: string;
+  /** Source port for multi-output nodes like Switch */
+  fromPort?: string;
+  /** Target port for multi-input nodes like Merge */
+  toPort?: string;
 }
 
 export interface Condition {

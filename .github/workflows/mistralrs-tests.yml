@@ -12,6 +12,9 @@ on:
       - 'adk-mistralrs/**'
       - '.github/workflows/mistralrs-tests.yml'
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0

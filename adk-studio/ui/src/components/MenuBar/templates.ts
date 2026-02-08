@@ -1,4 +1,7 @@
 import type { AgentSchema } from '../../types/project';
+import type { ActionNodeConfig, TriggerNodeConfig } from '../../types/actionNodes';
+import { DEFAULT_MANUAL_TRIGGER_CONFIG } from '../../types/actionNodes';
+import { createDefaultStandardProperties } from '../../types/standardProperties';
 
 export interface Template {
   id: string;
@@ -6,7 +9,18 @@ export interface Template {
   icon: string;
   description: string;
   agents: Record<string, AgentSchema>;
-  edges: Array<{ from: string; to: string }>;
+  actionNodes?: Record<string, ActionNodeConfig>;
+  edges: Array<{ from: string; to: string; fromPort?: string; toPort?: string }>;
+}
+
+/** Create a default manual trigger node */
+function createManualTrigger(): TriggerNodeConfig {
+  return {
+    ...createDefaultStandardProperties('manual_trigger', 'Manual Trigger', 'trigger_input'),
+    type: 'trigger',
+    triggerType: 'manual',
+    manual: { ...DEFAULT_MANUAL_TRIGGER_CONFIG },
+  };
 }
 
 export const TEMPLATES: Template[] = [
@@ -14,18 +28,22 @@ export const TEMPLATES: Template[] = [
     id: 'simple_chat',
     name: 'Simple Chat Agent',
     icon: '💬',
-    description: 'A basic conversational agent',
+    description: 'A basic conversational agent with web search',
     agents: {
       'chat_agent': {
         type: 'llm',
         model: 'gemini-2.0-flash',
-        instruction: 'You are a helpful, friendly assistant. Answer questions clearly and concisely. Be conversational but informative.',
-        tools: [],
+        instruction: 'You are a helpful, friendly assistant. Answer questions clearly and concisely. Use Google Search when you need current information or facts you\'re unsure about. Be conversational but informative.',
+        tools: ['google_search'],
         sub_agents: [],
-        position: { x: 50, y: 150 },
+        position: { x: 0, y: 0 },  // Will be set by auto-layout
       }
     },
+    actionNodes: {
+      'manual_trigger': createManualTrigger(),
+    },
     edges: [
+      { from: 'manual_trigger', to: 'START' },
       { from: 'START', to: 'chat_agent' },
       { from: 'chat_agent', to: 'END' },
     ]
@@ -60,7 +78,11 @@ export const TEMPLATES: Template[] = [
         position: { x: 50, y: 150 },
       }
     },
+    actionNodes: {
+      'manual_trigger': createManualTrigger(),
+    },
     edges: [
+      { from: 'manual_trigger', to: 'START' },
       { from: 'START', to: 'research_pipeline' },
       { from: 'research_pipeline', to: 'END' },
     ]
@@ -96,7 +118,11 @@ export const TEMPLATES: Template[] = [
         max_iterations: 3,
       }
     },
+    actionNodes: {
+      'manual_trigger': createManualTrigger(),
+    },
     edges: [
+      { from: 'manual_trigger', to: 'START' },
       { from: 'START', to: 'content_refiner' },
       { from: 'content_refiner', to: 'END' },
     ]
@@ -131,7 +157,11 @@ export const TEMPLATES: Template[] = [
         position: { x: 50, y: 150 },
       }
     },
+    actionNodes: {
+      'manual_trigger': createManualTrigger(),
+    },
     edges: [
+      { from: 'manual_trigger', to: 'START' },
       { from: 'START', to: 'parallel_analyzer' },
       { from: 'parallel_analyzer', to: 'END' },
     ]
@@ -180,7 +210,11 @@ export const TEMPLATES: Template[] = [
         position: { x: 350, y: 350 },
       }
     },
+    actionNodes: {
+      'manual_trigger': createManualTrigger(),
+    },
     edges: [
+      { from: 'manual_trigger', to: 'START' },
       { from: 'START', to: 'router' },
       { from: 'router', to: 'tech_support' },
       { from: 'router', to: 'billing_support' },
@@ -205,7 +239,11 @@ export const TEMPLATES: Template[] = [
         position: { x: 50, y: 150 },
       }
     },
+    actionNodes: {
+      'manual_trigger': createManualTrigger(),
+    },
     edges: [
+      { from: 'manual_trigger', to: 'START' },
       { from: 'START', to: 'web_agent' },
       { from: 'web_agent', to: 'END' },
     ]

@@ -20,14 +20,14 @@ HTTP server and A2A protocol for Rust Agent Development Kit (ADK-Rust) agents.
 
 ```toml
 [dependencies]
-adk-server = "0.2.0"
+adk-server = "0.3.0"
 ```
 
 Or use the meta-crate:
 
 ```toml
 [dependencies]
-adk-rust = { version = "0.2.1", features = ["server"] }
+adk-rust = { version = "0.3.0", features = ["server"] }
 ```
 
 ## Quick Start
@@ -99,11 +99,90 @@ let coordinator = LlmAgentBuilder::new("coordinator")
 
 ## API Endpoints
 
+### Runtime and Sessions
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Web UI |
-| `/api/chat` | POST | Send message |
-| `/api/chat/stream` | POST | Stream response |
+| `/api/health` | GET | Health check |
+| `/api/apps` | GET | List available agents |
+| `/api/list-apps` | GET | adk-go compatible app listing |
+| `/api/sessions` | POST | Create session |
+| `/api/sessions/{app_name}/{user_id}/{session_id}` | GET, DELETE | Get or delete session |
+| `/api/run/{app_name}/{user_id}/{session_id}` | POST | Run agent with SSE |
+| `/api/run_sse` | POST | adk-go compatible SSE runtime |
+
+### UI Protocol Contracts
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ui/capabilities` | GET | Supported UI protocols/features (`adk_ui`, `a2ui`, `ag_ui`, `mcp_apps`) |
+| `/api/ui/resources` | GET | List MCP UI resources (`ui://` entries) |
+| `/api/ui/resources/read?uri=...` | GET | Read a registered MCP UI resource |
+| `/api/ui/resources/register` | POST | Register an MCP UI resource (validated `ui://` + mime/meta) |
+
+Runtime endpoints support protocol negotiation via:
+- request body field `uiProtocol` / `ui_protocol`
+- header `x-adk-ui-protocol` (takes precedence)
+
+Supported runtime profile values:
+- `adk_ui` (default, legacy profile)
+- `a2ui`
+- `ag_ui`
+- `mcp_apps`
+
+Deprecation signaling:
+
+- `adk_ui` deprecation metadata is included in `/api/ui/capabilities`.
+- Runtime requests using `adk_ui` emit server warning logs to aid migration tracking.
+- Current timeline: announced `2026-02-07`, sunset target `2026-12-31`.
+
+Example runtime request:
+
+```bash
+curl -X POST "http://localhost:8080/api/run_sse" \
+  -H "content-type: application/json" \
+  -H "x-adk-ui-protocol: ag_ui" \
+  -d '{
+    "appName": "assistant",
+    "userId": "user1",
+    "sessionId": "session1",
+    "newMessage": {
+      "parts": [{ "text": "Render a dashboard." }],
+      "role": "user"
+    }
+  }'
+```
+
+Protocol response behavior:
+
+- `adk_ui` profile: legacy runtime event payload shape
+- non-default profiles (`a2ui`, `ag_ui`, `mcp_apps`): profile-wrapped SSE payloads with protocol metadata
+
+MCP UI resource registration request shape:
+
+```json
+{
+  "uri": "ui://demo/dashboard",
+  "mimeType": "text/html;profile=mcp-app",
+  "text": "<html>...</html>",
+  "meta": {
+    "ui": {
+      "domain": "https://example.com"
+    }
+  }
+}
+```
+
+Resource registration enforces:
+
+- `ui://` URI scheme
+- supported MIME type contracts
+- metadata domain/CSP validation
+
+### A2A Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/.well-known/agent.json` | GET | A2A agent card |
 | `/a2a` | POST | A2A JSON-RPC |
 | `/a2a/stream` | POST | A2A streaming |

@@ -24,7 +24,7 @@ export function ToolPalette({ selectedNodeId, agentTools, onAdd, onRemove }: Pro
 
   return (
     <div>
-      <h3 className="font-semibold mb-2">Tools</h3>
+      <h3 className="font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Tools</h3>
       <div className="space-y-1">
         {TOOL_TYPES.map(({ type, label, icon }) => {
           const isMultiTool = type === 'function' || type === 'mcp';
@@ -38,8 +38,14 @@ export function ToolPalette({ selectedNodeId, agentTools, onAdd, onRemove }: Pro
               key={type}
               draggable
               onDragStart={(e) => onDragStart(e, type)}
-              className={`p-1.5 rounded text-xs cursor-grab flex items-center gap-2 ${isAdded ? 'bg-green-800 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
-                } ${!selectedNodeId ? 'opacity-50' : ''}`}
+              className={`p-1.5 rounded text-xs cursor-grab flex items-center gap-2 border ${
+                !selectedNodeId ? 'opacity-50' : ''
+              }`}
+              style={{
+                backgroundColor: isAdded ? '#38A169' : 'var(--bg-secondary)',
+                color: isAdded ? 'white' : 'var(--text-primary)',
+                borderColor: 'var(--border-default)',
+              }}
               onClick={() => {
                 if (!selectedNodeId) return;
                 if (isMultiTool || !isAdded) onAdd(type);
@@ -48,7 +54,7 @@ export function ToolPalette({ selectedNodeId, agentTools, onAdd, onRemove }: Pro
             >
               <span>{icon}</span>
               <span className="text-xs">{label}</span>
-              {isMultiTool && toolCount > 0 && <span className="ml-auto text-xs bg-blue-600 px-1 rounded">{toolCount}</span>}
+              {isMultiTool && toolCount > 0 && <span className="ml-auto text-xs bg-blue-600 text-white px-1 rounded">{toolCount}</span>}
               {!isMultiTool && isAdded && <span className="ml-auto text-xs">✓</span>}
             </div>
           );

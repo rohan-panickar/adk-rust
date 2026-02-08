@@ -246,6 +246,12 @@ type UiEvent = {
     index: number;
 };
 declare function uiEventToMessage(event: UiEvent): string;
+type UiOperation = 'replace' | 'patch' | 'append' | 'remove';
+interface UiUpdate {
+    target_id: string;
+    operation: UiOperation;
+    payload?: Component;
+}
 
 interface RendererProps {
     component: Component;
@@ -254,5 +260,154 @@ interface RendererProps {
     theme?: 'light' | 'dark' | 'system';
 }
 declare const Renderer: React.FC<RendererProps>;
+interface StreamingRendererProps extends RendererProps {
+    updates?: UiUpdate | UiUpdate[];
+}
+declare const StreamingRenderer: React.FC<StreamingRendererProps>;
 
-export { type Component, Renderer, type TableColumn, type UiEvent, type UiResponse, uiEventToMessage };
+type DataBinding = {
+    path: string;
+};
+type FunctionCall = {
+    call: string;
+    args?: unknown[];
+    returnType?: string;
+};
+interface ResolveContext {
+    dataModel: Record<string, unknown>;
+    scope?: Record<string, unknown>;
+    functions?: FunctionRegistry;
+}
+type FunctionRegistry = Record<string, (args: unknown[], ctx: ResolveContext) => unknown>;
+declare function isDataBinding(value: unknown): value is DataBinding;
+declare function isFunctionCall(value: unknown): value is FunctionCall;
+declare function resolvePath(dataModel: Record<string, unknown>, path: string, scope?: Record<string, unknown>): unknown;
+declare function resolveDynamicValue(value: unknown, dataModel: Record<string, unknown>, scope?: Record<string, unknown>, functions?: FunctionRegistry): unknown;
+declare function resolveDynamicString(value: unknown, dataModel: Record<string, unknown>, scope?: Record<string, unknown>, functions?: FunctionRegistry): string;
+
+type A2uiActionEventDefinition = {
+    name: string;
+    context?: Record<string, unknown>;
+};
+type A2uiActionDefinition = {
+    event?: A2uiActionEventDefinition;
+    functionCall?: FunctionCall;
+};
+type A2uiActionEventPayload = {
+    action: {
+        name: string;
+        surfaceId: string;
+        sourceComponentId: string;
+        timestamp: string;
+        context: Record<string, unknown>;
+    };
+};
+interface ActionEventOptions {
+    dataModel: Record<string, unknown>;
+    scope?: Record<string, unknown>;
+    functions?: FunctionRegistry;
+    timestamp?: Date;
+}
+declare function buildActionEvent(action: A2uiActionDefinition | undefined, surfaceId: string, sourceComponentId: string, options: ActionEventOptions): A2uiActionEventPayload | null;
+
+type A2uiComponent = Record<string, unknown> & {
+    id: string;
+    component: string;
+};
+interface SurfaceState {
+    components: Map<string, A2uiComponent>;
+    dataModel: Record<string, unknown>;
+}
+declare class A2uiStore {
+    private surfaces;
+    getSurface(surfaceId: string): SurfaceState | undefined;
+    ensureSurface(surfaceId: string): SurfaceState;
+    applyUpdateComponents(surfaceId: string, components: A2uiComponent[]): void;
+    removeSurface(surfaceId: string): void;
+    applyUpdateDataModel(surfaceId: string, path: string | undefined, value: unknown): void;
+}
+
+interface A2uiSurfaceRendererProps {
+    store: A2uiStore;
+    surfaceId: string;
+    rootId?: string;
+    onAction?: (payload: A2uiActionEventPayload) => void;
+    theme?: 'light' | 'dark' | 'system';
+    functions?: FunctionRegistry;
+}
+declare const A2uiSurfaceRenderer: React.FC<A2uiSurfaceRendererProps>;
+
+type CreateSurfaceMessage = {
+    createSurface: {
+        surfaceId: string;
+        catalogId: string;
+        theme?: Record<string, unknown>;
+        sendDataModel?: boolean;
+    };
+};
+type UpdateComponentsMessage = {
+    updateComponents: {
+        surfaceId: string;
+        components: A2uiComponent[];
+    };
+};
+type UpdateDataModelMessage = {
+    updateDataModel: {
+        surfaceId: string;
+        path?: string;
+        value?: unknown;
+    };
+};
+type DeleteSurfaceMessage = {
+    deleteSurface: {
+        surfaceId: string;
+    };
+};
+type A2uiMessage = CreateSurfaceMessage | UpdateComponentsMessage | UpdateDataModelMessage | DeleteSurfaceMessage;
+interface ParsedA2uiMessage {
+    message: A2uiMessage;
+    raw: string;
+}
+declare function parseJsonl(payload: string): ParsedA2uiMessage[];
+declare function applyParsedMessages(store: A2uiStore, parsed: ParsedA2uiMessage[]): void;
+
+declare function applyUiUpdates(component: Component, updates: UiUpdate[]): Component | null;
+declare function applyUiUpdate(component: Component, update: UiUpdate): Component | null;
+
+declare function parseProtocolPayload(payload: unknown): ParsedA2uiMessage[];
+declare function applyProtocolPayload(store: A2uiStore, payload: unknown): ParsedA2uiMessage[];
+
+declare class UnifiedRenderStore {
+    private readonly a2uiStore;
+    private legacyUiResponse;
+    constructor(a2uiStore?: A2uiStore);
+    getA2uiStore(): A2uiStore;
+    getLegacyUiResponse(): UiResponse | null;
+    clearLegacyUiResponse(): void;
+    applyPayload(payload: unknown): ParsedA2uiMessage[];
+}
+
+type UiProtocol = 'adk_ui' | 'a2ui' | 'ag_ui' | 'mcp_apps';
+interface ProtocolClientOptions {
+    protocol?: UiProtocol;
+    store?: UnifiedRenderStore;
+}
+interface OutboundEventOptions {
+    surfaceId?: string;
+    threadId?: string;
+    runId?: string;
+}
+declare function buildOutboundEvent(protocol: UiProtocol, event: UiEvent, options?: OutboundEventOptions): Record<string, unknown>;
+declare class ProtocolClient {
+    private protocol;
+    private readonly store;
+    constructor(options?: ProtocolClientOptions);
+    getProtocol(): UiProtocol;
+    setProtocol(protocol: UiProtocol): void;
+    getStore(): UnifiedRenderStore;
+    applyPayload(payload: unknown): ParsedA2uiMessage[];
+    buildOutboundEvent(event: UiEvent, options?: OutboundEventOptions): Record<string, unknown>;
+}
+declare function createProtocolClient(options?: ProtocolClientOptions): ProtocolClient;
+
+export { type A2uiActionDefinition, type A2uiActionEventDefinition, type A2uiActionEventPayload, type A2uiMessage, A2uiStore, A2uiSurfaceRenderer, type ActionEventOptions, type Component, type CreateSurfaceMessage, type DataBinding, type DeleteSurfaceMessage, type FunctionCall, type FunctionRegistry, type OutboundEventOptions, type ParsedA2uiMessage, ProtocolClient, type ProtocolClientOptions, Renderer, type ResolveContext, StreamingRenderer, type TableColumn, type UiEvent, type UiProtocol, type UiResponse, UnifiedRenderStore, type UpdateComponentsMessage, type UpdateDataModelMessage, applyParsedMessages, applyProtocolPayload, applyUiUpdate, applyUiUpdates, buildActionEvent, buildOutboundEvent, createProtocolClient, isDataBinding, isFunctionCall, parseJsonl, parseProtocolPayload, resolveDynamicString, resolveDynamicValue, resolvePath, uiEventToMessage };

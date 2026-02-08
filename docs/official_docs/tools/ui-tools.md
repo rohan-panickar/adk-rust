@@ -14,6 +14,7 @@ The `adk-ui` crate enables AI agents to dynamically generate rich user interface
 - **Alerts** - Show notifications and status messages
 - **Modals** - Confirmation dialogs and focused interactions
 - **Toasts** - Brief status notifications
+- **Protocol Interop** - Emit UI as A2UI, AG-UI, or MCP Apps payloads
 
 ### Example: Analytics Dashboard
 
@@ -113,11 +114,11 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-adk-rust = { version = "0.2.0", features = ["ui"] }
+adk-rust = { version = "0.3.0", features = ["ui"] }
 # Or use individual crates:
-adk-ui = "0.2.0"
-adk-agent = "0.2.0"
-adk-model = "0.2.0"
+adk-ui = "0.3.0"
+adk-agent = "0.3.0"
+adk-model = "0.3.0"
 ```
 
 ### Basic Usage
@@ -150,8 +151,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder = builder.tool(tool);
     }
 
-    let agent = builder.build()?;
-    Ok(())
+let agent = builder.build()?;
+Ok(())
+}
+```
+
+## A2UI JSONL (render_screen / render_page / render_kit)
+
+These tools emit A2UI v0.9 JSONL for compatibility with A2UI renderers.
+
+### render_screen (single surface)
+
+```json
+{
+  "surface_id": "main",
+  "components": [
+    { "id": "root", "component": "Column", "children": ["title", "cta"] },
+    { "id": "title", "component": "Text", "text": "Welcome", "variant": "h1" },
+    { "id": "cta_label", "component": "Text", "text": "Continue", "variant": "body" },
+    { "id": "cta", "component": "Button", "child": "cta_label", "action": { "event": { "name": "continue" } } }
+  ]
+}
+```
+
+### render_page (multi-section page)
+
+```json
+{
+  "title": "Release Notes",
+  "description": "Highlights for the latest launch.",
+  "sections": [
+    {
+      "heading": "What’s new",
+      "body": "Three big improvements shipped this week.",
+      "bullets": ["Faster onboarding", "Better search", "New dashboards"],
+      "actions": [{ "label": "View details", "action": "view_details", "variant": "borderless" }]
+    }
+  ]
+}
+```
+
+### render_kit (catalog + tokens + templates)
+
+```json
+{
+  "name": "Fintech Pro",
+  "version": "0.1.0",
+  "brand": { "vibe": "trustworthy", "industry": "fintech" },
+  "colors": { "primary": "#2F6BFF" },
+  "typography": { "family": "Source Sans 3" },
+  "templates": ["auth_login", "dashboard"]
+}
+```
+
+Use the React renderer to consume A2UI JSONL:
+
+```tsx
+import {
+  A2uiStore,
+  A2uiSurfaceRenderer,
+  applyParsedMessages,
+  parseJsonl,
+} from "@zavora-ai/adk-ui-react";
+
+const store = new A2uiStore();
+const parsed = parseJsonl(jsonl);
+applyParsedMessages(store, parsed);
+
+export function App() {
+  return <A2uiSurfaceRenderer store={store} surfaceId="main" />;
 }
 ```
 
@@ -467,18 +535,60 @@ The React client includes:
 ## Architecture
 
 ```
-┌─────────────┐                    ┌─────────────┐
-│   Agent     │ ──[render_* tool]──│ UiResponse  │
-│  (LLM)      │                    │   (JSON)    │
-└─────────────┘                    └──────┬──────┘
-       ▲                                  │
-       │                                  │ SSE
-       │                                  ▼
-       │                           ┌─────────────┐
-       └────── UiEvent ◄───────────│   Client    │
-              (user action)        │  (React)    │
-                                   └─────────────┘
+Agent ──[render_* tool]──> UiResponse (JSON)
+                              │
+                              │ SSE
+                              ▼
+                         Client (React)
+                              │
+                              └──> UiEvent (user action) ──> Agent
 ```
+
+### Protocol Interop
+
+All 13 render tools support protocol-aware output through the `protocol` argument:
+
+| Protocol | Description |
+|----------|-------------|
+| `a2ui` | A2UI v0.9 JSONL surfaces (default for `render_screen`, `render_page`) |
+| `ag_ui` | AG-UI adapter payload with events |
+| `mcp_apps` | MCP Apps adapter payload with resource URIs |
+
+When `protocol` is omitted, tools use their default output format (legacy `UiResponse` JSON for most tools, A2UI for `render_screen`/`render_page`/`render_kit`).
+
+**Example with protocol selection:**
+
+```json
+{
+  "protocol": "mcp_apps",
+  "mcp_apps": {
+    "resource_uri": "ui://demo/surface"
+  }
+}
+```
+
+### Interop Adapters
+
+`adk-ui` includes adapter primitives for protocol conversion:
+
+- `A2uiAdapter` — Converts canonical surfaces to A2UI JSONL
+- `AgUiAdapter` — Converts to AG-UI event payloads
+- `McpAppsAdapter` — Converts to MCP Apps resource payloads
+
+These implement a shared `UiProtocolAdapter` trait for consistent conversion across all tools.
+
+### Deprecation Timeline
+
+The legacy `adk_ui` runtime profile carries deprecation metadata:
+
+| Date | Milestone |
+|------|-----------|
+| 2026-02-07 | Deprecation announced |
+| 2026-12-31 | Sunset target |
+
+Replacements: `a2ui`, `ag_ui`, `mcp_apps`
+
+This metadata is exposed through `UI_PROTOCOL_CAPABILITIES` constants and surfaced by `adk-server` at `/api/ui/capabilities`.
 
 ## Examples
 

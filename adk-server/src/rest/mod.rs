@@ -10,7 +10,7 @@ use crate::{ServerConfig, web_ui};
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    http::{HeaderValue, Method, header},
+    http::{HeaderName, HeaderValue, Method, header},
     routing::{get, post},
 };
 use tower::ServiceBuilder;
@@ -25,7 +25,11 @@ use tower_http::{
 fn build_cors_layer(config: &ServerConfig) -> CorsLayer {
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+            HeaderName::from_static("x-adk-ui-protocol"),
+        ]);
 
     if config.security.allowed_origins.is_empty() {
         // Development mode: allow all origins (with warning logged at startup)
@@ -53,6 +57,10 @@ pub fn create_app_with_a2a(config: ServerConfig, a2a_base_url: Option<&str>) -> 
 
     let api_router = Router::new()
         .route("/health", get(health_check))
+        .route("/ui/capabilities", get(controllers::ui::ui_capabilities))
+        .route("/ui/resources", get(controllers::ui::list_ui_resources))
+        .route("/ui/resources/read", get(controllers::ui::read_ui_resource))
+        .route("/ui/resources/register", post(controllers::ui::register_ui_resource))
         .route("/apps", get(controllers::apps::list_apps))
         .route("/list-apps", get(controllers::apps::list_apps_compat))
         .with_state(apps_controller)

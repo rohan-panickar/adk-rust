@@ -1,3 +1,4 @@
+use crate::context::{ToolConfirmationDecision, ToolConfirmationRequest};
 use crate::model::LlmResponse;
 use crate::types::Content;
 use chrono::{DateTime, Utc};
@@ -17,9 +18,6 @@ pub struct Event {
     pub id: String,
     pub timestamp: DateTime<Utc>,
     pub invocation_id: String,
-    /// Camel case version for UI compatibility
-    #[serde(rename = "invocationId")]
-    pub invocation_id_camel: String,
     pub branch: String,
     pub author: String,
     /// The LLM response containing content and metadata.
@@ -33,12 +31,23 @@ pub struct Event {
     /// LLM request data for UI display (JSON string)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_request: Option<String>,
-    /// GCP Vertex Agent LLM request (for UI compatibility)
-    #[serde(rename = "gcp.vertex.agent.llm_request", skip_serializing_if = "Option::is_none")]
-    pub gcp_llm_request: Option<String>,
-    /// GCP Vertex Agent LLM response (for UI compatibility)
-    #[serde(rename = "gcp.vertex.agent.llm_response", skip_serializing_if = "Option::is_none")]
-    pub gcp_llm_response: Option<String>,
+    /// Provider-specific metadata (e.g., GCP Vertex, Azure OpenAI).
+    /// Keeps the core Event struct provider-agnostic.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub provider_metadata: HashMap<String, String>,
+}
+
+/// Metadata for a compacted (summarized) event.
+/// When context compaction is enabled, older events are summarized into a single
+/// compacted event containing this metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventCompaction {
+    /// Timestamp of the earliest event that was compacted.
+    pub start_timestamp: DateTime<Utc>,
+    /// Timestamp of the latest event that was compacted.
+    pub end_timestamp: DateTime<Utc>,
+    /// The summarized content replacing the original events.
+    pub compacted_content: Content,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -48,44 +57,45 @@ pub struct EventActions {
     pub skip_summarization: bool,
     pub transfer_to_agent: Option<String>,
     pub escalate: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_confirmation: Option<ToolConfirmationRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_confirmation_decision: Option<ToolConfirmationDecision>,
+    /// Present when this event is a compaction summary replacing older events.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compaction: Option<EventCompaction>,
 }
 
 impl Event {
     pub fn new(invocation_id: impl Into<String>) -> Self {
-        let invocation_id = invocation_id.into();
         Self {
             id: Uuid::new_v4().to_string(),
             timestamp: Utc::now(),
-            invocation_id: invocation_id.clone(),
-            invocation_id_camel: invocation_id,
+            invocation_id: invocation_id.into(),
             branch: String::new(),
             author: String::new(),
             llm_response: LlmResponse::default(),
             actions: EventActions::default(),
             long_running_tool_ids: Vec::new(),
             llm_request: None,
-            gcp_llm_request: None,
-            gcp_llm_response: None,
+            provider_metadata: HashMap::new(),
         }
     }
 
     /// Create an event with a specific ID.
     /// Use this for streaming events where all chunks should share the same event ID.
     pub fn with_id(id: impl Into<String>, invocation_id: impl Into<String>) -> Self {
-        let invocation_id = invocation_id.into();
         Self {
             id: id.into(),
             timestamp: Utc::now(),
-            invocation_id: invocation_id.clone(),
-            invocation_id_camel: invocation_id,
+            invocation_id: invocation_id.into(),
             branch: String::new(),
             author: String::new(),
             llm_response: LlmResponse::default(),
             actions: EventActions::default(),
             long_running_tool_ids: Vec::new(),
             llm_request: None,
-            gcp_llm_request: None,
-            gcp_llm_response: None,
+            provider_metadata: HashMap::new(),
         }
     }
 
@@ -149,16 +159,15 @@ impl Event {
     }
 
     /// Returns true if the event has a trailing code execution result.
-    /// Note: CodeExecutionResult is not yet implemented in the Part enum,
-    /// so this always returns false for now.
     #[allow(clippy::match_like_matches_macro)]
     fn has_trailing_code_execution_result(&self) -> bool {
-        // TODO: Implement when CodeExecutionResult is added to Part enum
-        // if let Some(content) = &self.llm_response.content {
-        //     if let Some(last_part) = content.parts.last() {
-        //         return matches!(last_part, crate::Part::CodeExecutionResult { .. });
-        //     }
-        // }
+        if let Some(content) = &self.llm_response.content {
+            if let Some(last_part) = content.parts.last() {
+                // FunctionResponse as the last part indicates a code execution result
+                // that the model still needs to process.
+                return matches!(last_part, crate::Part::FunctionResponse { .. });
+            }
+        }
         false
     }
 
@@ -168,9 +177,10 @@ impl Event {
         let mut ids = Vec::new();
         if let Some(content) = &self.llm_response.content {
             for part in &content.parts {
-                if let crate::Part::FunctionCall { name, .. } = part {
-                    // Use name as ID since we don't have explicit IDs in our Part enum
-                    ids.push(name.clone());
+                if let crate::Part::FunctionCall { name, id, .. } = part {
+                    // Use the actual call ID when available (OpenAI-style),
+                    // fall back to name for providers that don't emit IDs (Gemini).
+                    ids.push(id.as_deref().unwrap_or(name).to_string());
                 }
             }
         }
@@ -195,6 +205,8 @@ mod tests {
         let actions = EventActions::default();
         assert!(actions.state_delta.is_empty());
         assert!(!actions.skip_summarization);
+        assert!(actions.tool_confirmation.is_none());
+        assert!(actions.tool_confirmation_decision.is_none());
     }
 
     #[test]
@@ -322,8 +334,25 @@ mod tests {
 
         let ids = event.function_call_ids();
         assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&"get_weather".to_string()));
-        assert!(ids.contains(&"get_time".to_string()));
+        // Should use actual call IDs, not function names
+        assert!(ids.contains(&"call_1".to_string()));
+        assert!(ids.contains(&"call_2".to_string()));
+    }
+
+    #[test]
+    fn test_function_call_ids_falls_back_to_name() {
+        let mut event = Event::new("inv-123");
+        event.llm_response.content = Some(Content {
+            role: "model".to_string(),
+            parts: vec![Part::FunctionCall {
+                name: "get_weather".to_string(),
+                args: serde_json::json!({}),
+                id: None, // Gemini-style: no explicit ID
+            }],
+        });
+
+        let ids = event.function_call_ids();
+        assert_eq!(ids, vec!["get_weather".to_string()]);
     }
 
     #[test]
@@ -331,5 +360,51 @@ mod tests {
         let event = Event::new("inv-123");
         let ids = event.function_call_ids();
         assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_is_final_response_trailing_function_response() {
+        // Text followed by a function response as the last part —
+        // has_trailing_code_execution_result should catch this even though
+        // has_function_responses also catches it.
+        let mut event = Event::new("inv-123");
+        event.llm_response.content = Some(Content {
+            role: "model".to_string(),
+            parts: vec![
+                Part::Text { text: "Running code...".to_string() },
+                Part::FunctionResponse {
+                    function_response: crate::FunctionResponseData {
+                        name: "code_exec".to_string(),
+                        response: serde_json::json!({"output": "42"}),
+                    },
+                    id: Some("call_exec".to_string()),
+                },
+            ],
+        });
+        // Trailing function response -> NOT final
+        assert!(!event.is_final_response());
+    }
+
+    #[test]
+    fn test_is_final_response_text_after_function_response() {
+        // Function response followed by text — the trailing part is text,
+        // so has_trailing_code_execution_result is false, but
+        // has_function_responses is still true.
+        let mut event = Event::new("inv-123");
+        event.llm_response.content = Some(Content {
+            role: "model".to_string(),
+            parts: vec![
+                Part::FunctionResponse {
+                    function_response: crate::FunctionResponseData {
+                        name: "tool".to_string(),
+                        response: serde_json::json!({}),
+                    },
+                    id: Some("call_1".to_string()),
+                },
+                Part::Text { text: "Done".to_string() },
+            ],
+        });
+        // Still has function responses -> NOT final
+        assert!(!event.is_final_response());
     }
 }

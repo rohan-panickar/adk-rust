@@ -31,6 +31,7 @@
 use adk_core::{
     Agent, Content, Event, EventStream, InvocationContext, Llm, LlmRequest, Part, Result,
 };
+use adk_skill::{SelectionPolicy, SkillIndex, load_skill_index};
 use async_stream::stream;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -62,6 +63,11 @@ pub struct LlmConditionalAgent {
     instruction: String,
     routes: HashMap<String, Arc<dyn Agent>>,
     default_agent: Option<Arc<dyn Agent>>,
+    /// Cached list of all route agents (+ default) for tree discovery via `sub_agents()`.
+    all_agents: Vec<Arc<dyn Agent>>,
+    skills_index: Option<Arc<SkillIndex>>,
+    skill_policy: SelectionPolicy,
+    max_skill_chars: usize,
 }
 
 pub struct LlmConditionalAgentBuilder {
@@ -71,6 +77,9 @@ pub struct LlmConditionalAgentBuilder {
     instruction: Option<String>,
     routes: HashMap<String, Arc<dyn Agent>>,
     default_agent: Option<Arc<dyn Agent>>,
+    skills_index: Option<Arc<SkillIndex>>,
+    skill_policy: SelectionPolicy,
+    max_skill_chars: usize,
 }
 
 impl LlmConditionalAgentBuilder {
@@ -83,6 +92,9 @@ impl LlmConditionalAgentBuilder {
             instruction: None,
             routes: HashMap::new(),
             default_agent: None,
+            skills_index: None,
+            skill_policy: SelectionPolicy::default(),
+            max_skill_chars: 2000,
         }
     }
 
@@ -116,6 +128,31 @@ impl LlmConditionalAgentBuilder {
         self
     }
 
+    pub fn with_skills(mut self, index: SkillIndex) -> Self {
+        self.skills_index = Some(Arc::new(index));
+        self
+    }
+
+    pub fn with_auto_skills(self) -> Result<Self> {
+        self.with_skills_from_root(".")
+    }
+
+    pub fn with_skills_from_root(mut self, root: impl AsRef<std::path::Path>) -> Result<Self> {
+        let index = load_skill_index(root).map_err(|e| adk_core::AdkError::Agent(e.to_string()))?;
+        self.skills_index = Some(Arc::new(index));
+        Ok(self)
+    }
+
+    pub fn with_skill_policy(mut self, policy: SelectionPolicy) -> Self {
+        self.skill_policy = policy;
+        self
+    }
+
+    pub fn with_skill_budget(mut self, max_chars: usize) -> Self {
+        self.max_skill_chars = max_chars;
+        self
+    }
+
     /// Build the LlmConditionalAgent.
     pub fn build(self) -> Result<LlmConditionalAgent> {
         let instruction = self.instruction.ok_or_else(|| {
@@ -128,6 +165,12 @@ impl LlmConditionalAgentBuilder {
             ));
         }
 
+        // Collect all agents for sub_agents() tree discovery
+        let mut all_agents: Vec<Arc<dyn Agent>> = self.routes.values().cloned().collect();
+        if let Some(ref default) = self.default_agent {
+            all_agents.push(default.clone());
+        }
+
         Ok(LlmConditionalAgent {
             name: self.name,
             description: self.description.unwrap_or_default(),
@@ -135,6 +178,10 @@ impl LlmConditionalAgentBuilder {
             instruction,
             routes: self.routes,
             default_agent: self.default_agent,
+            all_agents,
+            skills_index: self.skills_index,
+            skill_policy: self.skill_policy,
+            max_skill_chars: self.max_skill_chars,
         })
     }
 }
@@ -157,21 +204,26 @@ impl Agent for LlmConditionalAgent {
     }
 
     fn sub_agents(&self) -> &[Arc<dyn Agent>] {
-        // Return empty - routes are internal
-        &[]
+        &self.all_agents
     }
 
     async fn run(&self, ctx: Arc<dyn InvocationContext>) -> Result<EventStream> {
+        let run_ctx = super::skill_context::with_skill_injected_context(
+            ctx,
+            self.skills_index.as_ref(),
+            &self.skill_policy,
+            self.max_skill_chars,
+        );
         let model = self.model.clone();
         let instruction = self.instruction.clone();
         let routes = self.routes.clone();
         let default_agent = self.default_agent.clone();
-        let invocation_id = ctx.invocation_id().to_string();
+        let invocation_id = run_ctx.invocation_id().to_string();
         let agent_name = self.name.clone();
 
         let s = stream! {
             // Build classification request
-            let user_content = ctx.user_content().clone();
+            let user_content = run_ctx.user_content().clone();
             let user_text: String = user_content.parts.iter()
                 .filter_map(|p| if let Part::Text { text } = p { Some(text.as_str()) } else { None })
                 .collect::<Vec<_>>()
@@ -238,7 +290,7 @@ impl Agent for LlmConditionalAgent {
 
             // Execute target agent
             if let Some(agent) = target_agent {
-                match agent.run(ctx.clone()).await {
+                match agent.run(run_ctx.clone()).await {
                     Ok(mut stream) => {
                         while let Some(event) = stream.next().await {
                             yield event;

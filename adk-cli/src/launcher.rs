@@ -114,7 +114,7 @@ impl Launcher {
 
     /// Set streaming mode (defaults to SSE if not specified).
     pub fn with_streaming_mode(mut self, mode: StreamingMode) -> Self {
-        self.run_config = Some(RunConfig { streaming_mode: mode });
+        self.run_config = Some(RunConfig { streaming_mode: mode, ..RunConfig::default() });
         self
     }
 
@@ -163,7 +163,9 @@ impl Launcher {
             session_service,
             artifact_service: self.artifact_service,
             memory_service: None,
+            plugin_manager: None,
             run_config: self.run_config,
+            compaction_config: None,
         })?;
 
         println!("🤖 Agent ready! Type your questions (or 'exit' to quit).\n");

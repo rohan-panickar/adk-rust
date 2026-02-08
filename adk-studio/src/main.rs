@@ -1,4 +1,6 @@
-use adk_studio::{AppState, FileStorage, api_routes, embedded};
+use adk_studio::{
+    AppState, FileStorage, api_routes, cleanup_stale_sessions, embedded, start_scheduler,
+};
 use axum::{Router, extract::Path as AxumPath, routing::get};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -60,6 +62,22 @@ async fn main() -> anyhow::Result<()> {
 
     let storage = FileStorage::new(projects_dir.clone()).await?;
     let state = AppState::new(storage);
+
+    // Start the schedule trigger service in the background
+    let scheduler_state = state.clone();
+    tokio::spawn(async move {
+        start_scheduler(scheduler_state).await;
+    });
+
+    // Start periodic session cleanup (every 10 minutes, remove sessions older than 1 hour)
+    tokio::spawn(async {
+        let cleanup_interval = std::time::Duration::from_secs(600);
+        let max_session_age = std::time::Duration::from_secs(3600);
+        loop {
+            tokio::time::sleep(cleanup_interval).await;
+            cleanup_stale_sessions(max_session_age).await;
+        }
+    });
 
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 

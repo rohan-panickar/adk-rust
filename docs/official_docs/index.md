@@ -6,6 +6,7 @@ Welcome to the official documentation for ADK-Rust (Agent Development Kit for Ru
 
 - [Introduction](introduction.md) - Overview of ADK-Rust, its architecture, and key concepts
 - [Quickstart](quickstart.md) - Build your first agent in under 10 minutes
+- [A2UI Quickstart](quickstart-a2ui.md) - Emit A2UI JSONL and render it in React
 
 ## Core
 
@@ -71,6 +72,8 @@ Welcome to the official documentation for ADK-Rust (Agent Development Kit for Ru
 ## Studio
 
 - [ADK Studio](studio/studio.md) - Visual development environment for building agents
+- [Action Nodes](studio/action-nodes.md) - Non-LLM programmatic nodes for automation workflows
+- [Triggers](studio/triggers.md) - Webhook, schedule, and event triggers for workflows
 
 ## Development
 

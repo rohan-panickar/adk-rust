@@ -1,45 +1,86 @@
-import { useCallback, useState, useRef, DragEvent } from 'react';
-import { ReactFlow, Background, Controls, MiniMap, Node, Edge, Connection } from '@xyflow/react';
+import { useCallback, useState, useRef } from 'react';
+import { ReactFlow, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useStore } from '../../store';
-import { TestConsole } from '../Console/TestConsole';
+import type { BuildStatus } from '../Console/TestConsole';
 import { MenuBar } from '../MenuBar';
 import { nodeTypes } from '../Nodes';
 import { edgeTypes } from '../Edges';
-import { AgentPalette, ToolPalette, PropertiesPanel, ToolConfigPanel } from '../Panels';
-import { CodeModal, BuildModal, CodeEditorModal, NewProjectModal } from '../Overlays';
+import { CanvasModals } from './CanvasModals';
+import { CanvasBottomPanel } from './CanvasBottomPanel';
+import { CanvasSidebar } from './CanvasSidebar';
+import { CanvasRightPanel } from './CanvasRightPanel';
 import { CanvasToolbar } from './CanvasToolbar';
-import { api, GeneratedProject } from '../../api/client';
+import { api } from '../../api/client';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useLayout } from '../../hooks/useLayout';
 import { useCanvasNodes } from '../../hooks/useCanvasNodes';
 import { useAgentActions } from '../../hooks/useAgentActions';
-import type { FunctionToolConfig, AgentSchema, ToolConfig } from '../../types/project';
+import { useCanvasState } from '../../hooks/useCanvasState';
+import { useBuild } from '../../hooks/useBuild';
+import { useTheme } from '../../hooks/useTheme';
+import { useCanvasDragDrop } from '../../hooks/useCanvasDragDrop';
+import { useCanvasExecution } from '../../hooks/useCanvasExecution';
+import { useCanvasConnections } from '../../hooks/useCanvasConnections';
+import { useCanvasUndoRedo } from '../../hooks/useCanvasUndoRedo';
+import type { FunctionToolConfig } from '../../types/project';
+import { DEFAULT_MANUAL_TRIGGER_CONFIG } from '../../types/actionNodes';
 import { TEMPLATES } from '../MenuBar/templates';
 
-type FlowPhase = 'idle' | 'input' | 'output';
-
 export function Canvas() {
-  const { currentProject, openProject, closeProject, saveProject, selectNode, selectedNodeId, updateAgent: storeUpdateAgent, renameAgent, addEdge: addProjectEdge, removeEdge: removeProjectEdge, addToolToAgent, removeToolFromAgent, addSubAgentToContainer, selectedToolId, selectTool, updateToolConfig: storeUpdateToolConfig, addAgent } = useStore();
-  const [showConsole, setShowConsole] = useState(true);
-  const [flowPhase, setFlowPhase] = useState<FlowPhase>('idle');
-  const [activeAgent, setActiveAgent] = useState<string | null>(null);
-  const [iteration, setIteration] = useState(0);
-  const [thoughts, setThoughts] = useState<Record<string, string>>({});
-  const [compiledCode, setCompiledCode] = useState<GeneratedProject | null>(null);
-  const [buildOutput, setBuildOutput] = useState<{ success: boolean, output: string, path: string | null } | null>(null);
-  const [building, setBuilding] = useState(false);
-  const [builtBinaryPath, setBuiltBinaryPath] = useState<string | null>(null);
+  const {
+    currentProject, openProject, closeProject, saveProject,
+    selectedNodeId, selectedToolId, selectTool, renameAgent,
+    addEdge: addProjectEdge, removeToolFromAgent, addSubAgentToContainer,
+    addAgent, addActionNode, selectedActionNodeId, selectActionNode, selectNode,
+    showDataFlowOverlay, setShowDataFlowOverlay, debugMode, setDebugMode,
+    updateProjectMeta, updateProjectSettings, snapToGrid, gridSize,
+  } = useStore();
+
+  const handleUISettingChange = useCallback((key: string, value: boolean) => {
+    updateProjectSettings({ [key]: value });
+  }, [updateProjectSettings]);
+  const { showConsole, toggleConsole, showMinimap, toggleMinimap, showTimeline } = useCanvasState(currentProject?.settings, handleUISettingChange);
+
+  const canBuild = useCallback(() => {
+    if (!currentProject) return false;
+    const ac = Object.keys(currentProject.agents).length;
+    const anc = Object.keys(currentProject.actionNodes || {}).length;
+    return (ac > 0 || anc > 0) && currentProject.workflow.edges.length > 0;
+  }, [currentProject]);
+
+  const {
+    building, buildOutput, builtBinaryPath, compiledCode, autobuildEnabled, isAutobuild,
+    build: handleBuild, compile: handleCompile, clearBuildOutput, clearCompiledCode,
+    invalidateBuild, toggleAutobuild, showBuildProgress, setBinaryPath,
+  } = useBuild(currentProject?.id, currentProject?.settings?.autobuildTriggers, currentProject?.settings?.autobuildEnabled, canBuild);
+  const buildStatus: BuildStatus = building ? 'building'
+    : buildOutput?.success ? 'success'
+    : buildOutput && !buildOutput.success ? 'error'
+    : builtBinaryPath ? 'success' : 'none';
+
+  const [consoleCollapsed, setConsoleCollapsed] = useState(false);
+  const [autoSendPrompt, setAutoSendPrompt] = useState<string | null>(null);
+  const cancelFnRef = useRef<(() => void) | null>(null);
   const [showCodeEditor, setShowCodeEditor] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
-  const { nodes, edges, onNodesChange, onEdgesChange } = useCanvasNodes(currentProject, { activeAgent, iteration, flowPhase, thoughts });
-  const { applyLayout, toggleLayout, fitToView } = useLayout();
+  const execution = useCanvasExecution({ showDataFlowOverlay, setShowDataFlowOverlay });
+  const { applyLayout, fitToView, zoomIn, zoomOut } = useLayout();
   const { createAgent, duplicateAgent, removeAgent } = useAgentActions();
 
-  const handleThought = useCallback((agent: string, thought: string | null) => {
-    setThoughts(prev => thought ? { ...prev, [agent]: thought } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== agent)));
-  }, []);
+  const nodeCount = currentProject
+    ? Object.keys(currentProject.agents).length + Object.keys(currentProject.actionNodes || {}).length : 0;
+  const { undoRedo, createAgentWithUndo, removeAgentWithUndo, removeActionNodeWithLayout } = useCanvasUndoRedo({
+    createAgent,
+    removeAgent,
+    removeActionNode: useStore.getState().removeActionNode,
+    applyLayout,
+    invalidateBuild,
+    currentProjectId: currentProject?.id,
+    nodeCount,
+  });
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedSave = useCallback(() => {
@@ -47,133 +88,302 @@ export function Canvas() {
     saveTimerRef.current = setTimeout(() => saveProject(), 500);
   }, [saveProject]);
 
-  const updateAgent = useCallback((id: string, updates: Partial<AgentSchema>) => {
-    storeUpdateAgent(id, updates);
-    setBuiltBinaryPath(null);
-    debouncedSave();
-  }, [storeUpdateAgent, debouncedSave]);
+  const {
+    onConnect, onEdgesDelete, onNodesDelete, onEdgeDoubleClick, onNodeClick, onPaneClick,
+    updateAgent, updateToolConfig, handleAddTool,
+  } = useCanvasConnections({ currentProject, removeAgentWithUndo, removeActionNode: removeActionNodeWithLayout, invalidateBuild, applyLayout, debouncedSave });
 
-  const updateToolConfig = useCallback((toolId: string, config: ToolConfig) => {
-    storeUpdateToolConfig(toolId, config);
-    setBuiltBinaryPath(null);
-    debouncedSave();
-  }, [storeUpdateToolConfig, debouncedSave]);
+  const { nodes, edges, onNodesChange, onEdgesChange } = useCanvasNodes(currentProject, {
+    activeAgent: execution.activeAgent,
+    iteration: execution.iteration,
+    flowPhase: execution.flowPhase,
+    thoughts: execution.thoughts,
+    stateKeys: execution.stateKeys,
+    showDataFlowOverlay,
+    highlightedKey: execution.highlightedKey,
+    onKeyHover: execution.handleKeyHover,
+    executionPath: execution.executionPath.path,
+    isExecuting: execution.executionPath.isExecuting,
+    interruptedNodeId: execution.interruptedNodeId,
+  });
 
   useKeyboardShortcuts({
-    selectedNodeId, selectedToolId,
-    onDeleteNode: removeAgent,
+    selectedNodeId,
+    selectedToolId,
+    selectedActionNodeId,
+    onDeleteNode: removeAgentWithUndo,
+    onDeleteActionNode: removeActionNodeWithLayout,
     onDeleteTool: removeToolFromAgent,
     onDuplicateNode: duplicateAgent,
     onSelectNode: selectNode,
+    onSelectActionNode: selectActionNode,
     onSelectTool: selectTool,
-    onAutoLayout: toggleLayout,
+    onAutoLayout: applyLayout,
     onFitView: fitToView,
+    onZoomIn: zoomIn,
+    onZoomOut: zoomOut,
+    onUndo: undoRedo.undo,
+    onRedo: undoRedo.redo,
+    onRun: builtBinaryPath ? () => {
+      if (!showConsole) toggleConsole();
+      if (consoleCollapsed) setConsoleCollapsed(false);
+      setTimeout(() => setAutoSendPrompt(getDefaultPrompt()), 100);
+    } : undefined,
   });
 
-  const handleCompile = useCallback(async () => {
-    if (!currentProject) return;
-    try { setCompiledCode(await api.projects.compile(currentProject.id)); }
-    catch (e) { alert('Compile failed: ' + (e as Error).message); }
-  }, [currentProject]);
-
-  const handleBuild = useCallback(async () => {
-    if (!currentProject) return;
-    setBuilding(true);
-    setBuildOutput({ success: false, output: '', path: null });
-    const es = new EventSource(`/api/projects/${currentProject.id}/build-stream`);
-    let output = '';
-    es.addEventListener('status', (e) => { output += e.data + '\n'; setBuildOutput({ success: false, output, path: null }); });
-    es.addEventListener('output', (e) => { output += e.data + '\n'; setBuildOutput({ success: false, output, path: null }); });
-    es.addEventListener('done', (e) => { setBuildOutput({ success: true, output, path: e.data }); setBuiltBinaryPath(e.data); setBuilding(false); es.close(); });
-    es.addEventListener('error', (e) => { output += '\nError: ' + ((e as MessageEvent).data || 'Build failed'); setBuildOutput({ success: false, output, path: null }); setBuilding(false); es.close(); });
-    es.onerror = () => { setBuilding(false); es.close(); };
-  }, [currentProject]);
-
-  const onDragStart = (e: DragEvent, type: string) => { e.dataTransfer.setData('application/reactflow', type); e.dataTransfer.effectAllowed = 'move'; };
-  const onDragOver = useCallback((e: DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = e.dataTransfer.types.includes('text/plain') ? 'copy' : 'move'; }, []);
-  const onDrop = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    const toolData = e.dataTransfer.getData('text/plain');
-    if (toolData.startsWith('tool:') && selectedNodeId && currentProject?.agents[selectedNodeId]) {
-      addToolToAgent(selectedNodeId, toolData.slice(5));
-      return;
-    }
-    const type = e.dataTransfer.getData('application/reactflow');
-    if (type) {
-      createAgent(type);
-      setTimeout(() => applyLayout(), 100);
-    }
-  }, [createAgent, selectedNodeId, currentProject, addToolToAgent, applyLayout]);
-
-  const onConnect = useCallback((p: Connection) => p.source && p.target && addProjectEdge(p.source, p.target), [addProjectEdge]);
-  const onEdgesDelete = useCallback((eds: Edge[]) => eds.forEach(e => removeProjectEdge(e.source, e.target)), [removeProjectEdge]);
-  const onNodesDelete = useCallback((nds: Node[]) => nds.forEach(n => n.id !== 'START' && n.id !== 'END' && removeAgent(n.id)), [removeAgent]);
-  const onEdgeDoubleClick = useCallback((_: React.MouseEvent, e: Edge) => removeProjectEdge(e.source, e.target), [removeProjectEdge]);
-  const onNodeClick = useCallback((_: React.MouseEvent, n: Node) => selectNode(n.id !== 'START' && n.id !== 'END' ? n.id : null), [selectNode]);
-  const onPaneClick = useCallback(() => selectNode(null), [selectNode]);
-
-  const handleAddTool = useCallback((type: string) => {
-    if (!selectedNodeId) return;
-    addToolToAgent(selectedNodeId, type);
-    const tools = currentProject?.agents[selectedNodeId]?.tools || [];
-    const isMulti = type === 'function' || type === 'mcp';
-    const newId = isMulti ? `${selectedNodeId}_${type}_${tools.filter(t => t.startsWith(type)).length + 1}` : `${selectedNodeId}_${type}`;
-    setTimeout(() => selectTool(newId), 0);
-  }, [selectedNodeId, currentProject, addToolToAgent, selectTool]);
+  const { onDragStart, onActionDragStart, onDragOver, onDrop, createActionNode } = useCanvasDragDrop({
+    createAgentWithUndo,
+    selectedNodeId,
+    applyLayout,
+    invalidateBuild,
+  });
 
   if (!currentProject) return null;
+
+  // Derived state
   const selectedAgent = selectedNodeId ? currentProject.agents[selectedNodeId] : null;
-  const hasAgents = Object.keys(currentProject.agents).length > 0;
+  const hasRunnableWorkflow = Object.keys(currentProject.agents).length > 0 || Object.keys(currentProject.actionNodes || {}).length > 0;
   const agentTools = selectedNodeId ? currentProject.agents[selectedNodeId]?.tools || [] : [];
-  const fnConfig = selectedToolId && currentProject.tool_configs?.[selectedToolId]?.type === 'function' ? currentProject.tool_configs[selectedToolId] as FunctionToolConfig : null;
+  const fnConfig = selectedToolId && currentProject.tool_configs?.[selectedToolId]?.type === 'function'
+    ? currentProject.tool_configs[selectedToolId] as FunctionToolConfig
+    : null;
+
+  // Get default prompt from trigger config
+  const getDefaultPrompt = (): string => {
+    const actionNodes = currentProject.actionNodes || {};
+    const trigger = Object.values(actionNodes).find(n => n.type === 'trigger' && n.triggerType === 'manual');
+    if (trigger && trigger.type === 'trigger' && trigger.manual) {
+      return trigger.manual.defaultPrompt || DEFAULT_MANUAL_TRIGGER_CONFIG.defaultPrompt;
+    }
+    return DEFAULT_MANUAL_TRIGGER_CONFIG.defaultPrompt;
+  };
+
+  // New project creation handler
+  const handleNewProjectConfirm = useCallback(async (name: string) => {
+    setShowNewProjectModal(false);
+    const project = await api.projects.create(name);
+    await openProject(project.id);
+    const defaultTemplate = TEMPLATES.find(t => t.id === 'simple_chat');
+    if (defaultTemplate) {
+      if (defaultTemplate.actionNodes) {
+        Object.entries(defaultTemplate.actionNodes).forEach(([id, node]) => { addActionNode(id, node); });
+      }
+      Object.entries(defaultTemplate.agents).forEach(([id, agent]) => { addAgent(id, agent); });
+      defaultTemplate.edges.forEach(e => addProjectEdge(e.from, e.to));
+      setTimeout(() => applyLayout(), 100);
+    }
+  }, [openProject, addActionNode, addAgent, addProjectEdge, applyLayout]);
+
+  // Settings save handler
+  const handleSaveSettings = useCallback((settings: import('../../types/project').ProjectSettings, name: string, description: string) => {
+    updateProjectMeta(name, description);
+    updateProjectSettings(settings);
+    setShowSettingsModal(false);
+  }, [updateProjectMeta, updateProjectSettings]);
+
+  // Theme-aware colors for ReactFlow components
+  const { mode } = useTheme();
+  const isLight = mode === 'light';
+  const gridColor = isLight ? '#E3E6EA' : '#333';
+  const nodeActiveColor = '#4ade80';
+  const nodeInactiveColor = isLight ? '#94a3b8' : '#666';
 
   return (
     <div className="flex flex-col h-full">
-      <MenuBar onExportCode={() => setShowCodeEditor(true)} onNewProject={() => setShowNewProjectModal(true)} onTemplateApplied={() => setTimeout(() => applyLayout(), 100)} />
+      <MenuBar
+        onExportCode={() => setShowCodeEditor(true)}
+        onNewProject={() => setShowNewProjectModal(true)}
+        onTemplateApplied={() => setTimeout(() => applyLayout(), 100)}
+        onRunTemplate={() => {
+          if (!showConsole) toggleConsole();
+          if (!builtBinaryPath) handleBuild();
+        }}
+        buildStatus={buildStatus}
+        onBuildStatusClick={() => {
+          if (building && isAutobuild) showBuildProgress();
+          else if (buildOutput) { /* buildOutput is already set, modal will show */ }
+          else if (!builtBinaryPath) handleBuild();
+        }}
+        debugMode={debugMode}
+        onDebugModeToggle={() => setDebugMode(!debugMode)}
+      />
+
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-48 bg-studio-panel border-r border-gray-700 p-2 flex flex-col overflow-y-auto">
-          <AgentPalette onDragStart={onDragStart} onCreate={createAgent} />
-          <div className="my-2" />
-          <ToolPalette selectedNodeId={selectedNodeId} agentTools={agentTools} onAdd={handleAddTool} onRemove={t => selectedNodeId && removeToolFromAgent(selectedNodeId, t)} />
-          <div className="mt-auto space-y-1.5 pt-2">
-            <button onClick={handleCompile} className="w-full px-2 py-1.5 bg-blue-700 hover:bg-blue-600 rounded text-xs">📄 View Code</button>
-            <button onClick={handleBuild} disabled={building} className={`w-full px-2 py-1.5 rounded text-xs ${building ? 'bg-gray-600' : builtBinaryPath ? 'bg-green-700 hover:bg-green-600' : 'bg-orange-600 hover:bg-orange-500 animate-pulse'}`}>
-              {building ? '⏳ Building...' : builtBinaryPath ? '🔨 Build' : '🔨 Build Required'}
-            </button>
-            <button onClick={() => setShowConsole(!showConsole)} className="w-full px-2 py-1.5 bg-gray-700 rounded text-xs">{showConsole ? 'Hide Console' : 'Show Console'}</button>
-            <button onClick={closeProject} className="w-full px-2 py-1.5 bg-gray-700 rounded text-xs">Back</button>
-          </div>
-        </div>
+        {/* Left Sidebar - Palettes */}
+        <CanvasSidebar
+          onAgentDragStart={onDragStart}
+          onAgentCreate={(type) => { createAgentWithUndo(type); invalidateBuild('onAgentAdd'); setTimeout(() => applyLayout(), 100); }}
+          onActionDragStart={onActionDragStart}
+          onActionCreate={(type) => createActionNode(type)}
+          selectedNodeId={selectedNodeId}
+          agentTools={agentTools}
+          onToolAdd={handleAddTool}
+          onToolRemove={t => selectedNodeId && removeToolFromAgent(selectedNodeId, t)}
+          onCompile={handleCompile}
+          onBuild={handleBuild}
+          building={building}
+          isAutobuild={isAutobuild}
+          builtBinaryPath={builtBinaryPath}
+          autobuildEnabled={autobuildEnabled}
+          onToggleAutobuild={toggleAutobuild}
+          onShowBuildProgress={showBuildProgress}
+          showConsole={showConsole}
+          onToggleConsole={toggleConsole}
+          debugMode={debugMode}
+          snapshotCount={execution.snapshots.length}
+          showStateInspector={execution.showStateInspector}
+          onToggleStateInspector={() => execution.setShowStateInspector(!execution.showStateInspector)}
+          onShowSettings={() => setShowSettingsModal(true)}
+          onCloseProject={closeProject}
+        />
 
+        {/* Main Canvas Area */}
         <div className="flex-1 relative">
-          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onEdgesDelete={onEdgesDelete} onNodesDelete={onNodesDelete} onEdgeDoubleClick={onEdgeDoubleClick} onConnect={onConnect} onNodeClick={onNodeClick} onPaneClick={onPaneClick} onDrop={onDrop} onDragOver={onDragOver} deleteKeyCode={['Backspace', 'Delete']} defaultViewport={{ x: 0, y: 0, zoom: 1 }} minZoom={0.1} maxZoom={2}>
-            <Background color="#333" gap={20} />
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onEdgesDelete={onEdgesDelete}
+            onNodesDelete={onNodesDelete}
+            onEdgeDoubleClick={onEdgeDoubleClick}
+            onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            deleteKeyCode={['Backspace', 'Delete']}
+            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+            minZoom={0.1}
+            maxZoom={2}
+            snapToGrid={snapToGrid}
+            snapGrid={[gridSize, gridSize]}
+            proOptions={{ hideAttribution: true }}
+            connectionLineStyle={{ stroke: 'var(--accent-primary)', strokeWidth: 2 }}
+            defaultEdgeOptions={{ type: 'animated' }}
+            fitView
+            fitViewOptions={{ padding: 0.2, maxZoom: 0.9 }}
+            nodesDraggable
+            nodesConnectable
+            elementsSelectable
+            panOnDrag
+            zoomOnScroll
+            zoomOnPinch
+            selectNodesOnDrag={false}
+          >
+            <Background color={gridColor} gap={gridSize} />
             <Controls />
-            <MiniMap nodeColor={n => n.data?.isActive ? '#4ade80' : '#666'} maskColor="rgba(0,0,0,0.8)" style={{ background: '#1a1a2e' }} />
+            {showMinimap && (
+              <MiniMap
+                nodeColor={n => n.data?.isActive ? nodeActiveColor : nodeInactiveColor}
+                maskColor={isLight ? 'rgba(247, 248, 250, 0.8)' : 'rgba(0, 0, 0, 0.8)'}
+                style={{ background: isLight ? '#F7F8FA' : '#1a1a2e' }}
+              />
+            )}
           </ReactFlow>
-          <CanvasToolbar onAutoLayout={toggleLayout} onFitView={fitToView} />
+          <CanvasToolbar
+            onFitView={fitToView}
+            showDataFlowOverlay={showDataFlowOverlay}
+            onToggleDataFlowOverlay={execution.handleToggleDataFlowOverlay}
+            showMinimap={showMinimap}
+            onToggleMinimap={toggleMinimap}
+            isRunning={execution.flowPhase !== 'idle'}
+            isBuilt={!!builtBinaryPath}
+            isBuilding={building}
+            onRun={() => {
+              if (!showConsole) toggleConsole();
+              if (consoleCollapsed) setConsoleCollapsed(false);
+              setTimeout(() => setAutoSendPrompt(getDefaultPrompt()), 100);
+            }}
+            onStop={() => { if (cancelFnRef.current) cancelFnRef.current(); }}
+          />
         </div>
 
-        {selectedAgent && selectedNodeId && (
-          <PropertiesPanel nodeId={selectedNodeId} agent={selectedAgent} agents={currentProject.agents} toolConfigs={currentProject.tool_configs || {}} onUpdate={updateAgent} onRename={renameAgent} onAddSubAgent={() => addSubAgentToContainer(selectedNodeId)} onClose={() => selectNode(null)} onSelectTool={selectTool} onRemoveTool={t => removeToolFromAgent(selectedNodeId, t)} />
-        )}
-        {selectedToolId && currentProject && (
-          <ToolConfigPanel toolId={selectedToolId} config={currentProject.tool_configs?.[selectedToolId] || null} onUpdate={c => updateToolConfig(selectedToolId, c)} onClose={() => selectTool(null)} onOpenCodeEditor={() => setShowCodeEditor(true)} />
-        )}
+        {/* Right Sidebar - Properties, Action Properties, Tool Config, State Inspector */}
+        <CanvasRightPanel
+          selectedNodeId={selectedNodeId}
+          selectedAgent={selectedAgent}
+          agents={currentProject.agents}
+          toolConfigs={currentProject.tool_configs || {}}
+          onUpdateAgent={updateAgent}
+          onRenameAgent={renameAgent}
+          onAddSubAgent={(nodeId) => addSubAgentToContainer(nodeId)}
+          onCloseAgent={() => selectNode(null)}
+          onSelectTool={selectTool}
+          onRemoveToolFromAgent={(nodeId, t) => removeToolFromAgent(nodeId, t)}
+          selectedActionNodeId={selectedActionNodeId}
+          hasProject={!!currentProject}
+          onCloseActionNode={() => selectActionNode(null)}
+          selectedToolId={selectedToolId}
+          toolConfig={currentProject.tool_configs?.[selectedToolId || ''] || null}
+          onUpdateToolConfig={updateToolConfig}
+          onCloseTool={() => selectTool(null)}
+          onOpenCodeEditor={() => setShowCodeEditor(true)}
+          showConsole={showConsole}
+          debugMode={debugMode}
+          showStateInspector={execution.showStateInspector}
+          snapshots={execution.snapshots}
+          currentSnapshot={execution.currentSnapshot}
+          previousSnapshot={execution.previousSnapshot}
+          currentSnapshotIndex={execution.currentSnapshotIndex}
+          onStateHistorySelect={execution.handleStateHistorySelect}
+          onCloseStateInspector={() => execution.setShowStateInspector(false)}
+        />
       </div>
 
-      {showConsole && hasAgents && builtBinaryPath && <div className="h-64"><TestConsole onFlowPhase={setFlowPhase} onActiveAgent={setActiveAgent} onIteration={setIteration} onThought={handleThought} binaryPath={builtBinaryPath} /></div>}
-      {showConsole && hasAgents && !builtBinaryPath && (
-        <div className="h-32 bg-studio-panel border-t border-gray-700 flex items-center justify-center text-gray-500">
-          <div className="text-center"><div>Build the project first to test it</div><button onClick={handleBuild} className="mt-2 px-4 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm">Build Project</button></div>
-        </div>
-      )}
-      {showConsole && !hasAgents && <div className="h-32 bg-studio-panel border-t border-gray-700 flex items-center justify-center text-gray-500">Drag "LLM Agent" onto the canvas to get started</div>}
+      {/* Bottom Panel - Timeline, Console, Placeholders */}
+      <CanvasBottomPanel
+        showConsole={showConsole}
+        showTimeline={showTimeline}
+        debugMode={debugMode}
+        hasRunnableWorkflow={hasRunnableWorkflow}
+        builtBinaryPath={builtBinaryPath}
+        snapshots={execution.snapshots}
+        currentSnapshotIndex={execution.currentSnapshotIndex}
+        scrubToFn={execution.scrubToFn}
+        timelineCollapsed={execution.timelineCollapsed}
+        onToggleTimelineCollapse={() => execution.setTimelineCollapsed(!execution.timelineCollapsed)}
+        consoleCollapsed={consoleCollapsed}
+        onConsoleCollapseChange={setConsoleCollapsed}
+        buildStatus={buildStatus}
+        autoSendPrompt={autoSendPrompt}
+        onAutoSendComplete={() => setAutoSendPrompt(null)}
+        onCancelReady={(fn) => { cancelFnRef.current = fn; }}
+        onFlowPhase={execution.handleFlowPhase}
+        onActiveAgent={execution.handleActiveAgent}
+        onIteration={execution.setIteration}
+        onThought={execution.handleThought}
+        onSnapshotsChange={execution.handleSnapshotsChange}
+        onInterruptChange={execution.handleInterruptChange}
+        onBuild={handleBuild}
+        onBinaryPathDetected={setBinaryPath}
+      />
 
-      {compiledCode && <CodeModal code={compiledCode} onClose={() => setCompiledCode(null)} />}
-      {buildOutput && <BuildModal building={building} success={buildOutput.success} output={buildOutput.output} path={buildOutput.path} onClose={() => setBuildOutput(null)} />}
-      {showCodeEditor && fnConfig && <CodeEditorModal config={fnConfig} onUpdate={c => updateToolConfig(selectedToolId!, c)} onClose={() => setShowCodeEditor(false)} />}
-      {showNewProjectModal && <NewProjectModal onConfirm={async (name) => { setShowNewProjectModal(false); const project = await api.projects.create(name); await openProject(project.id); const defaultTemplate = TEMPLATES.find(t => t.id === 'simple_chat'); if (defaultTemplate) { Object.entries(defaultTemplate.agents).forEach(([id, agent]) => { addAgent(id, agent); }); defaultTemplate.edges.forEach(e => addProjectEdge(e.from, e.to)); setTimeout(() => applyLayout(), 100); } }} onClose={() => setShowNewProjectModal(false)} />}
+      {/* Modals */}
+      <CanvasModals
+        compiledCode={compiledCode}
+        onClearCompiledCode={clearCompiledCode}
+        buildOutput={buildOutput}
+        building={building}
+        isAutobuild={isAutobuild}
+        onClearBuildOutput={clearBuildOutput}
+        showCodeEditor={showCodeEditor}
+        fnConfig={fnConfig}
+        selectedToolId={selectedToolId}
+        onUpdateToolConfig={updateToolConfig}
+        onCloseCodeEditor={() => setShowCodeEditor(false)}
+        showNewProjectModal={showNewProjectModal}
+        onNewProjectConfirm={handleNewProjectConfirm}
+        onCloseNewProjectModal={() => setShowNewProjectModal(false)}
+        showSettingsModal={showSettingsModal}
+        projectSettings={currentProject.settings}
+        projectName={currentProject.name}
+        projectDescription={currentProject.description}
+        onSaveSettings={handleSaveSettings}
+        onCloseSettingsModal={() => setShowSettingsModal(false)}
+      />
     </div>
   );
 }
