@@ -46,6 +46,45 @@ pub enum GeminiLiveBackend {
     },
 }
 
+impl GeminiLiveBackend {
+    /// Create a Studio backend with API key authentication.
+    pub fn studio(api_key: impl Into<String>) -> Self {
+        Self::Studio { api_key: api_key.into() }
+    }
+
+    /// Create a Vertex AI backend using Application Default Credentials (ADC).
+    ///
+    /// This is the most ergonomic way to connect to Vertex AI Live. It
+    /// automatically discovers credentials from the environment using
+    /// `google-cloud-auth`'s default credential chain (environment variables,
+    /// `gcloud auth application-default login`, service account files, etc.).
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let backend = GeminiLiveBackend::vertex_adc("my-project", "us-central1")?;
+    /// let model = GeminiRealtimeModel::new(backend, "models/gemini-live-2.5-flash-native-audio");
+    /// ```
+    #[cfg(feature = "vertex-live")]
+    pub fn vertex_adc(
+        project_id: impl Into<String>,
+        region: impl Into<String>,
+    ) -> Result<Self> {
+        let credentials = google_cloud_auth::credentials::Builder::default()
+            .build()
+            .map_err(|e| {
+                RealtimeError::AuthError(format!(
+                    "Failed to discover Application Default Credentials: {e}"
+                ))
+            })?;
+        Ok(Self::Vertex {
+            credentials,
+            region: region.into(),
+            project_id: project_id.into(),
+        })
+    }
+}
+
 // ── Wire format types ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]

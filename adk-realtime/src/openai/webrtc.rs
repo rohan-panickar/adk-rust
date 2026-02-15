@@ -245,6 +245,11 @@ pub struct OpenAIWebRTCSession {
     event_rx: Arc<Mutex<mpsc::UnboundedReceiver<Result<ServerEvent>>>>,
     /// Channel sender for pushing server events from background processing.
     event_tx: mpsc::UnboundedSender<Result<ServerEvent>>,
+    /// Buffer for messages sent before the data channel is open.
+    /// Once the channel opens, queued messages are flushed in order.
+    pending_dc_messages: Arc<Mutex<Vec<Vec<u8>>>>,
+    /// Whether the data channel has been opened and is ready for writes.
+    dc_open: Arc<AtomicBool>,
 }
 
 /// Response from OpenAI's ephemeral token endpoint.
@@ -401,6 +406,8 @@ impl OpenAIWebRTCSession {
             rtp_sample_offset: AtomicU64::new(0),
             event_rx: Arc::new(Mutex::new(event_rx)),
             event_tx,
+            pending_dc_messages: Arc::new(Mutex::new(Vec::new())),
+            dc_open: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -551,11 +558,27 @@ use std::pin::Pin;
 impl OpenAIWebRTCSession {
     /// Send a JSON-serializable value over the "oai-events" data channel.
     ///
-    /// Serializes the value to JSON, then writes the bytes to the data channel.
-    /// The `reliable` flag is set to `true` for ordered, reliable delivery.
+    /// If the data channel is not yet open, the message is queued and will be
+    /// flushed in order once the channel opens. This prevents message loss
+    /// during the brief window between SDP handshake completion and data
+    /// channel establishment.
     async fn send_data_channel_message(&self, value: &Value) -> Result<()> {
         let json_bytes = serde_json::to_vec(value)
             .map_err(|e| RealtimeError::protocol(format!("JSON serialize error: {e}")))?;
+
+        if !self.dc_open.load(Ordering::Acquire) {
+            // Channel not open yet — queue for later flush
+            let mut pending = self.pending_dc_messages.lock().await;
+            // Cap at 50 messages to prevent unbounded growth
+            if pending.len() >= 50 {
+                return Err(RealtimeError::webrtc(
+                    "Data channel message queue full (50 messages). Channel may not be opening.",
+                ));
+            }
+            pending.push(json_bytes);
+            tracing::debug!("Data channel not open yet, queued message ({} pending)", pending.len());
+            return Ok(());
+        }
 
         let mut rtc = self.rtc.lock().await;
         let mut channel = rtc.channel(self.data_channel_id).ok_or_else(|| {
@@ -564,6 +587,35 @@ impl OpenAIWebRTCSession {
         channel
             .write(true, json_bytes.as_slice())
             .map_err(|e| RealtimeError::webrtc(format!("Data channel write failed: {e}")))?;
+
+        Ok(())
+    }
+
+    /// Mark the data channel as open and flush any queued messages.
+    ///
+    /// Called when the data channel `OnOpen` event is received from str0m.
+    /// Drains the pending message queue in FIFO order.
+    pub async fn flush_pending_dc_messages(&self) -> Result<()> {
+        self.dc_open.store(true, Ordering::Release);
+
+        let mut pending = self.pending_dc_messages.lock().await;
+        if pending.is_empty() {
+            return Ok(());
+        }
+
+        let count = pending.len();
+        tracing::info!("Data channel opened — flushing {count} queued messages");
+
+        let mut rtc = self.rtc.lock().await;
+        let mut channel = rtc.channel(self.data_channel_id).ok_or_else(|| {
+            RealtimeError::webrtc("Data channel 'oai-events' not available during flush")
+        })?;
+
+        for msg in pending.drain(..) {
+            channel
+                .write(true, msg.as_slice())
+                .map_err(|e| RealtimeError::webrtc(format!("Data channel flush failed: {e}")))?;
+        }
 
         Ok(())
     }

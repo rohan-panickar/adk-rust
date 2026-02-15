@@ -21,6 +21,8 @@ Three new transport capabilities behind feature flags, all additive to existing 
   4. SDP offer structure
   5. Error message context preservation
 - [x] **Facade crate** — `adk-rust` forwards `vertex-live`, `livekit`, `openai-webrtc` to `adk-realtime`, prelude re-exports for realtime types
+- [x] **Mike's fork improvements adopted** — Data channel pre-open buffering, `vertex_adc()` convenience constructor, `AudioFormat` metadata on `ClientEvent::AudioDelta`, `BoxedSession`/`BoxedModel`/`RealtimeSessionExt` re-exported from `lib.rs`
+- [x] **cmake isolation** — Removed `openai-webrtc` from `full` feature so default builds don't require cmake. Added `full-webrtc` feature for everything including WebRTC.
 
 ### Requirements Reference
 

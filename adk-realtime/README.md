@@ -137,12 +137,17 @@ adk-realtime = { version = "0.3", features = ["vertex-live"] }
 ```rust
 use adk_realtime::gemini::{GeminiLiveBackend, GeminiRealtimeModel};
 
+// Convenience constructor — auto-discovers ADC credentials
+let backend = GeminiLiveBackend::vertex_adc("my-project", "us-central1")?;
+
+// Or manual credentials construction
 let credentials = google_cloud_auth::credentials::Credentials::default().await?;
 let backend = GeminiLiveBackend::Vertex {
     credentials,
     region: "us-central1".into(),
     project_id: std::env::var("GOOGLE_CLOUD_PROJECT")?,
 };
+
 let model = GeminiRealtimeModel::new(backend, "models/gemini-live-2.5-flash-native-audio");
 let session = model.connect(config).await?;
 ```
@@ -202,7 +207,8 @@ For Gemini's 16 kHz format, use `bridge_gemini_input` instead.
 | `vertex-live` | `gemini` + `google-cloud-auth` | Vertex AI Live API (OAuth2/ADC) |
 | `livekit` | `livekit`, `livekit-api` | LiveKit WebRTC bridge |
 | `openai-webrtc` | `openai` + `str0m`, `audiopus`, `reqwest` | OpenAI WebRTC transport (requires cmake) |
-| `full` | all of the above | Everything |
+| `full` | all of the above except openai-webrtc | Everything that doesn't require cmake |
+| `full-webrtc` | `full` + `openai-webrtc` | Everything including WebRTC (requires cmake) |
 
 Default features: none. You opt in to exactly what you need.
 
@@ -213,7 +219,8 @@ Default features: none. You opt in to exactly what you need.
 vertex-live  ──► gemini + google-cloud-auth
 openai-webrtc ──► openai + str0m + audiopus + reqwest
 livekit      ──► livekit + livekit-api
-full         ──► openai + gemini + vertex-live + livekit + openai-webrtc
+full         ──► openai + gemini + vertex-live + livekit
+full-webrtc  ──► full + openai-webrtc
 ```
 
 ## RealtimeAgent Features

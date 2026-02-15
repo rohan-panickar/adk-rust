@@ -102,6 +102,6 @@ pub use audio::{AudioEncoding, AudioFormat};
 pub use config::{RealtimeConfig, RealtimeConfigBuilder, VadConfig, VadMode};
 pub use error::{RealtimeError, Result};
 pub use events::{ClientEvent, ServerEvent, ToolCall, ToolResponse};
-pub use model::RealtimeModel;
+pub use model::{BoxedModel, RealtimeModel};
 pub use runner::RealtimeRunner;
-pub use session::RealtimeSession;
+pub use session::{BoxedSession, RealtimeSession, RealtimeSessionExt};
