@@ -53,6 +53,10 @@ pub enum ClientEvent {
             deserialize_with = "deserialize_audio_bytes"
         )]
         audio: Vec<u8>,
+        /// Audio format metadata for multi-format pipelines and debugging.
+        /// Skipped during serialization — the server infers format from the session config.
+        #[serde(skip)]
+        format: Option<crate::audio::AudioFormat>,
     },
 
     /// Commit the current audio buffer (manual mode).

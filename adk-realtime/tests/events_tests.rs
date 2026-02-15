@@ -40,7 +40,7 @@ fn test_tool_response_from_string() {
 
 #[test]
 fn test_client_event_audio_delta_serialization() {
-    let event = ClientEvent::AudioDelta { event_id: None, audio: b"hello".to_vec() };
+    let event = ClientEvent::AudioDelta { event_id: None, audio: b"hello".to_vec(), format: None };
 
     let json = serde_json::to_string(&event).unwrap();
     assert!(json.contains("input_audio_buffer.append"));
