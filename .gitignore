@@ -31,6 +31,7 @@ devenv.lock
 .direnv/
 .envrc
 .envrc.local
+.pre-commit-config.yaml
 
 # Environment / Secrets
 .env
