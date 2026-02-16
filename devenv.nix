@@ -111,16 +111,16 @@
   };
 
   scripts = {
-    fmt.exec = "cargo fmt --all";
-    check.exec = "RUSTC_WRAPPER=sccache cargo check --workspace";
-    test.exec = "RUSTC_WRAPPER=sccache cargo test --workspace";
-    clippy.exec = "RUSTC_WRAPPER=sccache cargo clippy --workspace -- -D warnings";
+    ws-fmt.exec = "cargo fmt --all";
+    ws-check.exec = "RUSTC_WRAPPER=sccache cargo check --workspace";
+    ws-test.exec = "RUSTC_WRAPPER=sccache cargo test --workspace";
+    ws-clippy.exec = "RUSTC_WRAPPER=sccache cargo clippy --workspace -- -D warnings";
   };
 
   # --------------------------------------------------------------------------
   # Test & Shell Hooks
   # --------------------------------------------------------------------------
-  enterTest = "test"; # Runs the 'test' script above
+  enterTest = "ws-test"; # Runs the 'ws-test' script above
 
   # --------------------------------------------------------------------------
   # Quality Gates (Git-Hooks)
